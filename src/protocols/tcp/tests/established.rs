@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 use crate::{
-    collections::bytes::{Bytes, BytesMut},
     protocols::{
         ip::{self},
         ipv4::Ipv4Endpoint,
@@ -15,14 +14,17 @@ use crate::{
             SeqNumber,
         },
     },
-    queue::IoQueueDescriptor,
-    runtime::Runtime,
     test_helpers::Engine,
     test_helpers::{self, TestRuntime},
 };
-use futures::task::noop_waker_ref;
-use rand;
-use std::{
+use ::futures::task::noop_waker_ref;
+use ::rand;
+use ::runtime::{
+    memory::{Bytes, BytesMut},
+    network::NetworkRuntime,
+    queue::IoQueueDescriptor,
+};
+use ::std::{
     collections::VecDeque,
     convert::TryFrom,
     future::Future,
@@ -304,8 +306,8 @@ pub fn test_send_recv_loop() {
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
     let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
-    let window_scale: u8 = client.rt().tcp_options().window_scale();
-    let max_window_size: u32 = (client.rt().tcp_options().receive_window_size() as u32)
+    let window_scale: u8 = client.rt().tcp_options().get_window_scale();
+    let max_window_size: u32 = (client.rt().tcp_options().get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
         .unwrap();
 
@@ -350,8 +352,8 @@ pub fn test_send_recv_round_loop() {
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
     let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
-    let window_scale: u8 = client.rt().tcp_options().window_scale();
-    let max_window_size: u32 = (client.rt().tcp_options().receive_window_size() as u32)
+    let window_scale: u8 = client.rt().tcp_options().get_window_scale();
+    let max_window_size: u32 = (client.rt().tcp_options().get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
         .unwrap();
 
@@ -399,8 +401,8 @@ pub fn test_send_recv_with_delay() {
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
     let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
-    let window_scale: u8 = client.rt().tcp_options().window_scale();
-    let max_window_size: u32 = (client.rt().tcp_options().receive_window_size() as u32)
+    let window_scale: u8 = client.rt().tcp_options().get_window_scale();
+    let max_window_size: u32 = (client.rt().tcp_options().get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
         .unwrap();
 

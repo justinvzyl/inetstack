@@ -2,20 +2,15 @@
 // Licensed under the MIT license.
 
 use super::runtime::DummyRuntime;
-
-use catnip::{
-    collections::bytes::{Bytes, BytesMut},
-    interop::dmtr_sgarray_t,
-    libos::LibOS,
-    protocols::ethernet2::MacAddress,
-    runtime::Runtime,
+use ::catnip::libos::LibOS;
+use ::crossbeam_channel::{Receiver, Sender};
+use ::flexi_logger::Logger;
+use ::runtime::{
+    memory::{Bytes, BytesMut, MemoryRuntime},
+    network::types::MacAddress,
+    types::dmtr_sgarray_t,
 };
-
-use crossbeam_channel::{self, Receiver, Sender};
-
-use std::{collections::HashMap, net::Ipv4Addr, sync::Once, time::Instant};
-
-use flexi_logger::Logger;
+use ::std::{collections::HashMap, net::Ipv4Addr, sync::Once, time::Instant};
 
 //==============================================================================
 // Constants & Structures

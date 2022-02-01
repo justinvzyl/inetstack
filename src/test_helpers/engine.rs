@@ -1,21 +1,19 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
+use crate::protocols::{
+    arp::ArpPeer,
+    ethernet2::{EtherType2, Ethernet2Header},
+    ipv4::Ipv4Endpoint,
+    tcp::operations::{AcceptFuture, ConnectFuture, PopFuture, PushFuture},
+    udp::UdpPopFuture,
+    Peer,
+};
+use ::runtime::{
     fail::Fail,
-    protocols::{
-        arp::ArpPeer,
-        ethernet2::{
-            MacAddress, {EtherType2, Ethernet2Header},
-        },
-        ipv4::Ipv4Endpoint,
-        tcp::operations::{AcceptFuture, ConnectFuture, PopFuture, PushFuture},
-        udp::UdpPopFuture,
-        Peer,
-    },
-    queue::IoQueueType,
-    queue::{IoQueueDescriptor, IoQueueTable},
-    runtime::Runtime,
+    network::types::MacAddress,
+    queue::{IoQueueDescriptor, IoQueueTable, IoQueueType},
+    Runtime,
 };
 
 use std::{collections::HashMap, future::Future, net::Ipv4Addr, time::Duration};

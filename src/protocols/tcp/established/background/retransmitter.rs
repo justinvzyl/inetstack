@@ -2,12 +2,12 @@
 // Licensed under the MIT license.
 
 use super::ControlBlock;
-use crate::{fail::Fail, runtime::Runtime};
-use futures::{
+use ::futures::{
     future::{self, Either},
     FutureExt,
 };
-use std::{rc::Rc, time::Duration};
+use ::runtime::{fail::Fail, Runtime};
+use ::std::{rc::Rc, time::Duration};
 
 pub enum RetransmitCause {
     TimeOut,

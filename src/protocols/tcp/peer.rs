@@ -5,27 +5,22 @@ use super::{
     active_open::ActiveOpenSocket, established::EstablishedSocket, isn_generator::IsnGenerator,
     passive_open::PassiveSocket,
 };
-use crate::{
-    fail::Fail,
-    protocols::{
-        arp::ArpPeer,
-        ethernet2::{EtherType2, Ethernet2Header},
-        ip,
-        ip::EphemeralPorts,
-        ipv4::{Ipv4Endpoint, Ipv4Header, Ipv4Protocol2},
-        tcp::{
-            operations::{AcceptFuture, ConnectFuture, ConnectFutureState, PopFuture, PushFuture},
-            segment::{TcpHeader, TcpSegment},
-        },
+use crate::protocols::{
+    arp::ArpPeer,
+    ethernet2::{EtherType2, Ethernet2Header},
+    ip,
+    ip::EphemeralPorts,
+    ipv4::{Ipv4Endpoint, Ipv4Header, Ipv4Protocol2},
+    tcp::{
+        operations::{AcceptFuture, ConnectFuture, ConnectFutureState, PopFuture, PushFuture},
+        segment::{TcpHeader, TcpSegment},
     },
-    queue::IoQueueDescriptor,
-    runtime::Runtime,
-    runtime::RuntimeBuf,
 };
-use futures::channel::mpsc;
-use std::collections::HashMap;
-use std::{
+use ::futures::channel::mpsc;
+use ::runtime::{fail::Fail, memory::Buffer, queue::IoQueueDescriptor, Runtime};
+use ::std::{
     cell::RefCell,
+    collections::HashMap,
     rc::Rc,
     task::{Context, Poll},
     time::Duration,
@@ -413,7 +408,7 @@ impl<RT: Runtime> Inner<RT> {
 
     fn receive(&mut self, ip_hdr: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
         let tcp_options = self.rt.tcp_options();
-        let (tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, tcp_options.rx_checksum_offload())?;
+        let (tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, tcp_options.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
         let local = Ipv4Endpoint::new(ip_hdr.dst_addr(), tcp_hdr.dst_port);
         let remote = Ipv4Endpoint::new(ip_hdr.src_addr(), tcp_hdr.src_port);
@@ -475,7 +470,7 @@ impl<RT: Runtime> Inner<RT> {
             ),
             tcp_hdr,
             data: RT::Buf::empty(),
-            tx_checksum_offload: self.rt.tcp_options().tx_checksum_offload(),
+            tx_checksum_offload: self.rt.tcp_options().get_rx_checksum_offload(),
         };
         self.rt.transmit(segment);
 

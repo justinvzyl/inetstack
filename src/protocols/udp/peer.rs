@@ -7,22 +7,16 @@ use super::{
     listener::SharedListener,
     socket::UdpSocket,
 };
-use crate::{
-    fail::Fail,
-    protocols::{
-        arp::ArpPeer,
-        ethernet2::{
-            MacAddress, {EtherType2, Ethernet2Header},
-        },
-        ipv4::Ipv4Endpoint,
-        ipv4::{Ipv4Header, Ipv4Protocol2},
-    },
-    queue::IoQueueDescriptor,
-    runtime::Runtime,
+use crate::protocols::{
+    arp::ArpPeer,
+    ethernet2::{EtherType2, Ethernet2Header},
+    ipv4::Ipv4Endpoint,
+    ipv4::{Ipv4Header, Ipv4Protocol2},
 };
-use catwalk::SchedulerHandle;
-use futures::{channel::mpsc, stream::StreamExt};
-use std::collections::HashMap;
+use ::catwalk::SchedulerHandle;
+use ::futures::{channel::mpsc, stream::StreamExt};
+use ::runtime::{fail::Fail, network::types::MacAddress, queue::IoQueueDescriptor, Runtime};
+use ::std::collections::HashMap;
 
 #[cfg(feature = "profiler")]
 use perftools::timer;

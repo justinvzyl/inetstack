@@ -1,12 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    fail::Fail, protocols::ethernet2::EtherType2, protocols::ethernet2::MacAddress,
-    runtime::RuntimeBuf,
-};
-use byteorder::{ByteOrder, NetworkEndian};
-use std::convert::{TryFrom, TryInto};
+use crate::protocols::ethernet2::EtherType2;
+use ::byteorder::{ByteOrder, NetworkEndian};
+use ::runtime::{fail::Fail, memory::Buffer, network::types::MacAddress};
+use ::std::convert::{TryFrom, TryInto};
 
 pub const ETHERNET2_HEADER_SIZE: usize = 14;
 pub const MIN_PAYLOAD_SIZE: usize = 46;
@@ -35,7 +33,7 @@ impl Ethernet2Header {
         ETHERNET2_HEADER_SIZE
     }
 
-    pub fn parse<T: RuntimeBuf>(mut buf: T) -> Result<(Self, T), Fail> {
+    pub fn parse<T: Buffer>(mut buf: T) -> Result<(Self, T), Fail> {
         if buf.len() < ETHERNET2_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "Frame too small",

@@ -4,7 +4,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{collections::HashTtlCache, protocols::ethernet2::MacAddress};
+use crate::collections::HashTtlCache;
+use runtime::network::types::MacAddress;
 use std::{
     collections::HashMap,
     net::Ipv4Addr,

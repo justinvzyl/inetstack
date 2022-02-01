@@ -2,14 +2,11 @@
 // Licensed under the MIT license.
 
 use super::ControlBlock;
-use crate::{
-    fail::Fail,
-    runtime::{Runtime, RuntimeBuf},
-};
-use futures::{
+use ::futures::{
     future::{self, Either},
     FutureExt,
 };
+use ::runtime::{fail::Fail, memory::Buffer, Runtime};
 use std::rc::Rc;
 
 pub async fn acknowledger<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {

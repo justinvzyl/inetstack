@@ -3,19 +3,22 @@
 
 use super::packet::{ArpHeader, ArpOperation};
 use crate::{
-    fail::Fail,
-    protocols::ethernet2::{Ethernet2Header, MacAddress},
-    runtime::Runtime,
+    protocols::ethernet2::Ethernet2Header,
     test_helpers::{self, TestRuntime},
+};
+use ::runtime::{
+    fail::Fail,
+    network::{types::MacAddress, NetworkRuntime},
+    task::SchedulerRuntime,
+};
+use ::std::{
+    future::Future,
+    task::Poll,
+    time::{Duration, Instant},
 };
 use futures::{
     task::{noop_waker_ref, Context},
     FutureExt,
-};
-use std::{
-    future::Future,
-    task::Poll,
-    time::{Duration, Instant},
 };
 
 /// Tests that requests get replied.

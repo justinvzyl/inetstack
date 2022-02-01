@@ -11,12 +11,11 @@ pub use self::sender::congestion_ctrl as cc;
 
 use self::background::background;
 use crate::protocols::ipv4::Ipv4Endpoint;
-use crate::{
-    fail::Fail, protocols::tcp::segment::TcpHeader, queue::IoQueueDescriptor, runtime::Runtime,
-};
-use catwalk::SchedulerHandle;
-use futures::channel::mpsc;
-use std::{
+use crate::protocols::tcp::segment::TcpHeader;
+use ::catwalk::SchedulerHandle;
+use ::futures::channel::mpsc;
+use ::runtime::{fail::Fail, queue::IoQueueDescriptor, Runtime};
+use ::std::{
     rc::Rc,
     task::{Context, Poll},
     time::Duration,

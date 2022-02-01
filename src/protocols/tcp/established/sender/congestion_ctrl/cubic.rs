@@ -12,12 +12,12 @@ use super::{
     CongestionControl, FastRetransmitRecovery, LimitedTransmit, Options,
     SlowStartCongestionAvoidance,
 };
-use crate::runtime::Runtime;
 use crate::{
     collections::watched::{WatchFuture, WatchedValue},
     protocols::tcp::SeqNumber,
 };
-use std::{
+use ::runtime::Runtime;
+use ::std::{
     cell::Cell,
     cmp::{max, min},
     convert::TryInto,

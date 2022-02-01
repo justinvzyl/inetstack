@@ -5,12 +5,11 @@
 //! the IO Queue abstraction, thus providing a standard interface for different kernel bypass
 //! mechanisms.
 use crate::{
-    fail::Fail,
     futures::{
         operation::{FutureOperation, UdpOperation},
         FutureResult,
     },
-    interop::{dmtr_qresult_t, dmtr_sgarray_t},
+    interop::pack_result,
     operations::OperationResult,
     protocols::{
         arp::ArpPeer,
@@ -18,12 +17,16 @@ use crate::{
         ipv4::Ipv4Endpoint,
         Peer,
     },
-    queue::{IoQueueDescriptor, IoQueueTable, IoQueueType},
-    runtime::Runtime,
 };
+use ::runtime::{
+    fail::Fail,
+    queue::{IoQueueDescriptor, IoQueueTable, IoQueueType},
+    types::{dmtr_qresult_t, dmtr_sgarray_t},
+    Runtime,
+};
+use ::std::{any::Any, time::Instant};
 use catwalk::SchedulerHandle;
 use libc::c_int;
-use std::time::Instant;
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
@@ -189,7 +192,7 @@ impl<RT: Runtime> LibOS<RT> {
             _ => Err(Fail::BadFileDescriptor {}),
         };
         match r {
-            Ok(future) => Ok(self.rt.scheduler().insert(future).into_raw()),
+            Ok(future) => Ok(self.rt.schedule(future).into_raw()),
             Err(fail) => Err(fail),
         }
     }
@@ -217,7 +220,7 @@ impl<RT: Runtime> LibOS<RT> {
             _ => Err(Fail::BadFileDescriptor {}),
         }?;
 
-        Ok(self.rt.scheduler().insert(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw())
     }
 
     ///
@@ -277,7 +280,7 @@ impl<RT: Runtime> LibOS<RT> {
             });
         }
         let future = self.do_push(fd, buf)?;
-        Ok(self.rt.scheduler().insert(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw())
     }
 
     /// Similar to [push](Self::push) but uses a [Runtime]-specific buffer instead of the
@@ -292,7 +295,7 @@ impl<RT: Runtime> LibOS<RT> {
             });
         }
         let future = self.do_push(fd, buf)?;
-        Ok(self.rt.scheduler().insert(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw())
     }
 
     fn do_pushto(
@@ -325,7 +328,7 @@ impl<RT: Runtime> LibOS<RT> {
             });
         }
         let future = self.do_pushto(fd, buf, to)?;
-        Ok(self.rt.scheduler().insert(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw())
     }
 
     pub fn pushto2(
@@ -342,7 +345,7 @@ impl<RT: Runtime> LibOS<RT> {
             });
         }
         let future = self.do_pushto(fd, buf, to)?;
-        Ok(self.rt.scheduler().insert(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw())
     }
 
     ///
@@ -354,7 +357,7 @@ impl<RT: Runtime> LibOS<RT> {
     pub fn drop_qtoken(&mut self, qt: QToken) {
         #[cfg(feature = "profiler")]
         timer!("catnip::drop_qtoken");
-        drop(self.rt.scheduler().from_raw_handle(qt).unwrap());
+        drop(self.rt.get_handle(qt).unwrap());
     }
 
     /// Create a pop request to write data from IO connection represented by `fd` into a buffer
@@ -374,7 +377,7 @@ impl<RT: Runtime> LibOS<RT> {
             _ => Err(Fail::BadFileDescriptor {}),
         }?;
 
-        Ok(self.rt.scheduler().insert(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw())
     }
 
     // If this returns a result, `qt` is no longer valid.
@@ -383,7 +386,7 @@ impl<RT: Runtime> LibOS<RT> {
         timer!("catnip::poll");
         trace!("poll(): qt={:?}", qt);
         self.poll_bg_work();
-        let handle = match self.rt.scheduler().from_raw_handle(qt) {
+        let handle = match self.rt.get_handle(qt) {
             None => {
                 panic!("Invalid handle {}", qt);
             }
@@ -394,7 +397,7 @@ impl<RT: Runtime> LibOS<RT> {
             return None;
         }
         let (qd, r) = self.take_operation(handle);
-        Some(dmtr_qresult_t::pack(&self.rt, r, qd, qt))
+        Some(pack_result(&self.rt, r, qd, qt))
     }
 
     /// Block until request represented by `qt` is finished returning the results of this request.
@@ -403,7 +406,7 @@ impl<RT: Runtime> LibOS<RT> {
         timer!("catnip::wait");
         trace!("wait(): qt={:?}", qt);
         let (qd, result) = self.wait2(qt);
-        dmtr_qresult_t::pack(&self.rt, result, qd, qt)
+        pack_result(&self.rt, result, qd, qt)
     }
 
     /// Block until request represented by `qt` is finished returning the file descriptor
@@ -412,7 +415,7 @@ impl<RT: Runtime> LibOS<RT> {
         #[cfg(feature = "profiler")]
         timer!("catnip::wait2");
         trace!("wait2(): qt={:?}", qt);
-        let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
+        let handle = self.rt.get_handle(qt).unwrap();
 
         // Continously call the scheduler to make progress until the future represented by `qt`
         // finishes.
@@ -430,7 +433,7 @@ impl<RT: Runtime> LibOS<RT> {
         trace!("wait_all_pushes(): qts={:?}", qts);
         self.poll_bg_work();
         for qt in qts.drain(..) {
-            let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
+            let handle = self.rt.get_handle(qt).unwrap();
             // TODO I don't understand what guarantees that this task will be done by the time we
             // get here and make this assert true.
             assert!(handle.has_completed());
@@ -453,10 +456,10 @@ impl<RT: Runtime> LibOS<RT> {
         loop {
             self.poll_bg_work();
             for (i, &qt) in qts.iter().enumerate() {
-                let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
+                let handle = self.rt.get_handle(qt).unwrap();
                 if handle.has_completed() {
                     let (qd, r) = self.take_operation(handle);
-                    return (i, dmtr_qresult_t::pack(&self.rt, r, qd, qt));
+                    return (i, pack_result(&self.rt, r, qd, qt));
                 }
                 handle.into_raw();
             }
@@ -470,7 +473,7 @@ impl<RT: Runtime> LibOS<RT> {
         loop {
             self.poll_bg_work();
             for (i, &qt) in qts.iter().enumerate() {
-                let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
+                let handle = self.rt.get_handle(qt).unwrap();
                 if handle.has_completed() {
                     let (qd, r) = self.take_operation(handle);
                     return (i, qd, r);
@@ -492,7 +495,13 @@ impl<RT: Runtime> LibOS<RT> {
         &mut self,
         handle: SchedulerHandle,
     ) -> (IoQueueDescriptor, OperationResult<RT>) {
-        match self.rt.scheduler().take(handle) {
+        let boxed_future: Box<dyn Any> = self.rt.take(handle).as_any();
+
+        let boxed_concrete_type = *boxed_future
+            .downcast::<FutureOperation<RT>>()
+            .expect("Wrong type!");
+
+        match boxed_concrete_type {
             FutureOperation::Tcp(f) => f.expect_result(),
             FutureOperation::Udp(f) => f.expect_result(),
             FutureOperation::Background(..) => {
@@ -529,7 +538,7 @@ impl<RT: Runtime> LibOS<RT> {
         {
             #[cfg(feature = "profiler")]
             timer!("catnip::poll_bg_work::poll");
-            self.rt.scheduler().poll();
+            self.rt.poll();
         }
 
         {

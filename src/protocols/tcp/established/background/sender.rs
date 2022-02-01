@@ -3,9 +3,9 @@
 
 use super::super::super::SeqNumber;
 use super::super::{ctrlblk::ControlBlock, sender::UnackedSegment};
-use crate::{fail::Fail, runtime::Runtime};
-use futures::FutureExt;
-use std::{cmp, rc::Rc, time::Duration};
+use ::futures::FutureExt;
+use ::runtime::{fail::Fail, Runtime};
+use ::std::{cmp, rc::Rc, time::Duration};
 
 pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     'top: loop {

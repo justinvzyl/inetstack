@@ -3,12 +3,10 @@
 
 mod header;
 
+use crate::protocols::{ethernet2::Ethernet2Header, ipv4::Ipv4Header};
+use ::runtime::{memory::Buffer, network::PacketBuf};
+
 pub use self::header::UDP_HEADER_SIZE;
-use crate::{
-    protocols::{ethernet2::Ethernet2Header, ipv4::Ipv4Header},
-    runtime::PacketBuf,
-    runtime::RuntimeBuf,
-};
 pub use header::UdpHeader;
 
 //==============================================================================
@@ -21,7 +19,7 @@ pub use header::UdpHeader;
 /// - TODO: write unit test for serialization
 ///
 #[derive(Debug)]
-pub struct UdpDatagram<T: RuntimeBuf> {
+pub struct UdpDatagram<T: Buffer> {
     /// Ethernet header.
     ethernet2_hdr: Ethernet2Header,
     /// IPv4 header.
@@ -39,7 +37,7 @@ pub struct UdpDatagram<T: RuntimeBuf> {
 //==============================================================================
 
 // Associate functions for [UdpDatagram].
-impl<T: RuntimeBuf> UdpDatagram<T> {
+impl<T: Buffer> UdpDatagram<T> {
     /// Creates a UDP packet.
     pub fn new(
         ethernet2_hdr: Ethernet2Header,
@@ -63,7 +61,7 @@ impl<T: RuntimeBuf> UdpDatagram<T> {
 //==============================================================================
 
 /// Implementation of [PacketBuf] for [UdpDatagram].
-impl<T: RuntimeBuf> PacketBuf<T> for UdpDatagram<T> {
+impl<T: Buffer> PacketBuf<T> for UdpDatagram<T> {
     /// Computers the size of the target UDP header.
     fn header_size(&self) -> usize {
         self.ethernet2_hdr.compute_size() + self.ipv4_hdr.compute_size() + self.udp_hdr.size()

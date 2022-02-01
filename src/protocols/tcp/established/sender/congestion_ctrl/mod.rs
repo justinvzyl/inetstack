@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{collections::watched::WatchFuture, protocols::tcp::SeqNumber, runtime::Runtime};
-use std::{fmt::Debug, time::Duration};
-
 mod cubic;
 mod none;
 mod options;
+
+use crate::{collections::watched::WatchFuture, protocols::tcp::SeqNumber};
+use ::runtime::Runtime;
+use ::std::{fmt::Debug, time::Duration};
+
 pub use self::{
     cubic::Cubic,
     none::None,

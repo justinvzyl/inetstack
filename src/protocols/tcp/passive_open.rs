@@ -2,27 +2,22 @@
 // Licensed under the MIT license.
 
 use super::{constants::FALLBACK_MSS, established::ControlBlock, isn_generator::IsnGenerator};
-use crate::{
-    fail::Fail,
-    protocols::{
-        arp::ArpPeer,
-        ethernet2::{EtherType2, Ethernet2Header},
-        ipv4::Ipv4Endpoint,
-        ipv4::{Ipv4Header, Ipv4Protocol2},
-        tcp::{
-            established::cc::{self, CongestionControl},
-            segment::{TcpHeader, TcpOptions2, TcpSegment},
-            SeqNumber,
-        },
+use crate::protocols::{
+    arp::ArpPeer,
+    ethernet2::{EtherType2, Ethernet2Header},
+    ipv4::Ipv4Endpoint,
+    ipv4::{Ipv4Header, Ipv4Protocol2},
+    tcp::{
+        established::cc::{self, CongestionControl},
+        segment::{TcpHeader, TcpOptions2, TcpSegment},
+        SeqNumber,
     },
-    runtime::Runtime,
-    runtime::RuntimeBuf,
 };
-use catwalk::SchedulerHandle;
-use std::collections::{HashMap, HashSet};
-use std::{
+use ::catwalk::SchedulerHandle;
+use ::runtime::{fail::Fail, memory::Buffer, Runtime};
+use ::std::{
     cell::RefCell,
-    collections::VecDeque,
+    collections::{HashMap, HashSet, VecDeque},
     convert::TryInto,
     future::Future,
     rc::Rc,
@@ -150,7 +145,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
 
             let tcp_options = self.rt.tcp_options();
             let (local_window_scale, remote_window_scale) = match remote_window_scale {
-                Some(w) => (tcp_options.window_scale() as u32, w),
+                Some(w) => (tcp_options.get_window_scale() as u32, w),
                 None => (0, 0),
             };
             let remote_window_size = (header_window_size)
@@ -158,7 +153,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 .expect("TODO: Window size overflow")
                 .try_into()
                 .expect("TODO: Window size overflow");
-            let local_window_size = (tcp_options.receive_window_size() as u32)
+            let local_window_size = (tcp_options.get_receive_window_size() as u32)
                 .checked_shl(local_window_scale as u32)
                 .expect("TODO: Window size overflow");
             info!(
@@ -177,7 +172,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 self.rt.clone(),
                 self.arp.clone(),
                 remote_isn + SeqNumber::from(1),
-                self.rt.tcp_options().ack_delay_timeout(),
+                self.rt.tcp_options().get_ack_delay_timeout(),
                 local_window_size,
                 local_window_scale,
                 local_isn + SeqNumber::from(1),
@@ -252,8 +247,8 @@ impl<RT: Runtime> PassiveSocket<RT> {
         ready: Rc<RefCell<ReadySockets<RT>>>,
     ) -> impl Future<Output = ()> {
         let tcp_options = rt.tcp_options();
-        let handshake_retries: usize = tcp_options.handshake_retries();
-        let handshake_timeout: Duration = tcp_options.handshake_timeout();
+        let handshake_retries: usize = tcp_options.get_handshake_retries();
+        let handshake_timeout: Duration = tcp_options.get_handshake_timeout();
 
         async move {
             for _ in 0..handshake_retries {
@@ -269,14 +264,17 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 tcp_hdr.seq_num = local_isn;
                 tcp_hdr.ack = true;
                 tcp_hdr.ack_num = remote_isn + SeqNumber::from(1);
-                tcp_hdr.window_size = tcp_options.receive_window_size();
+                tcp_hdr.window_size = tcp_options.get_receive_window_size();
 
-                let mss = tcp_options.advertised_mss() as u16;
+                let mss = tcp_options.get_advertised_mss() as u16;
                 tcp_hdr.push_option(TcpOptions2::MaximumSegmentSize(mss));
                 info!("Advertising MSS: {}", mss);
 
-                tcp_hdr.push_option(TcpOptions2::WindowScale(tcp_options.window_scale()));
-                info!("Advertising window scale: {}", tcp_options.window_scale());
+                tcp_hdr.push_option(TcpOptions2::WindowScale(tcp_options.get_window_scale()));
+                info!(
+                    "Advertising window scale: {}",
+                    tcp_options.get_window_scale()
+                );
 
                 debug!("Sending SYN+ACK: {:?}", tcp_hdr);
                 let segment = TcpSegment {
@@ -292,7 +290,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                     ),
                     tcp_hdr,
                     data: RT::Buf::empty(),
-                    tx_checksum_offload: tcp_options.tx_checksum_offload(),
+                    tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
                 };
                 rt.transmit(segment);
                 rt.wait(handshake_timeout).await;
