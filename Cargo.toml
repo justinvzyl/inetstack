@@ -17,7 +17,6 @@ crc = "1.8.1"
 crossbeam-channel = "0.5.2"
 derive_more = "0.99.17"
 either = "1.6.1"
-eui48 = "1.1.0"
 flexi_logger = { version = "0.22.2", features = ["colors", "use_chrono_for_offset"] }
 float_duration = "0.3.3"
 futures = "0.3.19"
