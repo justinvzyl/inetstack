@@ -6,25 +6,22 @@
 #![feature(const_mut_refs, const_type_name)]
 #![feature(maybe_uninit_uninit_array, maybe_uninit_extra, maybe_uninit_ref)]
 
-use catnip::{
-    fail::Fail,
-    interop::dmtr_opcode_t,
+mod common;
+
+use crate::common::{
+    arp, libos::*, runtime::DummyRuntime, ALICE_IPV4, ALICE_MAC, BOB_IPV4, BOB_MAC, PORT_BASE,
+};
+use ::catnip::{
     libos::LibOS,
     protocols::{ip, ipv4::Ipv4Endpoint},
-    queue::IoQueueDescriptor,
-    runtime::Runtime,
 };
-
-use crossbeam_channel::{self};
-
+use ::crossbeam_channel::{self};
+use ::runtime::fail::Fail;
+use ::runtime::memory::MemoryRuntime;
+use ::runtime::queue::IoQueueDescriptor;
+use ::runtime::types::dmtr_opcode_t;
+use ::std::{convert::TryFrom, net::Ipv4Addr, thread};
 use libc;
-
-use std::{convert::TryFrom, net::Ipv4Addr, thread};
-
-mod common;
-use common::libos::*;
-use common::runtime::*;
-use common::*;
 
 //==============================================================================
 // Open/Close Passive Socket

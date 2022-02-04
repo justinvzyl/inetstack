@@ -2,25 +2,34 @@
 // Licensed under the MIT license.
 
 use crate::{
-    collections::bytes::{Bytes, BytesMut},
     futures::operation::FutureOperation,
-    interop::{dmtr_sgarray_t, dmtr_sgaseg_t},
     logging,
-    protocols::{arp::ArpConfig, ethernet2::MacAddress, tcp::TcpConfig, udp},
-    runtime::{PacketBuf, Runtime, RECEIVE_BATCH_SIZE},
     test_helpers::Engine,
     timer::{Timer, TimerRc},
 };
-use arrayvec::ArrayVec;
-use catwalk::{Scheduler, SchedulerHandle};
-use futures::FutureExt;
-use rand::{
+use ::arrayvec::ArrayVec;
+use ::catwalk::{Scheduler, SchedulerFuture, SchedulerHandle};
+use ::futures::FutureExt;
+use ::rand::{
     distributions::{Distribution, Standard},
     rngs::SmallRng,
     seq::SliceRandom,
     Rng, SeedableRng,
 };
-use std::{
+use ::runtime::{
+    memory::{Bytes, BytesMut, MemoryRuntime},
+    network::types::MacAddress,
+    network::{
+        config::{TcpConfig, UdpConfig},
+        consts::RECEIVE_BATCH_SIZE,
+        NetworkRuntime, PacketBuf,
+    },
+    task::SchedulerRuntime,
+    types::{dmtr_sgarray_t, dmtr_sgaseg_t},
+    utils::UtilsRuntime,
+    Runtime,
+};
+use ::std::{
     cell::RefCell,
     collections::VecDeque,
     future::Future,
@@ -31,6 +40,7 @@ use std::{
     slice,
     time::{Duration, Instant},
 };
+use runtime::network::config::ArpConfig;
 
 //==============================================================================
 // Types
@@ -57,10 +67,10 @@ pub struct TestRuntime {
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     arp_options: ArpConfig,
-    udp_options: udp::UdpConfig,
+    udp_options: UdpConfig,
     tcp_options: TcpConfig,
     inner: Rc<RefCell<Inner>>,
-    scheduler: Scheduler<FutureOperation<TestRuntime>>,
+    scheduler: Scheduler,
 }
 
 //==============================================================================
@@ -72,7 +82,7 @@ impl TestRuntime {
         name: &'static str,
         now: Instant,
         arp_options: ArpConfig,
-        udp_options: udp::UdpConfig,
+        udp_options: UdpConfig,
         tcp_options: TcpConfig,
         link_addr: MacAddress,
         ipv4_addr: Ipv4Addr,
@@ -119,9 +129,8 @@ impl TestRuntime {
 // Trait Implementations
 //==============================================================================
 
-impl Runtime for TestRuntime {
+impl MemoryRuntime for TestRuntime {
     type Buf = Bytes;
-    type WaitFuture = crate::timer::WaitFuture<TimerRc>;
 
     fn into_sgarray(&self, buf: Bytes) -> dmtr_sgarray_t {
         let buf_copy: Box<[u8]> = (&buf[..]).into();
@@ -182,7 +191,9 @@ impl Runtime for TestRuntime {
         }
         buf.freeze()
     }
+}
 
+impl NetworkRuntime for TestRuntime {
     fn transmit(&self, pkt: impl PacketBuf<Bytes>) {
         let header_size = pkt.header_size();
         let body_size = pkt.body_size();
@@ -203,10 +214,6 @@ impl Runtime for TestRuntime {
         out
     }
 
-    fn scheduler(&self) -> &Scheduler<FutureOperation<Self>> {
-        &self.scheduler
-    }
-
     fn local_link_addr(&self) -> MacAddress {
         self.link_addr
     }
@@ -219,13 +226,32 @@ impl Runtime for TestRuntime {
         self.tcp_options.clone()
     }
 
-    fn udp_options(&self) -> udp::UdpConfig {
+    fn udp_options(&self) -> UdpConfig {
         self.udp_options.clone()
     }
 
     fn arp_options(&self) -> ArpConfig {
         self.arp_options.clone()
     }
+}
+
+impl UtilsRuntime for TestRuntime {
+    fn rng_gen<T>(&self) -> T
+    where
+        Standard: Distribution<T>,
+    {
+        let mut inner = self.inner.borrow_mut();
+        inner.rng.gen()
+    }
+
+    fn rng_shuffle<T>(&self, slice: &mut [T]) {
+        let mut inner = self.inner.borrow_mut();
+        slice.shuffle(&mut inner.rng);
+    }
+}
+
+impl SchedulerRuntime for TestRuntime {
+    type WaitFuture = crate::timer::WaitFuture<TimerRc>;
 
     fn advance_clock(&self, now: Instant) {
         self.inner.borrow_mut().timer.0.advance_clock(now);
@@ -249,21 +275,28 @@ impl Runtime for TestRuntime {
         self.inner.borrow().timer.0.now()
     }
 
-    fn rng_gen<T>(&self) -> T
-    where
-        Standard: Distribution<T>,
-    {
-        let mut inner = self.inner.borrow_mut();
-        inner.rng.gen()
-    }
-
-    fn rng_shuffle<T>(&self, slice: &mut [T]) {
-        let mut inner = self.inner.borrow_mut();
-        slice.shuffle(&mut inner.rng);
-    }
-
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
         self.scheduler
-            .insert(FutureOperation::Background(future.boxed_local()))
+            .insert(FutureOperation::Background::<TestRuntime>(
+                future.boxed_local(),
+            ))
+    }
+
+    fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
+        self.scheduler.insert(future)
+    }
+
+    fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {
+        self.scheduler.from_raw_handle(key)
+    }
+
+    fn take(&self, handle: SchedulerHandle) -> Box<dyn SchedulerFuture> {
+        self.scheduler.take(handle)
+    }
+
+    fn poll(&self) {
+        self.scheduler.poll()
     }
 }
+
+impl Runtime for TestRuntime {}

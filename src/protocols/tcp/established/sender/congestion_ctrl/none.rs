@@ -5,8 +5,9 @@ use super::{
     CongestionControl, FastRetransmitRecovery, LimitedTransmit, Options,
     SlowStartCongestionAvoidance,
 };
-use crate::{protocols::tcp::SeqNumber, runtime::Runtime};
-use std::fmt::Debug;
+use crate::protocols::tcp::SeqNumber;
+use ::runtime::Runtime;
+use ::std::fmt::Debug;
 
 // Implementation of congestion control which does nothing.
 #[derive(Debug)]

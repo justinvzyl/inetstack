@@ -1,21 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    fail::Fail,
-    protocols::{
-        arp::ArpPeer,
-        icmpv4::Icmpv4Peer,
-        ipv4::{Ipv4Header, Ipv4Protocol2},
-        tcp::TcpPeer,
-        udp::UdpPeer,
-    },
-    runtime::Runtime,
+use crate::protocols::{
+    arp::ArpPeer,
+    icmpv4::Icmpv4Peer,
+    ipv4::{Ipv4Header, Ipv4Protocol2},
+    tcp::TcpPeer,
+    udp::UdpPeer,
 };
-use std::{future::Future, net::Ipv4Addr, time::Duration};
+use ::runtime::{fail::Fail, Runtime};
+use ::std::{future::Future, net::Ipv4Addr, time::Duration};
 
 #[cfg(test)]
-use crate::queue::IoQueueDescriptor;
+use runtime::queue::IoQueueDescriptor;
 
 pub struct Peer<RT: Runtime> {
     rt: RT,

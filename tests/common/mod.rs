@@ -4,8 +4,8 @@
 pub mod libos;
 pub mod runtime;
 
-use catnip::protocols::ethernet2::MacAddress;
-use std::{collections::HashMap, net::Ipv4Addr};
+use ::runtime::network::types::{Ipv4Addr, MacAddress};
+use std::collections::HashMap;
 
 // Alice Address
 pub const ALICE_IPV4: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);

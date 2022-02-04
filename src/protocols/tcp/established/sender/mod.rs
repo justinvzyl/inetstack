@@ -7,13 +7,10 @@ mod rto;
 use super::ControlBlock;
 use crate::{
     collections::watched::{WatchFuture, WatchedValue},
-    fail::Fail,
     protocols::tcp::SeqNumber,
-    runtime::{Runtime, RuntimeBuf},
 };
-use congestion_ctrl as cc;
-use rto::RtoCalculator;
-use std::{
+use ::runtime::{fail::Fail, memory::Buffer, Runtime};
+use ::std::{
     boxed::Box,
     cell::RefCell,
     collections::VecDeque,
@@ -21,6 +18,8 @@ use std::{
     fmt,
     time::{Duration, Instant},
 };
+use congestion_ctrl as cc;
+use rto::RtoCalculator;
 
 pub struct UnackedSegment<RT: Runtime> {
     pub bytes: RT::Buf,

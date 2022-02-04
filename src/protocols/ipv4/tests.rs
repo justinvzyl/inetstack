@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{runtime::Runtime, test_helpers};
-use futures::task::{noop_waker_ref, Context};
-use std::{future::Future, pin::Pin, task::Poll, time::Duration, time::Instant};
+use crate::test_helpers;
+use ::futures::task::{noop_waker_ref, Context};
+use ::runtime::task::SchedulerRuntime;
+use ::std::{future::Future, pin::Pin, task::Poll, time::Duration, time::Instant};
 
 //==============================================================================
 // IPv4 Ping

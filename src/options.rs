@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::protocols::{arp::ArpConfig, ethernet2::MacAddress, tcp::TcpConfig, udp::UdpConfig};
-use rand::{thread_rng, Rng};
-use std::net::Ipv4Addr;
+use ::rand::{thread_rng, Rng};
+use ::runtime::network::{
+    config::{ArpConfig, TcpConfig, UdpConfig},
+    types::MacAddress,
+};
+use ::std::net::Ipv4Addr;
 
 #[derive(Clone, Debug)]
 pub struct Options {

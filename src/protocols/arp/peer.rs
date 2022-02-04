@@ -1,23 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{
-    cache::ArpCache, config::ArpConfig, packet::ArpHeader, packet::ArpMessage, packet::ArpOperation,
-};
+use super::{cache::ArpCache, packet::ArpHeader, packet::ArpMessage, packet::ArpOperation};
 use crate::{
-    fail::Fail,
     futures::UtilityMethods,
-    protocols::ethernet2::{
-        MacAddress, {EtherType2, Ethernet2Header},
-    },
-    runtime::Runtime,
+    protocols::ethernet2::{EtherType2, Ethernet2Header},
 };
-use catwalk::SchedulerHandle;
-use futures::{
+use ::catwalk::SchedulerHandle;
+use ::futures::{
     channel::oneshot::{channel, Receiver, Sender},
     FutureExt,
 };
-use std::{
+use ::runtime::{fail::Fail, network::config::ArpConfig, network::types::MacAddress, Runtime};
+use ::std::{
     cell::RefCell,
     collections::HashMap,
     future::Future,

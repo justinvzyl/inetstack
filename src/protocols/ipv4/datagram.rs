@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{fail::Fail, protocols::ipv4::Ipv4Protocol2, runtime::RuntimeBuf};
-use byteorder::{ByteOrder, NetworkEndian};
-use std::{
+use crate::protocols::ipv4::Ipv4Protocol2;
+use ::byteorder::{ByteOrder, NetworkEndian};
+use ::runtime::{fail::Fail, memory::Buffer};
+use ::std::{
     convert::{TryFrom, TryInto},
     net::Ipv4Addr,
 };
@@ -82,7 +83,7 @@ impl Ipv4Header {
         IPV4_HEADER_SIZE
     }
 
-    pub fn parse<T: RuntimeBuf>(mut buf: T) -> Result<(Self, T), Fail> {
+    pub fn parse<T: Buffer>(mut buf: T) -> Result<(Self, T), Fail> {
         if buf.len() < IPV4_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "Datagram too small",

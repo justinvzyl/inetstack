@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 use crate::{
-    fail::Fail,
     futures::UtilityMethods,
     protocols::{
         arp::ArpPeer,
@@ -10,18 +9,18 @@ use crate::{
         icmpv4::datagram::{Icmpv4Header, Icmpv4Message, Icmpv4Type2},
         ipv4::{Ipv4Header, Ipv4Protocol2},
     },
-    runtime::Runtime,
 };
-use byteorder::{ByteOrder, NetworkEndian};
-use catwalk::SchedulerHandle;
-use futures::{
+use ::byteorder::{ByteOrder, NetworkEndian};
+use ::catwalk::SchedulerHandle;
+use ::futures::{
     channel::{
         mpsc,
         oneshot::{channel, Sender},
     },
     FutureExt, StreamExt,
 };
-use std::{
+use ::runtime::{fail::Fail, Runtime};
+use ::std::{
     cell::RefCell, collections::HashMap, future::Future, net::Ipv4Addr, num::Wrapping, process,
     rc::Rc, time::Duration,
 };

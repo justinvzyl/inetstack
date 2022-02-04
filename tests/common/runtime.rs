@@ -1,29 +1,32 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use arrayvec::ArrayVec;
-
-use catnip::{
-    collections::bytes::{Bytes, BytesMut},
+use ::arrayvec::ArrayVec;
+use ::catnip::{
     futures::operation::FutureOperation,
-    interop::dmtr_sgarray_t,
-    interop::dmtr_sgaseg_t,
-    protocols::{arp::ArpConfig, udp},
-    protocols::{ethernet2::MacAddress, tcp::TcpConfig},
-    runtime::Runtime,
-    runtime::{PacketBuf, RECEIVE_BATCH_SIZE},
     timer::{Timer, TimerRc},
 };
-use catwalk::{Scheduler, SchedulerHandle};
-use crossbeam_channel::{self};
-use futures::FutureExt;
-use rand::{
+use ::catwalk::{Scheduler, SchedulerFuture, SchedulerHandle};
+use ::crossbeam_channel::{self};
+use ::futures::FutureExt;
+use ::rand::{
     distributions::{Distribution, Standard},
     rngs::SmallRng,
     seq::SliceRandom,
     Rng, SeedableRng,
 };
-use std::{
+use ::runtime::{
+    memory::{Bytes, BytesMut},
+    network::types::MacAddress,
+    network::{
+        config::{ArpConfig, TcpConfig, UdpConfig},
+        consts::RECEIVE_BATCH_SIZE,
+    },
+    types::{dmtr_sgarray_t, dmtr_sgaseg_t},
+    {memory::MemoryRuntime, network::NetworkRuntime, task::SchedulerRuntime, utils::UtilsRuntime},
+    {network::PacketBuf, Runtime},
+};
+use ::std::{
     cell::RefCell,
     collections::HashMap,
     future::Future,
@@ -42,7 +45,7 @@ use std::{
 #[derive(Clone)]
 pub struct DummyRuntime {
     inner: Rc<RefCell<Inner>>,
-    scheduler: Scheduler<FutureOperation<DummyRuntime>>,
+    scheduler: Scheduler,
 }
 
 struct Inner {
@@ -99,8 +102,7 @@ impl DummyRuntime {
 // Trait Implementations
 //==============================================================================
 
-impl Runtime for DummyRuntime {
-    type WaitFuture = catnip::timer::WaitFuture<TimerRc>;
+impl MemoryRuntime for DummyRuntime {
     type Buf = Bytes;
 
     fn into_sgarray(&self, buf: Bytes) -> dmtr_sgarray_t {
@@ -164,7 +166,9 @@ impl Runtime for DummyRuntime {
         }
         buf.freeze()
     }
+}
 
+impl NetworkRuntime for DummyRuntime {
     fn transmit(&self, pkt: impl PacketBuf<Bytes>) {
         let header_size = pkt.header_size();
         let body_size = pkt.body_size();
@@ -189,10 +193,6 @@ impl Runtime for DummyRuntime {
         out
     }
 
-    fn scheduler(&self) -> &Scheduler<FutureOperation<Self>> {
-        &self.scheduler
-    }
-
     fn local_link_addr(&self) -> MacAddress {
         self.inner.borrow().link_addr.clone()
     }
@@ -205,13 +205,32 @@ impl Runtime for DummyRuntime {
         self.inner.borrow().tcp_options.clone()
     }
 
-    fn udp_options(&self) -> udp::UdpConfig {
-        udp::UdpConfig::default()
+    fn udp_options(&self) -> UdpConfig {
+        UdpConfig::default()
     }
 
     fn arp_options(&self) -> ArpConfig {
         self.inner.borrow().arp_options.clone()
     }
+}
+
+impl UtilsRuntime for DummyRuntime {
+    fn rng_gen<T>(&self) -> T
+    where
+        Standard: Distribution<T>,
+    {
+        let mut inner = self.inner.borrow_mut();
+        inner.rng.gen()
+    }
+
+    fn rng_shuffle<T>(&self, slice: &mut [T]) {
+        let mut inner = self.inner.borrow_mut();
+        slice.shuffle(&mut inner.rng);
+    }
+}
+
+impl SchedulerRuntime for DummyRuntime {
+    type WaitFuture = catnip::timer::WaitFuture<TimerRc>;
 
     fn advance_clock(&self, now: Instant) {
         self.inner.borrow_mut().timer.0.advance_clock(now);
@@ -235,21 +254,28 @@ impl Runtime for DummyRuntime {
         self.inner.borrow().timer.0.now()
     }
 
-    fn rng_gen<T>(&self) -> T
-    where
-        Standard: Distribution<T>,
-    {
-        let mut inner = self.inner.borrow_mut();
-        inner.rng.gen()
-    }
-
-    fn rng_shuffle<T>(&self, slice: &mut [T]) {
-        let mut inner = self.inner.borrow_mut();
-        slice.shuffle(&mut inner.rng);
-    }
-
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
         self.scheduler
-            .insert(FutureOperation::Background(future.boxed_local()))
+            .insert(FutureOperation::Background::<DummyRuntime>(
+                future.boxed_local(),
+            ))
+    }
+
+    fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
+        self.scheduler.insert(future)
+    }
+
+    fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {
+        self.scheduler.from_raw_handle(key)
+    }
+
+    fn take(&self, handle: SchedulerHandle) -> Box<dyn SchedulerFuture> {
+        self.scheduler.take(handle)
+    }
+
+    fn poll(&self) {
+        self.scheduler.poll()
     }
 }
+
+impl Runtime for DummyRuntime {}

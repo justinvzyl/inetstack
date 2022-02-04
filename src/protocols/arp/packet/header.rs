@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{fail::Fail, protocols::ethernet2::MacAddress, runtime::RuntimeBuf};
-use byteorder::{ByteOrder, NetworkEndian};
-use num_traits::FromPrimitive;
-use std::{convert::TryInto, net::Ipv4Addr};
+use ::byteorder::{ByteOrder, NetworkEndian};
+use ::num_traits::FromPrimitive;
+use ::runtime::{fail::Fail, memory::Buffer, network::types::MacAddress};
+use ::std::{convert::TryInto, net::Ipv4Addr};
 
 const ARP_HTYPE_ETHER2: u16 = 1;
 const ARP_HLEN_ETHER2: u8 = 6;
@@ -71,7 +71,7 @@ impl ArpHeader {
         ARP_MESSAGE_SIZE
     }
 
-    pub fn parse<T: RuntimeBuf>(buf: T) -> Result<Self, Fail> {
+    pub fn parse<T: Buffer>(buf: T) -> Result<Self, Fail> {
         if buf.len() < ARP_MESSAGE_SIZE {
             return Err(Fail::Malformed {
                 details: "ARP message too short",

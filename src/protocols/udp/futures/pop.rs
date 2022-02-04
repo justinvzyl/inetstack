@@ -2,9 +2,9 @@
 // Licensed under the MIT license.
 
 use super::super::listener::SharedListener;
-use crate::{
-    fail::Fail, protocols::ipv4::Ipv4Endpoint, queue::IoQueueDescriptor, runtime::Runtime,
-};
+use crate::protocols::ipv4::Ipv4Endpoint;
+use runtime::queue::IoQueueDescriptor;
+use runtime::{fail::Fail, memory::MemoryRuntime};
 use std::{
     future::Future,
     pin::Pin,
@@ -16,7 +16,7 @@ use std::{
 //==============================================================================
 
 /// Future for Pop Operation
-pub struct UdpPopFuture<RT: Runtime> {
+pub struct UdpPopFuture<RT: MemoryRuntime> {
     /// File descriptor.
     qd: IoQueueDescriptor,
     /// Listener.
@@ -28,7 +28,7 @@ pub struct UdpPopFuture<RT: Runtime> {
 //==============================================================================
 
 /// Associate functions for [PopFuture].
-impl<RT: Runtime> UdpPopFuture<RT> {
+impl<RT: MemoryRuntime> UdpPopFuture<RT> {
     /// Creates a future for the pop operation.
     pub fn new(qd: IoQueueDescriptor, listener: Result<SharedListener<RT::Buf>, Fail>) -> Self {
         Self { qd, listener }
@@ -45,7 +45,7 @@ impl<RT: Runtime> UdpPopFuture<RT> {
 //==============================================================================
 
 /// Future trait implementation for [PopFuture].
-impl<RT: Runtime> Future for UdpPopFuture<RT> {
+impl<RT: MemoryRuntime> Future for UdpPopFuture<RT> {
     type Output = Result<(Option<Ipv4Endpoint>, RT::Buf), Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {

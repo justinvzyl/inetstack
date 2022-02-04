@@ -6,15 +6,11 @@ use super::{
     sender::Sender,
     sender::{congestion_ctrl::CongestionControlConstructor, UnackedSegment},
 };
-
 use crate::{
     collections::watched::{WatchFuture, WatchedValue},
-    fail::Fail,
     protocols::{
         arp::ArpPeer,
-        ethernet2::{
-            MacAddress, {EtherType2, Ethernet2Header},
-        },
+        ethernet2::{EtherType2, Ethernet2Header},
         ipv4::Ipv4Endpoint,
         ipv4::{Ipv4Header, Ipv4Protocol2},
         tcp::{
@@ -22,10 +18,9 @@ use crate::{
             SeqNumber,
         },
     },
-    runtime::Runtime,
 };
-
-use std::{
+use ::runtime::{fail::Fail, network::types::MacAddress, Runtime};
+use ::std::{
     cell::RefCell,
     collections::VecDeque,
     convert::TryInto,
@@ -445,7 +440,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             ),
             tcp_hdr: header,
             data,
-            tx_checksum_offload: self.rt.tcp_options().tx_checksum_offload(),
+            tx_checksum_offload: self.rt.tcp_options().get_tx_checksum_offload(),
         };
         self.rt.transmit(segment);
     }

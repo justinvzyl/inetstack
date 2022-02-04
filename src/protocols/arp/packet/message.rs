@@ -2,8 +2,9 @@
 // Licensed under the MIT license.
 
 use super::ArpHeader;
-use crate::{protocols::ethernet2::Ethernet2Header, runtime::PacketBuf};
-use std::marker::PhantomData;
+use crate::protocols::ethernet2::Ethernet2Header;
+use ::runtime::network::PacketBuf;
+use ::std::marker::PhantomData;
 
 //==============================================================================
 // Structures

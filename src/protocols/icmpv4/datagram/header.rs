@@ -2,9 +2,9 @@
 // Licensed under the MIT license.
 
 use super::protocol::Icmpv4Type2;
-use crate::{fail::Fail, runtime::RuntimeBuf};
-use byteorder::{ByteOrder, NetworkEndian};
-use std::convert::TryInto;
+use ::byteorder::{ByteOrder, NetworkEndian};
+use ::runtime::{fail::Fail, memory::Buffer};
+use ::std::convert::TryInto;
 
 /// Size of ICMPv4 Headers (in bytes)
 pub const ICMPV4_HEADER_SIZE: usize = 8;
@@ -31,7 +31,7 @@ impl Icmpv4Header {
         ICMPV4_HEADER_SIZE
     }
 
-    pub fn parse<T: RuntimeBuf>(mut buf: T) -> Result<(Self, T), Fail> {
+    pub fn parse<T: Buffer>(mut buf: T) -> Result<(Self, T), Fail> {
         if buf.len() < ICMPV4_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "ICMPv4 datagram too small for header",

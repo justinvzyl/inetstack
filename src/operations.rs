@@ -1,16 +1,15 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    fail::Fail, protocols::ipv4::Ipv4Endpoint, queue::IoQueueDescriptor, runtime::Runtime,
-};
+use crate::protocols::ipv4::Ipv4Endpoint;
+use ::runtime::{fail::Fail, memory::MemoryRuntime, queue::IoQueueDescriptor};
 use std::fmt;
 
 //==============================================================================
 // Structures
 //==============================================================================
 
-pub enum OperationResult<RT: Runtime> {
+pub enum OperationResult<RT: MemoryRuntime> {
     Connect,
     Accept(IoQueueDescriptor),
     Push,
@@ -22,7 +21,7 @@ pub enum OperationResult<RT: Runtime> {
 // Trait Implementations
 //==============================================================================
 
-impl<RT: Runtime> fmt::Debug for OperationResult<RT> {
+impl<RT: MemoryRuntime> fmt::Debug for OperationResult<RT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             OperationResult::Connect => write!(f, "Connect"),

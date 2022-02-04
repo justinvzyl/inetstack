@@ -4,13 +4,10 @@
 //! Defines functions to be called during the TCP connection termination process.
 
 use super::{ControlBlock, State};
-use crate::{
-    fail::Fail,
-    protocols::tcp::SeqNumber,
-    runtime::{Runtime, RuntimeBuf},
-};
-use futures::FutureExt;
-use std::rc::Rc;
+use crate::protocols::tcp::SeqNumber;
+use ::futures::FutureExt;
+use ::runtime::{fail::Fail, memory::Buffer, Runtime};
+use ::std::rc::Rc;
 
 //==============================================================================
 

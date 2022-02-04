@@ -1,19 +1,15 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    fail::Fail,
-    protocols::{
-        ethernet2::Ethernet2Header,
-        ip,
-        ipv4::{Ipv4Header, Ipv4Protocol2},
-        tcp::SeqNumber,
-    },
-    runtime::PacketBuf,
-    runtime::RuntimeBuf,
+use crate::protocols::{
+    ethernet2::Ethernet2Header,
+    ip,
+    ipv4::{Ipv4Header, Ipv4Protocol2},
+    tcp::SeqNumber,
 };
-use byteorder::{ByteOrder, NetworkEndian, ReadBytesExt};
-use std::{
+use ::byteorder::{ByteOrder, NetworkEndian, ReadBytesExt};
+use ::runtime::{fail::Fail, memory::Buffer, network::PacketBuf};
+use ::std::{
     convert::{TryFrom, TryInto},
     io::Cursor,
 };
@@ -22,7 +18,7 @@ pub const MIN_TCP_HEADER_SIZE: usize = 20;
 pub const MAX_TCP_HEADER_SIZE: usize = 60;
 pub const MAX_TCP_OPTIONS: usize = 5;
 
-pub struct TcpSegment<T: RuntimeBuf> {
+pub struct TcpSegment<T: Buffer> {
     pub ethernet2_hdr: Ethernet2Header,
     pub ipv4_hdr: Ipv4Header,
     pub tcp_hdr: TcpHeader,
@@ -31,7 +27,7 @@ pub struct TcpSegment<T: RuntimeBuf> {
     pub tx_checksum_offload: bool,
 }
 
-impl<T: RuntimeBuf> PacketBuf<T> for TcpSegment<T> {
+impl<T: Buffer> PacketBuf<T> for TcpSegment<T> {
     fn header_size(&self) -> usize {
         self.ethernet2_hdr.compute_size()
             + self.ipv4_hdr.compute_size()
@@ -217,7 +213,7 @@ impl TcpHeader {
         }
     }
 
-    pub fn parse<T: RuntimeBuf>(
+    pub fn parse<T: Buffer>(
         ipv4_header: &Ipv4Header,
         mut buf: T,
         rx_checksum_offload: bool,

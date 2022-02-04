@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{fail::Fail, protocols::ip::Port, runtime::Runtime};
-use std::num::NonZeroU16;
+use crate::protocols::ip::Port;
+use ::runtime::{fail::Fail, Runtime};
+use ::std::num::NonZeroU16;
 
 //==============================================================================
 // Constants

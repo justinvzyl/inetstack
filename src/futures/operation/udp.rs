@@ -2,10 +2,10 @@
 // Licensed under the MIT license.
 
 use crate::{
-    fail::Fail, futures::result::FutureResult, operations::OperationResult,
-    protocols::udp::UdpPopFuture, queue::IoQueueDescriptor, runtime::Runtime,
+    futures::result::FutureResult, operations::OperationResult, protocols::udp::UdpPopFuture,
 };
-use std::{
+use ::runtime::{fail::Fail, memory::MemoryRuntime, queue::IoQueueDescriptor};
+use ::std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
@@ -16,7 +16,7 @@ use std::{
 //==============================================================================
 
 /// Operations on UDP Layer
-pub enum UdpOperation<RT: Runtime> {
+pub enum UdpOperation<RT: MemoryRuntime> {
     Connect(IoQueueDescriptor, Result<(), Fail>),
     Push(IoQueueDescriptor, Result<(), Fail>),
     Pop(FutureResult<UdpPopFuture<RT>>),
@@ -26,7 +26,7 @@ pub enum UdpOperation<RT: Runtime> {
 // Associate Functions
 //==============================================================================
 
-impl<RT: Runtime> UdpOperation<RT> {
+impl<RT: MemoryRuntime> UdpOperation<RT> {
     pub fn expect_result(self) -> (IoQueueDescriptor, OperationResult<RT>) {
         match self {
             UdpOperation::Push(fd, Err(e)) | UdpOperation::Connect(fd, Err(e)) => {
@@ -54,7 +54,7 @@ impl<RT: Runtime> UdpOperation<RT> {
 //==============================================================================
 
 /// Future trait implementation for [UdpOperation]
-impl<RT: Runtime> Future for UdpOperation<RT> {
+impl<RT: MemoryRuntime> Future for UdpOperation<RT> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {

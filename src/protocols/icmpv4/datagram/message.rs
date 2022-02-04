@@ -2,11 +2,9 @@
 // Licensed under the MIT license.
 
 use super::Icmpv4Header;
-use crate::{
-    protocols::{ethernet2::Ethernet2Header, ipv4::Ipv4Header},
-    runtime::PacketBuf,
-};
-use std::marker::PhantomData;
+use crate::protocols::{ethernet2::Ethernet2Header, ipv4::Ipv4Header};
+use ::runtime::network::PacketBuf;
+use ::std::marker::PhantomData;
 
 /// Message for ICMP
 pub struct Icmpv4Message<T> {

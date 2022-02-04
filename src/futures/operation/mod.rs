@@ -5,9 +5,12 @@ pub mod udp;
 
 pub use self::udp::UdpOperation;
 
-use crate::{protocols::tcp::operations::TcpOperation, runtime::Runtime};
-use futures::Future;
-use std::{
+use crate::protocols::tcp::operations::TcpOperation;
+use ::catwalk::SchedulerFuture;
+use ::futures::Future;
+use ::runtime::Runtime;
+use ::std::{
+    any::Any,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -34,6 +37,16 @@ pub enum FutureOperation<RT: Runtime> {
     Background(Pin<Box<dyn Future<Output = ()>>>),
 }
 
+impl<RT: Runtime> SchedulerFuture for FutureOperation<RT> {
+    fn as_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+
+    fn get_future(&self) -> &dyn Future<Output = ()> {
+        todo!()
+    }
+}
+
 //==============================================================================
 // Trait Implementations
 //==============================================================================
@@ -52,7 +65,11 @@ impl<RT: Runtime> Future for FutureOperation<RT> {
     }
 }
 
-impl<T: Into<TcpOperation<RT>>, RT: Runtime> From<T> for FutureOperation<RT> {
+impl<T, RT> From<T> for FutureOperation<RT>
+where
+    RT: Runtime,
+    T: Into<TcpOperation<RT>>,
+{
     fn from(f: T) -> Self {
         FutureOperation::Tcp(f.into())
     }

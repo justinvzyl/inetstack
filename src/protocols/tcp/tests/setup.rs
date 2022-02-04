@@ -2,10 +2,8 @@
 // Licensed under the MIT license.
 
 use crate::{
-    collections::bytes::{Bytes, BytesMut},
-    fail::Fail,
     protocols::{
-        ethernet2::{EtherType2, Ethernet2Header, MacAddress},
+        ethernet2::{EtherType2, Ethernet2Header},
         ip::{self, Port},
         ipv4::{Ipv4Endpoint, Ipv4Header},
         tcp::{
@@ -14,13 +12,18 @@ use crate::{
             SeqNumber,
         },
     },
-    queue::IoQueueDescriptor,
-    runtime::{PacketBuf, Runtime, RuntimeBuf},
     test_helpers::Engine,
     test_helpers::{self, TestRuntime},
 };
-use futures::task::noop_waker_ref;
-use std::{
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    memory::{Bytes, BytesMut, MemoryRuntime},
+    network::{types::MacAddress, NetworkRuntime, PacketBuf},
+    queue::IoQueueDescriptor,
+    task::SchedulerRuntime,
+};
+use ::std::{
     convert::TryFrom,
     future::Future,
     net::Ipv4Addr,
@@ -28,6 +31,7 @@ use std::{
     task::{Context, Poll},
     time::{Duration, Instant},
 };
+use futures::task::noop_waker_ref;
 
 //=============================================================================
 
@@ -43,8 +47,8 @@ fn test_connection_timeout() {
 
     // Setup client.
     let mut client = test_helpers::new_alice2(now);
-    let nretries: usize = client.rt().tcp_options().handshake_retries();
-    let timeout: Duration = client.rt().tcp_options().handshake_timeout();
+    let nretries: usize = client.rt().tcp_options().get_handshake_retries();
+    let timeout: Duration = client.rt().tcp_options().get_handshake_timeout();
 
     // T(0) -> T(1)
     advance_clock(None, Some(&mut client), &mut now);
@@ -106,7 +110,7 @@ fn test_refuse_connection_early_rst() {
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
         extract_headers(bytes.clone());
-    let segment: TcpSegment<<TestRuntime as Runtime>::Buf> = TcpSegment {
+    let segment: TcpSegment<<TestRuntime as MemoryRuntime>::Buf> = TcpSegment {
         ethernet2_hdr: eth2_header,
         ipv4_hdr: ipv4_header,
         tcp_hdr: TcpHeader {
@@ -177,7 +181,7 @@ fn test_refuse_connection_early_ack() {
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
         extract_headers(bytes.clone());
-    let segment: TcpSegment<<TestRuntime as Runtime>::Buf> = TcpSegment {
+    let segment: TcpSegment<<TestRuntime as MemoryRuntime>::Buf> = TcpSegment {
         ethernet2_hdr: eth2_header,
         ipv4_hdr: ipv4_header,
         tcp_hdr: TcpHeader {
@@ -258,7 +262,7 @@ fn test_refuse_connection_missing_syn() {
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
         extract_headers(bytes.clone());
-    let segment: TcpSegment<<TestRuntime as Runtime>::Buf> = TcpSegment {
+    let segment: TcpSegment<<TestRuntime as MemoryRuntime>::Buf> = TcpSegment {
         ethernet2_hdr: eth2_header,
         ipv4_hdr: ipv4_header,
         tcp_hdr: TcpHeader {
