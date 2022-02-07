@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::{
-    futures::UtilityMethods,
+    futures::{FutureOperation, UtilityMethods},
     protocols::{
         arp::ArpPeer,
         ethernet2::{EtherType2, Ethernet2Header},
@@ -90,7 +90,8 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
         let (tx, rx) = mpsc::unbounded();
         let requests = ReqQueue::new();
         let future = Self::background(rt.clone(), arp.clone(), rx);
-        let handle = rt.spawn(future);
+        let handle: SchedulerHandle =
+            rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         Icmpv4Peer {
             rt,
             arp,

@@ -6,13 +6,9 @@
 //==============================================================================
 
 use ::arrayvec::ArrayVec;
-use ::catnip::{
-    futures::operation::FutureOperation,
-    timer::{Timer, TimerRc},
-};
+use ::catnip::timer::{Timer, TimerRc};
 use ::catwalk::{Scheduler, SchedulerFuture, SchedulerHandle};
 use ::crossbeam_channel::{self};
-use ::futures::FutureExt;
 use ::rand::{
     distributions::{Distribution, Standard},
     rngs::SmallRng,
@@ -35,7 +31,6 @@ use ::runtime::{
 use ::std::{
     cell::RefCell,
     collections::HashMap,
-    future::Future,
     mem, ptr,
     rc::Rc,
     slice,
@@ -270,11 +265,8 @@ impl SchedulerRuntime for DummyRuntime {
         self.inner.borrow().timer.0.now()
     }
 
-    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
-        self.scheduler
-            .insert(FutureOperation::Background::<DummyRuntime>(
-                future.boxed_local(),
-            ))
+    fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
+        self.scheduler.insert(future)
     }
 
     fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {

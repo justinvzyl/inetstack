@@ -2,17 +2,20 @@
 // Licensed under the MIT license.
 
 use super::{constants::FALLBACK_MSS, established::ControlBlock, SeqNumber};
-use crate::protocols::{
-    arp::ArpPeer,
-    ethernet2::{EtherType2, Ethernet2Header},
-    ipv4::Ipv4Endpoint,
-    ipv4::{Ipv4Header, Ipv4Protocol2},
-    tcp::{
-        established::cc::{self, CongestionControl},
-        segment::{TcpHeader, TcpOptions2, TcpSegment},
+use crate::{
+    futures::FutureOperation,
+    protocols::{
+        arp::ArpPeer,
+        ethernet2::{EtherType2, Ethernet2Header},
+        ipv4::{Ipv4Endpoint, Ipv4Header, Ipv4Protocol2},
+        tcp::{
+            established::cc::{self, CongestionControl},
+            segment::{TcpHeader, TcpOptions2, TcpSegment},
+        },
     },
 };
 use ::catwalk::SchedulerHandle;
+use ::futures::FutureExt;
 use ::runtime::{fail::Fail, memory::Buffer, Runtime};
 use ::std::{
     cell::RefCell,
@@ -63,7 +66,8 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             arp.clone(),
             result.clone(),
         );
-        let handle = rt.spawn(future);
+        let handle: SchedulerHandle =
+            rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
 
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
         Self {
