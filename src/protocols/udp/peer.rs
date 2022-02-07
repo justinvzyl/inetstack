@@ -7,13 +7,17 @@ use super::{
     listener::SharedListener,
     socket::UdpSocket,
 };
-use crate::protocols::{
-    arp::ArpPeer,
-    ethernet2::{EtherType2, Ethernet2Header},
-    ipv4::Ipv4Endpoint,
-    ipv4::{Ipv4Header, Ipv4Protocol2},
+use crate::{
+    futures::FutureOperation,
+    protocols::{
+        arp::ArpPeer,
+        ethernet2::{EtherType2, Ethernet2Header},
+        ipv4::Ipv4Endpoint,
+        ipv4::{Ipv4Header, Ipv4Protocol2},
+    },
 };
 use ::catwalk::SchedulerHandle;
+use ::futures::FutureExt;
 use ::futures::{channel::mpsc, stream::StreamExt};
 use ::runtime::{fail::Fail, network::types::MacAddress, queue::IoQueueDescriptor, Runtime};
 use ::std::collections::HashMap;
@@ -58,7 +62,8 @@ impl<RT: Runtime> UdpPeer<RT> {
     pub fn new(rt: RT, arp: ArpPeer<RT>) -> Self {
         let (tx, rx) = mpsc::unbounded();
         let future = Self::background(rt.clone(), arp.clone(), rx);
-        let handle = rt.spawn(future);
+        let handle: SchedulerHandle =
+            rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         Self {
             rt,
             arp,

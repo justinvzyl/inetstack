@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//==============================================================================
+// Imports
+//==============================================================================
+
 use ::arrayvec::ArrayVec;
-use ::catnip::{
-    futures::operation::FutureOperation,
-    timer::{Timer, TimerRc},
-};
+use ::catnip::timer::{Timer, TimerRc};
 use ::catwalk::{Scheduler, SchedulerFuture, SchedulerHandle};
 use ::crossbeam_channel::{self};
-use ::futures::FutureExt;
 use ::rand::{
     distributions::{Distribution, Standard},
     rngs::SmallRng,
@@ -16,44 +16,49 @@ use ::rand::{
     Rng, SeedableRng,
 };
 use ::runtime::{
-    memory::{Bytes, BytesMut},
-    network::types::MacAddress,
+    memory::{Bytes, BytesMut, MemoryRuntime},
     network::{
         config::{ArpConfig, TcpConfig, UdpConfig},
         consts::RECEIVE_BATCH_SIZE,
+        types::{Ipv4Addr, MacAddress},
+        NetworkRuntime, PacketBuf,
     },
+    task::SchedulerRuntime,
     types::{dmtr_sgarray_t, dmtr_sgaseg_t},
-    {memory::MemoryRuntime, network::NetworkRuntime, task::SchedulerRuntime, utils::UtilsRuntime},
-    {network::PacketBuf, Runtime},
+    utils::UtilsRuntime,
+    Runtime,
 };
 use ::std::{
     cell::RefCell,
     collections::HashMap,
-    future::Future,
-    mem,
-    net::Ipv4Addr,
-    ptr,
+    mem, ptr,
     rc::Rc,
     slice,
     time::{Duration, Instant},
 };
 
 //==============================================================================
-// Constants & Structures
+// Structures
 //==============================================================================
 
-#[derive(Clone)]
-pub struct DummyRuntime {
-    inner: Rc<RefCell<Inner>>,
-    scheduler: Scheduler,
+/// Shared Dummy Runtime
+struct SharedDummyRuntime {
+    /// Clock
+    timer: TimerRc,
+    /// Random Number Generator
+    rng: SmallRng,
+    /// Incoming Queue of Packets
+    incoming: crossbeam_channel::Receiver<Bytes>,
+    /// Outgoing Queue of Packets
+    outgoing: crossbeam_channel::Sender<Bytes>,
 }
 
-struct Inner {
-    timer: TimerRc,
-    rng: SmallRng,
-    incoming: crossbeam_channel::Receiver<Bytes>,
-    outgoing: crossbeam_channel::Sender<Bytes>,
-
+/// Dummy Runtime
+#[derive(Clone)]
+pub struct DummyRuntime {
+    /// Shared Member Fields
+    inner: Rc<RefCell<SharedDummyRuntime>>,
+    scheduler: Scheduler,
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     tcp_options: TcpConfig,
@@ -64,7 +69,9 @@ struct Inner {
 // Associate Functions
 //==============================================================================
 
+/// Associate Functions for Dummy Runtime
 impl DummyRuntime {
+    /// Creates a Dummy Runtime.
     pub fn new(
         now: Instant,
         link_addr: MacAddress,
@@ -81,19 +88,19 @@ impl DummyRuntime {
             false,
         );
 
-        let inner = Inner {
+        let inner = SharedDummyRuntime {
             timer: TimerRc(Rc::new(Timer::new(now))),
             rng: SmallRng::from_seed([0; 32]),
             incoming,
             outgoing,
-            link_addr,
-            ipv4_addr,
-            tcp_options: TcpConfig::default(),
-            arp_options,
         };
         Self {
             inner: Rc::new(RefCell::new(inner)),
             scheduler: Scheduler::new(),
+            link_addr,
+            ipv4_addr,
+            tcp_options: TcpConfig::default(),
+            arp_options,
         }
     }
 }
@@ -102,6 +109,7 @@ impl DummyRuntime {
 // Trait Implementations
 //==============================================================================
 
+/// Memory Runtime Trait Implementation for Dummy Runtime
 impl MemoryRuntime for DummyRuntime {
     type Buf = Bytes;
 
@@ -168,6 +176,7 @@ impl MemoryRuntime for DummyRuntime {
     }
 }
 
+/// Network Runtime Trait Implementation for Dummy Runtime
 impl NetworkRuntime for DummyRuntime {
     fn transmit(&self, pkt: impl PacketBuf<Bytes>) {
         let header_size = pkt.header_size();
@@ -194,15 +203,15 @@ impl NetworkRuntime for DummyRuntime {
     }
 
     fn local_link_addr(&self) -> MacAddress {
-        self.inner.borrow().link_addr.clone()
+        self.link_addr.clone()
     }
 
     fn local_ipv4_addr(&self) -> Ipv4Addr {
-        self.inner.borrow().ipv4_addr.clone()
+        self.ipv4_addr.clone()
     }
 
     fn tcp_options(&self) -> TcpConfig {
-        self.inner.borrow().tcp_options.clone()
+        self.tcp_options.clone()
     }
 
     fn udp_options(&self) -> UdpConfig {
@@ -210,10 +219,11 @@ impl NetworkRuntime for DummyRuntime {
     }
 
     fn arp_options(&self) -> ArpConfig {
-        self.inner.borrow().arp_options.clone()
+        self.arp_options.clone()
     }
 }
 
+/// Utils Runtime Trait Implementation for Dummy Runtime
 impl UtilsRuntime for DummyRuntime {
     fn rng_gen<T>(&self) -> T
     where
@@ -229,6 +239,7 @@ impl UtilsRuntime for DummyRuntime {
     }
 }
 
+/// Scheduler Runtime Trait Implementation for Dummy Runtime
 impl SchedulerRuntime for DummyRuntime {
     type WaitFuture = catnip::timer::WaitFuture<TimerRc>;
 
@@ -254,11 +265,8 @@ impl SchedulerRuntime for DummyRuntime {
         self.inner.borrow().timer.0.now()
     }
 
-    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
-        self.scheduler
-            .insert(FutureOperation::Background::<DummyRuntime>(
-                future.boxed_local(),
-            ))
+    fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
+        self.scheduler.insert(future)
     }
 
     fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
@@ -278,4 +286,5 @@ impl SchedulerRuntime for DummyRuntime {
     }
 }
 
+/// Runtime Trait Implementation for Dummy Runtime
 impl Runtime for DummyRuntime {}

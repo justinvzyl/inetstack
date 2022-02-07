@@ -2,18 +2,21 @@
 // Licensed under the MIT license.
 
 use super::{constants::FALLBACK_MSS, established::ControlBlock, isn_generator::IsnGenerator};
-use crate::protocols::{
-    arp::ArpPeer,
-    ethernet2::{EtherType2, Ethernet2Header},
-    ipv4::Ipv4Endpoint,
-    ipv4::{Ipv4Header, Ipv4Protocol2},
-    tcp::{
-        established::cc::{self, CongestionControl},
-        segment::{TcpHeader, TcpOptions2, TcpSegment},
-        SeqNumber,
+use crate::{
+    futures::FutureOperation,
+    protocols::{
+        arp::ArpPeer,
+        ethernet2::{EtherType2, Ethernet2Header},
+        ipv4::{Ipv4Endpoint, Ipv4Header, Ipv4Protocol2},
+        tcp::{
+            established::cc::{self, CongestionControl},
+            segment::{TcpHeader, TcpOptions2, TcpSegment},
+            SeqNumber,
+        },
     },
 };
 use ::catwalk::SchedulerHandle;
+use ::futures::FutureExt;
 use ::runtime::{fail::Fail, memory::Buffer, Runtime};
 use ::std::{
     cell::RefCell,
@@ -208,7 +211,9 @@ impl<RT: Runtime> PassiveSocket<RT> {
             self.arp.clone(),
             self.ready.clone(),
         );
-        let handle = self.rt.spawn(future);
+        let handle: SchedulerHandle = self
+            .rt
+            .spawn(FutureOperation::Background::<RT>(future.boxed_local()));
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;

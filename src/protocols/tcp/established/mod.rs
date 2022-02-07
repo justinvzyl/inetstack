@@ -10,10 +10,11 @@ pub use self::ctrlblk::State;
 pub use self::sender::congestion_ctrl as cc;
 
 use self::background::background;
+use crate::futures::FutureOperation;
 use crate::protocols::ipv4::Ipv4Endpoint;
 use crate::protocols::tcp::segment::TcpHeader;
 use ::catwalk::SchedulerHandle;
-use ::futures::channel::mpsc;
+use ::futures::{channel::mpsc, FutureExt};
 use ::runtime::{fail::Fail, queue::IoQueueDescriptor, Runtime};
 use ::std::{
     rc::Rc,
@@ -35,7 +36,9 @@ impl<RT: Runtime> EstablishedSocket<RT> {
     ) -> Self {
         let cb = Rc::new(cb);
         let future = background(cb.clone(), fd, dead_socket_tx);
-        let handle = cb.rt().spawn(future);
+        let handle: SchedulerHandle = cb
+            .rt()
+            .spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         Self {
             cb: cb.clone(),
             background_work: handle,

@@ -3,7 +3,7 @@
 
 use super::{cache::ArpCache, packet::ArpHeader, packet::ArpMessage, packet::ArpOperation};
 use crate::{
-    futures::UtilityMethods,
+    futures::{FutureOperation, UtilityMethods},
     protocols::ethernet2::{EtherType2, Ethernet2Header},
 };
 use ::catwalk::SchedulerHandle;
@@ -50,7 +50,9 @@ impl<RT: Runtime> ArpPeer<RT> {
             options.get_disable_arp(),
         )));
 
-        let handle = rt.spawn(Self::background(rt.clone(), cache.clone()));
+        let future = Self::background(rt.clone(), cache.clone());
+        let handle: SchedulerHandle =
+            rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         let peer = ArpPeer {
             rt,
             cache,
