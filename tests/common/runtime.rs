@@ -81,11 +81,11 @@ impl DummyRuntime {
         arp: HashMap<Ipv4Addr, MacAddress>,
     ) -> Self {
         let arp_options: ArpConfig = ArpConfig::new(
-            Duration::from_secs(600),
-            Duration::from_secs(1),
-            2,
-            arp,
-            false,
+            Some(Duration::from_secs(600)),
+            Some(Duration::from_secs(1)),
+            Some(2),
+            Some(arp),
+            Some(false),
         );
 
         let inner = SharedDummyRuntime {
@@ -96,7 +96,7 @@ impl DummyRuntime {
         };
         Self {
             inner: Rc::new(RefCell::new(inner)),
-            scheduler: Scheduler::new(),
+            scheduler: Scheduler::default(),
             link_addr,
             ipv4_addr,
             tcp_options: TcpConfig::default(),
