@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-name: Test
+name: Build
 
 concurrency:
   group: azure
@@ -94,39 +94,13 @@ jobs:
       username: ${{ secrets.USERNAME }}
 
   #====================
-  # Launch
-  #====================
-
-  # Demikernel 0
-  run-demikernel0:
-    name: Demikernel 0
-    needs: [build-demikernel0]
-    uses: demikernel/catnip/.github/workflows/run.yml@dev
-    secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  # Demikernel 1
-  run-demikernel1:
-    name: Demikernel 1
-    needs: [build-demikernel1]
-    uses: demikernel/catnip/.github/workflows/run.yml@dev
-    secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  #====================
   # Cleanup
   #====================
 
   # Demikernel 0
   cleanup-demikernel0:
     name: Demikernel 0
-    needs: [run-demikernel0]
+    needs: [build-demikernel0]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
       host: ${{ secrets.HOSTNAME_A }}
@@ -137,7 +111,7 @@ jobs:
   # Demikernel 1
   cleanup-demikernel1:
     name: Demikernel 1
-    needs: [run-demikernel1]
+    needs: [build-demikernel1]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
