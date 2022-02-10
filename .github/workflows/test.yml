@@ -3,12 +3,17 @@
 
 name: Test
 
+concurrency:
+  group: azure
+  cancel-in-progress: true
+
 on:
   push:
     branches:
       - bugfix-*
       - enhancement-*
       - feature-*
+      - workaround-*
       - dev
       - unstable
       - master
@@ -31,8 +36,6 @@ on:
       - unstable
       - master
 
-concurrency: azure
-
 env:
   CARGO_TERM_COLOR: always
   GITHUB_REPOSITORY: $GITHUB_REPOSITORY
@@ -46,125 +49,75 @@ jobs:
 
   # Demikernel 0
   setup-demikernel0:
-    name: Setup Demikernel0
-    runs-on: ubuntu-latest
-    steps:
-    - name: Fetch Changes
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.HOSTNAME_A }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_A }}
-        envs: GITHUB_REPOSITORY,GITHUB_SHA
-        script: |
-          cd $GITHUB_REPOSITORY
-          git fetch origin
-          git checkout --detach $GITHUB_SHA
+    name: Demikernel 0
+    uses: demikernel/workflows/.github/workflows/setup.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
 
-  # Demikernel 0
+  # Demikernel 1
   setup-demikernel1:
-    name: Setup Demikernel1
-    runs-on: ubuntu-latest
-    steps:
-    - name: Fetch Changes
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.HOSTNAME_B }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_B }}
-        envs: GITHUB_REPOSITORY,GITHUB_SHA
-        script: |
-          cd $GITHUB_REPOSITORY
-          git fetch origin
-          git checkout --detach $GITHUB_SHA
+    name: Demikernel 1
+    uses: demikernel/workflows/.github/workflows/setup.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
 
   #====================
-  # Build
+  # Compile
   #====================
 
   # Demikernel 0
   build-demikernel0:
-    name: Build Demikernel0
-    runs-on: ubuntu-latest
-    needs: setup-demikernel0
-    steps:
-    - name: Build
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.HOSTNAME_A }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_A }}
-        envs: GITHUB_REPOSITORY,GITHUB_SHA
-        script: |
-          source $HOME/setup-env.sh
-          cd $GITHUB_REPOSITORY
-          make clean
-          make all
+    name: Demikernel 0
+    needs: [setup-demikernel0]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
 
   # Demikernel 1
   build-demikernel1:
-    name: Build Demikernel1
-    runs-on: ubuntu-latest
-    needs: setup-demikernel1
-    steps:
-    - name: Build
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.HOSTNAME_B }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_B }}
-        envs: GITHUB_REPOSITORY,GITHUB_SHA
-        script: |
-          source $HOME/setup-env.sh
-          cd $GITHUB_REPOSITORY
-          make clean
-          make all
+    name: Demikernel 1
+    needs: [setup-demikernel1]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
 
   #====================
-  # Test
+  # Launch
   #====================
 
   # Demikernel 0
-  test-demikernel0:
-    name: Test Demikernel0
-    runs-on: ubuntu-latest
-    needs: build-demikernel0
-    steps:
-    - name: Build
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.HOSTNAME_A }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_A }}
-        envs: GITHUB_REPOSITORY,GITHUB_SHA
-        script: |
-          source $HOME/setup-env.sh
-          cd $GITHUB_REPOSITORY
-          make test
+  run-demikernel0:
+    name: Demikernel 0
+    needs: [build-demikernel0]
+    uses: demikernel/catnip/.github/workflows/run.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
 
   # Demikernel 1
-  test-demikernel1:
-    name: Test Demikernel1
-    runs-on: ubuntu-latest
-    needs: build-demikernel1
-    steps:
-    - name: Build
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.HOSTNAME_B }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_B }}
-        envs: GITHUB_REPOSITORY,GITHUB_SHA
-        script: |
-          source $HOME/setup-env.sh
-          cd $GITHUB_REPOSITORY
-          make test
+  run-demikernel1:
+    name: Demikernel 1
+    needs: [build-demikernel1]
+    uses: demikernel/catnip/.github/workflows/run.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
 
   #====================
   # Cleanup
@@ -172,42 +125,22 @@ jobs:
 
   # Demikernel 0
   cleanup-demikernel0:
-    name: Cleanup Demikernel0
-    runs-on: ubuntu-latest
-    needs: [test-demikernel0]
-    steps:
-    - name: Post Run
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.HOSTNAME_A }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_A }}
-        envs: GITHUB_REPOSITORY,GITHUB_SHA
-        script: |
-          cd $GITHUB_REPOSITORY
-          make clean
-          git clean fdx
-          git checkout master
-          git remote prune origin
+    name: Demikernel 0
+    needs: [run-demikernel0]
+    uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
 
   # Demikernel 1
   cleanup-demikernel1:
-    name: Cleanup Demikernel1
-    runs-on: ubuntu-latest
-    needs: [test-demikernel1]
-    steps:
-    - name: Post Run
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.HOSTNAME_B }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_B }}
-        envs: GITHUB_REPOSITORY,GITHUB_SHA
-        script: |
-          cd $GITHUB_REPOSITORY
-          make clean
-          git clean fdx
-          git checkout master
-          git remote prune origin
+    name: Demikernel 1
+    needs: [run-demikernel1]
+    uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
