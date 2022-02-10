@@ -41,11 +41,11 @@ pub type TestEngine = Engine<TestRuntime>;
 
 pub fn new_alice(now: Instant) -> Engine<TestRuntime> {
     let arp_options = ArpConfig::new(
-        Duration::from_secs(600),
-        Duration::from_secs(1),
-        2,
-        HashMap::new(),
-        false,
+        Some(Duration::from_secs(600)),
+        Some(Duration::from_secs(1)),
+        Some(2),
+        Some(HashMap::new()),
+        Some(false),
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
@@ -63,11 +63,11 @@ pub fn new_alice(now: Instant) -> Engine<TestRuntime> {
 
 pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
     let arp_options = ArpConfig::new(
-        Duration::from_secs(600),
-        Duration::from_secs(1),
-        2,
-        HashMap::new(),
-        false,
+        Some(Duration::from_secs(600)),
+        Some(Duration::from_secs(1)),
+        Some(2),
+        Some(HashMap::new()),
+        Some(false),
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
@@ -88,11 +88,11 @@ pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
     arp.insert(ALICE_IPV4, ALICE_MAC);
     arp.insert(BOB_IPV4, BOB_MAC);
     let arp_options = ArpConfig::new(
-        Duration::from_secs(600),
-        Duration::from_secs(1),
-        2,
-        arp,
-        false,
+        Some(Duration::from_secs(600)),
+        Some(Duration::from_secs(1)),
+        Some(2),
+        Some(arp),
+        Some(false),
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
@@ -113,11 +113,11 @@ pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
     arp.insert(BOB_IPV4, BOB_MAC);
     arp.insert(ALICE_IPV4, ALICE_MAC);
     let arp_options = ArpConfig::new(
-        Duration::from_secs(600),
-        Duration::from_secs(1),
-        2,
-        arp,
-        false,
+        Some(Duration::from_secs(600)),
+        Some(Duration::from_secs(1)),
+        Some(2),
+        Some(arp),
+        Some(false),
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
@@ -135,11 +135,11 @@ pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
 
 pub fn new_carrie(now: Instant) -> Engine<TestRuntime> {
     let arp_options = ArpConfig::new(
-        Duration::from_secs(600),
-        Duration::from_secs(1),
-        2,
-        HashMap::new(),
-        false,
+        Some(Duration::from_secs(600)),
+        Some(Duration::from_secs(1)),
+        Some(2),
+        Some(HashMap::new()),
+        Some(false),
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();

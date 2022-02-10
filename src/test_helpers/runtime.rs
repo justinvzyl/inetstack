@@ -100,7 +100,7 @@ impl TestRuntime {
             link_addr,
             ipv4_addr,
             inner: Rc::new(RefCell::new(inner)),
-            scheduler: Scheduler::new(),
+            scheduler: Scheduler::default(),
             arp_options,
             udp_options,
             tcp_options,

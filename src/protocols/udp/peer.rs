@@ -162,8 +162,11 @@ impl<RT: Runtime> UdpPeer<RT> {
         #[cfg(feature = "profiler")]
         timer!("udp::receive");
 
-        let (hdr, data) =
-            UdpHeader::parse(ipv4_header, buf, self.rt.udp_options().get_rx_checksum())?;
+        let (hdr, data) = UdpHeader::parse(
+            ipv4_header,
+            buf,
+            self.rt.udp_options().get_rx_checksum_offload(),
+        )?;
         debug!("UDP received {:?}", hdr);
 
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ipv4_header.dst_addr(), hdr.dest_port());
@@ -231,7 +234,7 @@ impl<RT: Runtime> UdpPeer<RT> {
             ),
             udp_header,
             buf,
-            rt.udp_options().get_tx_checksum(),
+            rt.udp_options().get_tx_checksum_offload(),
         );
         rt.transmit(datagram);
     }
