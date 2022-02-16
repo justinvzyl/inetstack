@@ -147,7 +147,7 @@ pub struct ControlBlock<RT: Runtime> {
     rt: Rc<RT>,
     arp: Rc<ArpPeer<RT>>,
 
-    // Send-side state.  TODO: Pull this back into the ControlBlock.
+    // Send-side state.  ToDo: Pull this back into the ControlBlock.
     sender: Sender<RT>,
 
     state: WatchedValue<State>,
@@ -339,13 +339,13 @@ impl<RT: Runtime> ControlBlock<RT> {
         );
         let now = self.rt.now();
 
-        // TODO: Fix the following checks to match the spec.  The first thing we need to do is check to see if the
+        // ToDo: Fix the following checks to match the spec.  The first thing we need to do is check to see if the
         // segment is acceptable sequence-wise (i.e. contains some data that fits within the receive window, or is a
         // non-data segment with a sequence number that falls within the window).  Unacceptable segments should be ACK'd
         // (unless they are RSTs), and then dropped.
         //
 
-        // TODO: Next is supposed to be the check for a RST.
+        // ToDo: Next is supposed to be the check for a RST.
         if header.syn {
             warn!("Ignoring duplicate SYN on established connection");
         }
@@ -407,14 +407,14 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     /// Fetch a TCP header filling out various values based on our current state.
-    /// TODO: Fix the "filling out various values based on our current state" part to actually do that correctly.
+    /// ToDo: Fix the "filling out various values based on our current state" part to actually do that correctly.
     pub fn tcp_header(&self) -> TcpHeader {
         let mut header = TcpHeader::new(self.local.get_port(), self.remote.get_port());
         header.window_size = self.hdr_window_size();
 
         // Check if we have acknowledged all bytes that we have received. If not, piggy back an ACK
         // on this message.
-        // TODO: This is a bug (or two).  Except for an active open SYN where we don't yet have a remote sequence
+        // ToDo: This is a bug (or two).  Except for an active open SYN where we don't yet have a remote sequence
         // number to acknowledge, we should *always* ACK.
         if self.state.get() != State::CloseWait2 {
             if let Some(ack_seq_no) = self.current_ack() {
@@ -422,23 +422,24 @@ impl<RT: Runtime> ControlBlock<RT> {
                 header.ack = true;
             }
         }
+
         header
     }
 
     /// Send an ACK to our peer, reflecting our current state.
     pub fn send_ack(&self) {
         let mut header: TcpHeader = self.tcp_header();
-        // TODO: remove the following once tcp_header() is fixed to always set the ACK info.
+        // ToDo: remove the following once tcp_header() is fixed to always set the ACK info.
         header.ack = true;
         header.ack_num = self.receive_queue.recv_seq_no.get();
 
-        // TODO: Think about moving this to tcp_header() as well.
+        // ToDo: Think about moving this to tcp_header() as well.
         let (seq_num, _): (SeqNumber, _) = self.get_sent_seq_no();
         header.seq_num = seq_num;
 
-        // TODO: If our user has called close and we've sent all our data (nothing left unsent), then set the FIN flag.
+        // ToDo: If our user has called close and we've sent all our data (nothing left unsent), then set the FIN flag.
 
-        // TODO: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
+        // ToDo: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
         // left to the ARP layer and not exposed to TCP).
         if let Some(remote_link_addr) = self.arp().try_query(self.remote.get_address()) {
             self.emit(header, RT::Buf::empty(), remote_link_addr);
