@@ -128,7 +128,7 @@ fn recv_pure_ack(
     sender: &mut Engine<TestRuntime>,
     receiver: &mut Engine<TestRuntime>,
     window_size: u16,
-    seq_no: SeqNumber,
+    ack_num: SeqNumber,
 ) {
     trace!(
         "====> ack: {:?} -> {:?}",
@@ -148,7 +148,7 @@ fn recv_pure_ack(
             sender.rt().local_ipv4_addr(),
             receiver.rt().local_ipv4_addr(),
             window_size,
-            seq_no,
+            ack_num,
         );
         receiver.receive(bytes).unwrap();
     }

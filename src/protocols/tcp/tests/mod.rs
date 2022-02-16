@@ -46,7 +46,11 @@ pub fn check_packet_data(
 
 //=============================================================================
 
-/// Checks for a pure ACL packet.
+/// Checks for a pure ACK packet.
+/// ToDo: Perhaps rename this, as the term "pure ACK" isn't normally used to describe anything in TCP.  The original
+/// version of this function compared the header sequence number field to zero (as if it wasn't set to anything),
+/// which is incorrect (i.e. it was checking for incorrect behavior).  For an established connection, the current
+/// sequence number should always reflect the current SND.NXT (send next).
 pub fn check_packet_pure_ack(
     bytes: Bytes,
     eth2_src_addr: MacAddress,
@@ -66,7 +70,6 @@ pub fn check_packet_pure_ack(
     let (tcp_header, tcp_payload) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
     assert_eq!(tcp_payload.len(), 0);
     assert_eq!(tcp_header.window_size, window_size);
-    assert_eq!(tcp_header.seq_num, SeqNumber::from(0));
     assert_eq!(tcp_header.ack, true);
     assert_eq!(tcp_header.ack_num, ack_num);
 }
