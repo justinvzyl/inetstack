@@ -19,7 +19,8 @@ use ::std::rc::Rc;
 // set the FIN flag on that last data packet.  And if there is no outstanding unsent data still to send when the user
 // calls close, we can immediately send a FIN (the send_ack routine should handle this).  And since the sending of this
 // FIN can be handled by the regular send mechanism, it will also set the retransmission timer appropriately so we
-// don't need to worry about the ToDo below.  There is no point to having this function at all (it also looks buggy).
+// don't need to worry about the ToDo below.  There is no point to having this function at all (it is also buggy in
+// that the segment it sends is malformed -- it is lacking an acknowledgement number).
 //
 async fn active_send_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
