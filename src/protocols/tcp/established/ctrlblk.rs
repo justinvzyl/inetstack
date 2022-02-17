@@ -142,7 +142,7 @@ pub struct ControlBlock<RT: Runtime> {
     rt: Rc<RT>,
     arp: Rc<ArpPeer<RT>>,
 
-    // Send-side state.  ToDo: Pull this back into the ControlBlock.
+    // Send-side state.  TODO: Pull this back into the ControlBlock.
     sender: Sender<RT>,
 
     state: WatchedValue<State>,
@@ -336,13 +336,13 @@ impl<RT: Runtime> ControlBlock<RT> {
         );
         let now = self.rt.now();
 
-        // ToDo: Fix the following checks to match the spec.  The first thing we need to do is check to see if the
+        // TODO: Fix the following checks to match the spec.  The first thing we need to do is check to see if the
         // segment is acceptable sequence-wise (i.e. contains some data that fits within the receive window, or is a
         // non-data segment with a sequence number that falls within the window).  Unacceptable segments should be ACK'd
         // (unless they are RSTs), and then dropped.
         //
 
-        // ToDo: Next is supposed to be the check for a RST.
+        // TODO: Next is supposed to be the check for a RST.
         if header.syn {
             warn!("Ignoring duplicate SYN on established connection");
         }
@@ -404,7 +404,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     /// Fetch a TCP header filling out various values based on our current state.
-    /// ToDo: Fix the "filling out various values based on our current state" part to actually do that correctly.
+    /// TODO: Fix the "filling out various values based on our current state" part to actually do that correctly.
     pub fn tcp_header(&self) -> TcpHeader {
         let mut header = TcpHeader::new(self.local.get_port(), self.remote.get_port());
         header.window_size = self.hdr_window_size();
