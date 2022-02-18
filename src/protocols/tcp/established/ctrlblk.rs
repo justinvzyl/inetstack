@@ -26,7 +26,7 @@ use ::runtime::{
     Runtime,
 };
 use ::std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::VecDeque,
     convert::TryInto,
     rc::Rc,
@@ -85,8 +85,19 @@ struct ReceiveQueue<RT: Runtime> {
     // the old `ack_seq_no` until we send them an ACK (see the diagram in sender.rs).
     //
 
-    // TODO: Figure out what this "base_seq_no" is supposed to reflect.
-    pub base_seq_no: WatchedValue<SeqNumber>,
+
+    // Receive Sequence Space:
+    //
+    //                     |---------------receive buffer size----------------|
+    //                reader_next              receive_next              receive_next + receive window
+    //                     v                         v                        v
+    // ... ----------------|-------------------------|------------------------|------------------------------
+    //      read by user   |  received but not read  |   willing to receive   | future sequence number space
+    //
+
+
+    // Sequence number of next byte of data in the unread queue.
+    pub reader_next: Cell<SeqNumber>,
 
     // Running counter of ack sequence number we have sent to peer.
     // TODO: In RFC 793 terms, this appears to be RCV.NXT.  Probably should rename to rcv_nxt or something.
@@ -103,9 +114,9 @@ struct ReceiveQueue<RT: Runtime> {
 }
 
 impl<RT: Runtime> ReceiveQueue<RT> {
-    pub fn new(base_seq_no: SeqNumber, ack_seq_no: SeqNumber, recv_seq_no: SeqNumber) -> Self {
+    pub fn new(reader_next: SeqNumber, ack_seq_no: SeqNumber, recv_seq_no: SeqNumber) -> Self {
         Self {
-            base_seq_no: WatchedValue::new(base_seq_no),
+            reader_next: Cell::new(reader_next),
             ack_seq_no: WatchedValue::new(ack_seq_no),
             recv_seq_no: WatchedValue::new(recv_seq_no),
             recv_queue: RefCell::new(VecDeque::with_capacity(RECV_QUEUE_SZ)),
@@ -114,8 +125,7 @@ impl<RT: Runtime> ReceiveQueue<RT> {
 
     pub fn pop(&self) -> Option<RT::Buf> {
         let buf: RT::Buf = self.recv_queue.borrow_mut().pop_front()?;
-        self.base_seq_no
-            .modify(|b| b + SeqNumber::from(buf.len() as u32));
+        self.reader_next.set(self.reader_next.get() + SeqNumber::from(buf.len() as u32));
 
         Some(buf)
     }
@@ -509,7 +519,7 @@ impl<RT: Runtime> ControlBlock<RT> {
 
     pub fn hdr_window_size(&self) -> u16 {
         let bytes_outstanding: u32 =
-            (self.receive_queue.recv_seq_no.get() - self.receive_queue.base_seq_no.get()).into();
+            (self.receive_queue.recv_seq_no.get() - self.receive_queue.reader_next.get()).into();
         let window_size = self.max_window_size - bytes_outstanding;
         let hdr_window_size = (window_size >> self.window_scale)
             .try_into()
@@ -544,7 +554,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {
-        if self.receive_queue.base_seq_no.get() == self.receive_queue.recv_seq_no.get() {
+        if self.receive_queue.reader_next.get() == self.receive_queue.recv_seq_no.get() {
             *self.waker.borrow_mut() = Some(ctx.waker().clone());
             return Poll::Pending;
         }
