@@ -66,59 +66,42 @@ pub enum State {
     Reset,
 }
 
+// ToDo: Rename this struct (or just incorporate this directly into ControlBlock).
 struct ReceiveQueue<RT: Runtime> {
-    // TODO: This diagram appears to be wrong.  It doesn't appear to reflect how the code is currently written, and it
-    // certainly doesn't reflect how the code should be written.  See RFC 793, Figure 5 for what this should look like.
-    // Instead of base_seq_no, ack_seq_no, and recv_seq_no, we should just be tracking RCV.NXT and how much unread data
-    // there is in the receive queue (the latter is used to calculate the receive window to advertise).
     //
-    //
-    //                     |-----------------recv_window-------------------|
-    //                base_seq_no             ack_seq_no             recv_seq_no
-    //                     v                       v                       v
-    // ... ----------------|-----------------------|-----------------------| (unavailable)
-    //         received           acknowledged           unacknowledged
-    //
-    // NB: We can have `ack_seq_no < base_seq_no` when the application fully drains the receive
-    // buffer before we've sent a pure ACK or transmitted some data on which we could piggyback
-    // an ACK. The sender, however, will still be computing the receive window relative to the
-    // the old `ack_seq_no` until we send them an ACK (see the diagram in sender.rs).
-    //
-
-
     // Receive Sequence Space:
     //
     //                     |---------------receive buffer size----------------|
+    //                     |                                                  |
+    //                     |                         |-----receive window-----|
     //                reader_next              receive_next              receive_next + receive window
     //                     v                         v                        v
     // ... ----------------|-------------------------|------------------------|------------------------------
     //      read by user   |  received but not read  |   willing to receive   | future sequence number space
     //
 
-
     // Sequence number of next byte of data in the unread queue.
     pub reader_next: Cell<SeqNumber>,
 
-    // Running counter of ack sequence number we have sent to peer.
-    // TODO: In RFC 793 terms, this appears to be RCV.NXT.  Probably should rename to rcv_nxt or something.
+    // Running counter of ack sequence number we have sent to our peer.
+    // TODO: This tracks the most recently sent ack sequence number (i.e. whenever we send an ACK, we set this to
+    // receive_next).  Not clear that we need to track this (at least after we remove the closer closures).
+    // Even if we keep this (or its equivalent), it need not be a WatchedValue.
     pub ack_seq_no: WatchedValue<SeqNumber>,
 
-    // Our sequence number based on how much data we have sent.
-    // TODO: Fix above comment, as it is clearly wrong.  It has nothing to do with how much data we have sent.  From
-    // the above ASCII-art diagram, this sequence number is RCV.NXT + RCV.WND?  However, the receive_data function
-    // below behaves as if this sequence number *is* RCV.NXT.
-    pub recv_seq_no: WatchedValue<SeqNumber>,
+    // Sequence number of the next byte of data (or FIN) that we expect to receive.  In RFC 793 terms, this is RCV.NXT.
+    pub receive_next: Cell<SeqNumber>,
 
     // Receive queue.  Contains in-order received (and acknowledged) data ready for the application to read.
     recv_queue: RefCell<VecDeque<RT::Buf>>,
 }
 
 impl<RT: Runtime> ReceiveQueue<RT> {
-    pub fn new(reader_next: SeqNumber, ack_seq_no: SeqNumber, recv_seq_no: SeqNumber) -> Self {
+    pub fn new(reader_next: SeqNumber, ack_seq_no: SeqNumber, receive_next: SeqNumber) -> Self {
         Self {
             reader_next: Cell::new(reader_next),
             ack_seq_no: WatchedValue::new(ack_seq_no),
-            recv_seq_no: WatchedValue::new(recv_seq_no),
+            receive_next: Cell::new(receive_next),
             recv_queue: RefCell::new(VecDeque::with_capacity(RECV_QUEUE_SZ)),
         }
     }
@@ -133,8 +116,7 @@ impl<RT: Runtime> ReceiveQueue<RT> {
     pub fn push(&self, buf: RT::Buf) {
         let buf_len: u32 = buf.len() as u32;
         self.recv_queue.borrow_mut().push_back(buf);
-        self.recv_seq_no
-            .modify(|r| r + SeqNumber::from(buf_len as u32));
+        self.receive_next.set(self.receive_next.get() + SeqNumber::from(buf_len as u32));
     }
 
     // TODO: This appears to add up all the bytes ready for reading in the recv_queue, and is called each time we get a
@@ -160,6 +142,7 @@ pub struct ControlBlock<RT: Runtime> {
     // Send-side state.  ToDo: Pull this back into the ControlBlock.
     sender: Sender<RT>,
 
+    // ToDo: Change this from a WatchedValue to a Cell once the closer closures are removed.
     state: WatchedValue<State>,
 
     ack_delay_timeout: Duration,
@@ -441,7 +424,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         let mut header: TcpHeader = self.tcp_header();
         // ToDo: remove the following once tcp_header() is fixed to always set the ACK info.
         header.ack = true;
-        header.ack_num = self.receive_queue.recv_seq_no.get();
+        header.ack_num = self.receive_queue.receive_next.get();
 
         // ToDo: Think about moving this to tcp_header() as well.
         let (seq_num, _): (SeqNumber, _) = self.get_sent_seq_no();
@@ -458,18 +441,26 @@ impl<RT: Runtime> ControlBlock<RT> {
 
     /// Transmit this message to our connected peer.
     pub fn emit(&self, header: TcpHeader, data: RT::Buf, remote_link_addr: MacAddress) {
+        // ToDo: At this point, all segments should have the ACK bit set, so it is wasteful to check in mainline builds.
         if header.ack {
-            let (recv_seq_no, _) = self.get_recv_seq_no();
+            // ToDo: Below check should only be done in debug builds, if at all (looks to be checking that we ACK FINs
+            // properly, although it gets this wrong).
+            let ack_check = self.get_recv_seq_no();
             if self.state.get() == State::PassiveClose || self.state.get() == State::FinWait3 {
-                assert_eq!(header.ack_num, recv_seq_no + SeqNumber::from(1));
+                assert_eq!(header.ack_num, ack_check + SeqNumber::from(1));
             } else {
-                assert_eq!(header.ack_num, recv_seq_no);
+                assert_eq!(header.ack_num, ack_check);
             }
+
+            // Clear ACK timer and remember acknowledgement number of most-recently sent ACK.
             self.set_ack_deadline(None);
             self.set_ack_seq_no(header.ack_num);
         }
 
         debug!("Sending {} bytes + {:?}", data.len(), header);
+
+        // Prepare description of TCP segment to send.
+        // ToDo: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
         let segment = TcpSegment {
             ethernet2_hdr: Ethernet2Header::new(
                 remote_link_addr,
@@ -485,6 +476,8 @@ impl<RT: Runtime> ControlBlock<RT> {
             data,
             tx_checksum_offload: self.rt.tcp_options().get_tx_checksum_offload(),
         };
+
+        // Call the runtime to send the segment.
         self.rt.transmit(segment);
     }
 
@@ -505,8 +498,8 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.receive_queue.ack_seq_no.set(new_value)
     }
 
-    pub fn get_recv_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.receive_queue.recv_seq_no.watch()
+    pub fn get_recv_seq_no(&self) -> SeqNumber {
+        self.receive_queue.receive_next.get()
     }
 
     pub fn get_ack_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
@@ -519,7 +512,7 @@ impl<RT: Runtime> ControlBlock<RT> {
 
     pub fn hdr_window_size(&self) -> u16 {
         let bytes_outstanding: u32 =
-            (self.receive_queue.recv_seq_no.get() - self.receive_queue.reader_next.get()).into();
+            (self.receive_queue.receive_next.get() - self.receive_queue.reader_next.get()).into();
         let window_size = self.max_window_size - bytes_outstanding;
         let hdr_window_size = (window_size >> self.window_scale)
             .try_into()
@@ -539,7 +532,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     /// TODO: Again, we should *always* ACK.  So this should always return the current acknowledgement sequence number.
     pub fn current_ack(&self) -> Option<SeqNumber> {
         let ack_seq_no = self.receive_queue.ack_seq_no.get();
-        let recv_seq_no = self.receive_queue.recv_seq_no.get();
+        let recv_seq_no = self.receive_queue.receive_next.get();
 
         // It is okay if ack_seq_no is greater than the seq number. This can happen when we have
         // ACKed a FIN so our ACK number is +1 greater than our seq number.
@@ -554,7 +547,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {
-        if self.receive_queue.reader_next.get() == self.receive_queue.recv_seq_no.get() {
+        if self.receive_queue.reader_next.get() == self.receive_queue.receive_next.get() {
             *self.waker.borrow_mut() = Some(ctx.waker().clone());
             return Poll::Pending;
         }
@@ -574,7 +567,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     // corresponding to the minumum number allowed for new reception (RCV.NXT in RFC 793 terms).
     //
     pub fn receive_data(&self, seq_no: SeqNumber, buf: RT::Buf, now: Instant) -> Result<(), Fail> {
-        let recv_seq_no = self.receive_queue.recv_seq_no.get();
+        let recv_seq_no = self.receive_queue.receive_next.get();
 
         if seq_no > recv_seq_no {
             // This new segment comes after what we're expecting (i.e. the new segment arrived out-of-order).
