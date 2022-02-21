@@ -458,7 +458,7 @@ impl TcpHeader {
         }
     }
 
-    // ToDo: Review the use of usize here (and everywhere in catnip, really).
+    // TODO: Review the use of usize here (and everywhere in catnip, really).
     pub fn compute_size(&self) -> usize {
         let mut size = MIN_TCP_HEADER_SIZE;
         for i in 0..self.num_options {
@@ -470,7 +470,7 @@ impl TcpHeader {
         }
 
         // Round up to the next multiple of 4 so the TCP data is always 32 bit aligned.
-        // ToDo: Review why wrapping_add is used here.
+        // TODO: Review why wrapping_add is used here.
         size.wrapping_add(3) & !0x3
     }
 

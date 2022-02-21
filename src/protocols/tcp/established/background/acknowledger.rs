@@ -6,7 +6,7 @@ use ::futures::{
     future::{self, Either},
     FutureExt,
 };
-use ::runtime::{fail::Fail, memory::Buffer, Runtime};
+use ::runtime::{fail::Fail, Runtime};
 use std::rc::Rc;
 
 pub async fn acknowledger<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
@@ -29,16 +29,7 @@ pub async fn acknowledger<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fa
         futures::select_biased! {
             _ = ack_deadline_changed => continue,
             _ = ack_future => {
-                let (recv_seq_no, _) = cb.get_recv_seq_no();
-                let (ack_seq_no, _) = cb.get_ack_seq_no();
-                assert_ne!(ack_seq_no, recv_seq_no);
-
-                let remote_link_addr = cb.arp().query(cb.get_remote().get_address()).await?;
-
-                let mut header = cb.tcp_header();
-                header.ack = true;
-                header.ack_num = recv_seq_no;
-                cb.emit(header, RT::Buf::empty(), remote_link_addr);
+                cb.send_ack();
             },
         }
     }

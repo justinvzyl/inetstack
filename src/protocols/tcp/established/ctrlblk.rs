@@ -19,7 +19,7 @@ use crate::{
         },
     },
 };
-use ::runtime::{fail::Fail, network::types::MacAddress, Runtime};
+use ::runtime::{fail::Fail, memory::Buffer, network::types::MacAddress, Runtime};
 use ::std::{
     cell::RefCell,
     collections::VecDeque,
@@ -142,7 +142,7 @@ pub struct ControlBlock<RT: Runtime> {
     rt: Rc<RT>,
     arp: Rc<ArpPeer<RT>>,
 
-    /// The sender end of our connection.
+    // Send-side state.  TODO: Pull this back into the ControlBlock.
     sender: Sender<RT>,
 
     state: WatchedValue<State>,
@@ -335,6 +335,14 @@ impl<RT: Runtime> ControlBlock<RT> {
             header
         );
         let now = self.rt.now();
+
+        // TODO: Fix the following checks to match the spec.  The first thing we need to do is check to see if the
+        // segment is acceptable sequence-wise (i.e. contains some data that fits within the receive window, or is a
+        // non-data segment with a sequence number that falls within the window).  Unacceptable segments should be ACK'd
+        // (unless they are RSTs), and then dropped.
+        //
+
+        // TODO: Next is supposed to be the check for a RST.
         if header.syn {
             warn!("Ignoring duplicate SYN on established connection");
         }
@@ -396,6 +404,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     /// Fetch a TCP header filling out various values based on our current state.
+    /// TODO: Fix the "filling out various values based on our current state" part to actually do that correctly.
     pub fn tcp_header(&self) -> TcpHeader {
         let mut header = TcpHeader::new(self.local.get_port(), self.remote.get_port());
         header.window_size = self.hdr_window_size();
@@ -411,6 +420,26 @@ impl<RT: Runtime> ControlBlock<RT> {
             }
         }
         header
+    }
+
+    /// Send an ACK to our peer, reflecting our current state.
+    pub fn send_ack(&self) {
+        let mut header: TcpHeader = self.tcp_header();
+        // TODO: remove the following once tcp_header() is fixed to always set the ACK info.
+        header.ack = true;
+        header.ack_num = self.receive_queue.recv_seq_no.get();
+
+        // TODO: Think about moving this to tcp_header() as well.
+        let (seq_num, _): (SeqNumber, _) = self.get_sent_seq_no();
+        header.seq_num = seq_num;
+
+        // TODO: If our user has called close and we've sent all our data (nothing left unsent), then set the FIN flag.
+
+        // TODO: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
+        // left to the ARP layer and not exposed to TCP).
+        if let Some(remote_link_addr) = self.arp().try_query(self.remote.get_address()) {
+            self.emit(header, RT::Buf::empty(), remote_link_addr);
+        }
     }
 
     /// Transmit this message to our connected peer.

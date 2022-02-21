@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-// ToDo: Add better explanatory comment.
+// TODO: Add better explanatory comment.
 // This (i.e. "cubic") appears to be an implementation of RFC 8312.  Note this is an informational RFC, not a standards
 // track document.  RFC 8312 documents the non-standard congestion control algorithm used in Linux.  It appears to
 // differ from the standard congestion control algorithm only on the sender side.  In particular, it uses a cubic
 // function instead of a linear window increase function.
-// ToDo: Review if we really care to support this.
+// TODO: Review if we really care to support this.
 
 use super::{
     CongestionControl, FastRetransmitRecovery, LimitedTransmit, Options,
@@ -361,7 +361,7 @@ impl<RT: Runtime> FastRetransmitRecovery<RT> for Cubic {
 
     fn on_base_seq_no_wraparound(&self) {
         // This still won't let us enter fast recovery if base_seq_no wraps to precisely 0, but there's nothing to be done in that case.
-        // ToDo: Review this.  Now that we have real sequence numbers, we probably don't need this function anymore.
+        // TODO: Review this.  Now that we have real sequence numbers, we probably don't need this function anymore.
         self.recover.set(SeqNumber::from(0));
     }
 }

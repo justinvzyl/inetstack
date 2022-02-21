@@ -11,6 +11,16 @@ use ::std::rc::Rc;
 
 //==============================================================================
 
+// TODO: Eliminate this function as it is extremely inefficient.  The FIN flag should be set on the last data packet
+// sent to our peer, not sent as a separate packet.  Conceptually, and in sequence number terms, the FIN comes after
+// the last byte of data we send to our peer on this connection.  The code that sends that last unsent data knows it is
+// doing that (we should have a flag in the Control Block indicating that the user has called close()), and can simply
+// set the FIN flag on that last data packet.  And if there is no outstanding unsent data still to send when the user
+// calls close, we can immediately send a FIN (the send_ack routine should handle this).  And since the sending of this
+// FIN can be handled by the regular send mechanism, it will also set the retransmission timer appropriately so we
+// don't need to worry about the ToDo below.  There is no point to having this function at all (it is also buggy in
+// that the segment it sends is malformed -- it is lacking an acknowledgement number).
+//
 async fn active_send_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         let (st, st_changed) = cb.get_state();
@@ -43,6 +53,13 @@ async fn active_send_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fai
 
 //==============================================================================
 
+// TODO: Eliminate this function as it is simply crazy time.  As currently implemented, it is waiting for our state
+// to become one of three non-existant states (in the TCP spec at least).  Then it is waiting for ourselves to
+// acknowledge receipt of all the data we've received from our peer, just so we can acknowledge receipt of a FIN from
+// our peer.  This is inefficient, as the code that is acknowledging our peer's data knows that we've received the FIN,
+// and can simply ACK the FIN along with the rest of the received data (and save a separate ACK packet).  There doesn't
+// appear to be a reason for this function to exist at all.
+//
 async fn active_ack_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         let (st, st_changed) = cb.get_state();
@@ -80,6 +97,14 @@ async fn active_ack_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail
 
 //==============================================================================
 
+// TODO: Figure out what this function is supposed to be doing, and either fix it or elminate the need for it.
+// Right now this function is waiting for our state to become the (non-existant in the spec) TimeWait2 state,
+// and aborts the closer closures when that happens.  Is that its only purpose?
+//
+// The ToDo line below hints at something that needs to be done somewhere, however.  And that is to have a 2 MSL timer
+// keeping our five tuple out of action for twice the maximum segment lifetime.  It appears nothing currently does that.
+//
+
 /// Awaits until connection terminates by our four-way handshake.
 async fn active_wait_2msl<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
@@ -97,6 +122,8 @@ async fn active_wait_2msl<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fa
 
 //==============================================================================
 
+// TODO: Eliminate this function for basically the same reasons that we should eliminate active_ack_fin above.
+//
 async fn passive_close<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         let (st, st_changed) = cb.get_state();
@@ -128,6 +155,9 @@ async fn passive_close<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
 
 //==============================================================================
 
+// TODO: Eliminate this function for basically the same reasons that we should eliminate active_send_fin above.  It
+// also appears to be waiting for us to enter the wrong state, but maybe that's what this bogus CloseWait2 state is.
+//
 async fn passive_send_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         let (st, st_changed) = cb.get_state();
@@ -157,6 +187,8 @@ async fn passive_send_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fa
 
 //==============================================================================
 
+// TODO: Eliminate this function for basically the same reasons that we should eliminate active_wait_2msl above.
+//
 async fn passive_wait_fin_ack<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         let (st, st_changed) = cb.get_state();
@@ -168,6 +200,10 @@ async fn passive_wait_fin_ack<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!
         return Err(Fail::ConnectionAborted {});
     }
 }
+
+// TODO: Eliminate this function after eliminating all the above closer closures as separately noted above, as there
+// will no longer be any need for it.
+//
 
 /// Launches various closures having to do with connection termination. Neither `active_ack_fin`
 /// nor `active_send_fin` terminate so the only way to return is via `active_wait_2msl`.
