@@ -50,20 +50,19 @@ const MAX_OUT_OF_ORDER: usize = 16;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum State {
     Established,
-    ActiveClose,
+    ActiveClose,  // ToDo: Not a real state.  Remove.
     FinWait1,
     FinWait2,
-    FinWait3,
-    Closing1,
-    Closing2,
-    TimeWait1,
-    TimeWait2,
-    PassiveClose,
-    CloseWait1,
-    CloseWait2,
+    FinWait3,  // ToDo: Not a real state.  Remove.
+    Closing,
+    Closing2,  // ToDo: Not a real state.  Remove.
+    TimeWait,
+    TimeWait2,  // ToDo: Not a real state.  Remove.
+    PassiveClose,  // ToDo: Not a real state.  Remove.
+    CloseWait,
+    CloseWait2,  // ToDo: Not a real state.  Remove.
     LastAck,
     Closed,
-    Reset,
 }
 
 // ToDo: Rename this struct (or just incorporate this directly into ControlBlock).
@@ -338,25 +337,49 @@ impl<RT: Runtime> ControlBlock<RT> {
         // (unless they are RSTs), and then dropped.
         //
 
-        // ToDo: Next is supposed to be the check for a RST.
-        if header.syn {
-            warn!("Ignoring duplicate SYN on established connection");
-        }
+        // Check the RST bit.
         if header.rst {
-            self.state.set(State::Reset);
+            match self.state.get() {
+                // ToDo: Replace these "return"s with handler functions for each case.
+                // ToDo: Can we be in SynReceived here?  If so, // State::SynReceived => return,
+                State::Established | State::FinWait1 | State::FinWait2 | State::CloseWait => return,
+                State::Closing | State::LastAck | State::TimeWait => return,
+                state => panic!("Bad TCP state {:?}", state),
+            }
+
+            // Note: We should never get here.
         }
+
+        // Note: RFC 793 says to check security/compartment and precedence next, but those are largely deprecated.
+
+        // Check the SYN bit.
+        if header.syn {
+            warn!("Received in-window SYN on established connection.");
+            // Receiving a SYN here is an error.
+            // ToDo: Send Reset.
+            // ToDo: Return all outstanding Receive and Send requests with "reset" responses.
+            // ToDo: Flush all segment queues.
+            // ToDo: Enter Closed state.
+            // ToDo: Delete the ControlBlock.
+            return;
+        }
+
+        // Check the ACK bit.
+
+        // ToDo: Fix handling of both ACK and FIN below.
+
         if header.fin && header.ack {
             match self.state.get() {
-                State::FinWait1 => self.state.set(State::TimeWait1),
-                s => panic!("bad peer state {:?}", s),
+                State::FinWait1 => self.state.set(State::TimeWait),
+                state => panic!("Bad TCP state {:?}", state),
             }
         } else {
             if header.fin {
                 match self.state.get() {
-                    State::FinWait1 => self.state.set(State::Closing1),
+                    State::FinWait1 => self.state.set(State::Closing),
                     State::FinWait2 => self.state.set(State::FinWait3),
                     State::Established => self.state.set(State::PassiveClose),
-                    s => panic!("bad peer state {:?}", s),
+                    state => panic!("Bad TCP state {:?}", state),
                 }
             }
             if header.ack {
@@ -369,15 +392,23 @@ impl<RT: Runtime> ControlBlock<RT> {
                         }
                     }
                     State::LastAck => self.state.set(State::Closed),
-                    s => panic!("bad peer state {:?}", s),
+                    state => panic!("Bad TCP state {:?}", state),
                 }
             }
         }
+
         if self.state.get() == State::Established {
             if let Err(e) = self.sender.update_remote_window(header.window_size as u16) {
                 warn!("Invalid window size update for {:?}: {:?}", header, e);
             }
         }
+
+        // ToDo: Check the URG bit.  If we decide to support this, how should we do it?
+        if header.urg {
+            warn!("Got packet with URG bit set!");
+        }
+
+        // Process the segment text (if any).
         if !data.is_empty() {
             if self.state.get() != State::Established {
                 // TODO: Review this warning.  TCP connections in FIN_WAIT_1 and FIN_WAIT_2 can still receive data.
@@ -386,14 +417,18 @@ impl<RT: Runtime> ControlBlock<RT> {
             if let Err(e) = self.receive_data(header.seq_num, data, now) {
                 warn!("Ignoring remote data for {:?}: {:?}", header, e);
             }
+
+            // ToDo: Arrange for an ACK to be sent soon.
         }
+
+        // ToDo: Check the FIN bit.
     }
 
     pub fn close(&self) -> Result<(), Fail> {
         match self.state.get() {
             State::Established => self.state.set(State::ActiveClose),
-            State::CloseWait1 => self.state.set(State::CloseWait2),
-            s => panic!("bad state {:?}", s),
+            State::CloseWait => self.state.set(State::CloseWait2),
+            state => panic!("Bad TCP state {:?}", state),
         }
 
         Ok(())

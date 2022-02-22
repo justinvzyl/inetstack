@@ -65,7 +65,7 @@ async fn active_ack_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail
     loop {
         let (st, st_changed) = cb.get_state();
 
-        if st != State::FinWait3 && st != State::TimeWait1 && st != State::Closing1 {
+        if st != State::FinWait3 && st != State::TimeWait && st != State::Closing {
             st_changed.await;
             continue;
         }
@@ -88,7 +88,7 @@ async fn active_ack_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail
         header.ack_num = recv_seq + SeqNumber::from(1);
         cb.emit(header, RT::Buf::empty(), remote_link_addr);
 
-        if st == State::Closing1 {
+        if st == State::Closing {
             cb.set_state(State::Closing2)
         } else {
             cb.set_state(State::TimeWait2);
@@ -150,7 +150,7 @@ async fn passive_close<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
         header.ack_num = recv_seq + SeqNumber::from(1);
         cb.emit(header, RT::Buf::empty(), remote_link_addr);
 
-        cb.set_state(State::CloseWait1);
+        cb.set_state(State::CloseWait);
     }
 }
 
