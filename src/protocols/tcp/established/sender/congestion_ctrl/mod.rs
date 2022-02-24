@@ -5,8 +5,8 @@ mod cubic;
 mod none;
 mod options;
 
-use crate::{collections::watched::WatchFuture, protocols::tcp::SeqNumber};
-use ::runtime::Runtime;
+use crate::protocols::tcp::SeqNumber;
+use ::runtime::{watched::WatchFuture, Runtime};
 use ::std::{fmt::Debug, time::Duration};
 
 pub use self::{

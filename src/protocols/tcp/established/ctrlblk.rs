@@ -6,20 +6,23 @@ use super::{
     sender::Sender,
     sender::{congestion_ctrl::CongestionControlConstructor, UnackedSegment},
 };
-use crate::{
-    collections::watched::{WatchFuture, WatchedValue},
-    protocols::{
-        arp::ArpPeer,
-        ethernet2::{EtherType2, Ethernet2Header},
-        ipv4::Ipv4Endpoint,
-        ipv4::{Ipv4Header, Ipv4Protocol2},
-        tcp::{
-            segment::{TcpHeader, TcpSegment},
-            SeqNumber,
-        },
+use crate::protocols::{
+    arp::ArpPeer,
+    ethernet2::{EtherType2, Ethernet2Header},
+    ipv4::Ipv4Endpoint,
+    ipv4::{Ipv4Header, Ipv4Protocol2},
+    tcp::{
+        segment::{TcpHeader, TcpSegment},
+        SeqNumber,
     },
 };
-use ::runtime::{fail::Fail, memory::Buffer, network::types::MacAddress, Runtime};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    network::types::MacAddress,
+    watched::{WatchFuture, WatchedValue},
+    Runtime,
+};
 use ::std::{
     cell::RefCell,
     collections::VecDeque,

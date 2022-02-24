@@ -4,29 +4,20 @@
 use super::runtime::DummyRuntime;
 use ::catnip::libos::LibOS;
 use ::crossbeam_channel::{Receiver, Sender};
-use ::flexi_logger::Logger;
 use ::runtime::{
     memory::{Bytes, BytesMut, MemoryRuntime},
     network::types::MacAddress,
     types::dmtr_sgarray_t,
 };
-use ::std::{collections::HashMap, net::Ipv4Addr, sync::Once, time::Instant};
+use ::std::{collections::HashMap, net::Ipv4Addr, time::Instant};
 
 //==============================================================================
 // Constants & Structures
 //==============================================================================
 
-static INIT_LOG: Once = Once::new();
-
 pub struct DummyLibOS {}
 
 impl DummyLibOS {
-    fn initialize_logging() {
-        INIT_LOG.call_once(|| {
-            Logger::try_with_env().unwrap().start().unwrap();
-        });
-    }
-
     /// Initializes the libOS.
     pub fn new(
         link_addr: MacAddress,
@@ -37,7 +28,7 @@ impl DummyLibOS {
     ) -> LibOS<DummyRuntime> {
         let now = Instant::now();
         let rt = DummyRuntime::new(now, link_addr, ipv4_addr, rx, tx, arp);
-        Self::initialize_logging();
+        ::runtime::logging::initialize();
         LibOS::new(rt).unwrap()
     }
 

@@ -1,12 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    futures::operation::FutureOperation,
-    logging,
-    test_helpers::Engine,
-    timer::{Timer, TimerRc},
-};
+use crate::{futures::operation::FutureOperation, test_helpers::Engine};
 use ::arrayvec::ArrayVec;
 use ::catwalk::{Scheduler, SchedulerFuture, SchedulerHandle};
 use ::futures::FutureExt;
@@ -17,14 +12,16 @@ use ::rand::{
     Rng, SeedableRng,
 };
 use ::runtime::{
+    logging,
     memory::{Bytes, BytesMut, MemoryRuntime},
-    network::types::MacAddress,
     network::{
-        config::{TcpConfig, UdpConfig},
+        config::{ArpConfig, TcpConfig, UdpConfig},
         consts::RECEIVE_BATCH_SIZE,
+        types::MacAddress,
         NetworkRuntime, PacketBuf,
     },
     task::SchedulerRuntime,
+    timer::{Timer, TimerRc, WaitFuture},
     types::{dmtr_sgarray_t, dmtr_sgaseg_t},
     utils::UtilsRuntime,
     Runtime,
@@ -40,7 +37,6 @@ use ::std::{
     slice,
     time::{Duration, Instant},
 };
-use runtime::network::config::ArpConfig;
 
 //==============================================================================
 // Types
@@ -251,7 +247,7 @@ impl UtilsRuntime for TestRuntime {
 }
 
 impl SchedulerRuntime for TestRuntime {
-    type WaitFuture = crate::timer::WaitFuture<TimerRc>;
+    type WaitFuture = WaitFuture<TimerRc>;
 
     fn advance_clock(&self, now: Instant) {
         self.inner.borrow_mut().timer.0.advance_clock(now);

@@ -5,11 +5,13 @@ pub mod congestion_ctrl;
 mod rto;
 
 use super::ControlBlock;
-use crate::{
-    collections::watched::{WatchFuture, WatchedValue},
-    protocols::tcp::SeqNumber,
+use crate::protocols::tcp::SeqNumber;
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    watched::{WatchFuture, WatchedValue},
+    Runtime,
 };
-use ::runtime::{fail::Fail, memory::Buffer, Runtime};
 use ::std::{
     boxed::Box,
     cell::RefCell,

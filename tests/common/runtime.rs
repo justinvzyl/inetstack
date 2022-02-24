@@ -6,7 +6,6 @@
 //==============================================================================
 
 use ::arrayvec::ArrayVec;
-use ::catnip::timer::{Timer, TimerRc};
 use ::catwalk::{Scheduler, SchedulerFuture, SchedulerHandle};
 use ::crossbeam_channel::{self};
 use ::rand::{
@@ -15,6 +14,7 @@ use ::rand::{
     seq::SliceRandom,
     Rng, SeedableRng,
 };
+use ::runtime::timer::WaitFuture;
 use ::runtime::{
     memory::{Bytes, BytesMut, MemoryRuntime},
     network::{
@@ -24,6 +24,7 @@ use ::runtime::{
         NetworkRuntime, PacketBuf,
     },
     task::SchedulerRuntime,
+    timer::{Timer, TimerRc},
     types::{dmtr_sgarray_t, dmtr_sgaseg_t},
     utils::UtilsRuntime,
     Runtime,
@@ -241,7 +242,7 @@ impl UtilsRuntime for DummyRuntime {
 
 /// Scheduler Runtime Trait Implementation for Dummy Runtime
 impl SchedulerRuntime for DummyRuntime {
-    type WaitFuture = catnip::timer::WaitFuture<TimerRc>;
+    type WaitFuture = WaitFuture<TimerRc>;
 
     fn advance_clock(&self, now: Instant) {
         self.inner.borrow_mut().timer.0.advance_clock(now);
