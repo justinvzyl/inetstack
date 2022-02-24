@@ -5,10 +5,7 @@
 //! the IO Queue abstraction, thus providing a standard interface for different kernel bypass
 //! mechanisms.
 use crate::{
-    futures::{
-        operation::{FutureOperation, UdpOperation},
-        FutureResult,
-    },
+    futures::operation::{FutureOperation, UdpOperation},
     interop::pack_result,
     operations::OperationResult,
     protocols::{
@@ -18,6 +15,8 @@ use crate::{
         Peer,
     },
 };
+use ::catwalk::FutureResult;
+use ::catwalk::SchedulerHandle;
 use ::runtime::{
     fail::Fail,
     queue::{IoQueueDescriptor, IoQueueTable, IoQueueType},
@@ -25,7 +24,6 @@ use ::runtime::{
     Runtime,
 };
 use ::std::{any::Any, time::Instant};
-use catwalk::SchedulerHandle;
 use libc::c_int;
 
 #[cfg(feature = "profiler")]

@@ -25,8 +25,6 @@ pub mod collections;
 pub mod futures;
 pub mod interop;
 pub mod libos;
-pub mod logging;
 pub mod operations;
 pub mod options;
 pub mod protocols;
-pub mod timer;

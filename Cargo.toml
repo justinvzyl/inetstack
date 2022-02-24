@@ -17,7 +17,6 @@ crc = "1.8.1"
 crossbeam-channel = "0.5.2"
 derive_more = "0.99.17"
 either = "1.6.1"
-flexi_logger = { version = "0.22.2", features = ["colors", "use_chrono_for_offset"] }
 float_duration = "0.3.3"
 futures = "0.3.19"
 libc = "0.2.115"
@@ -27,11 +26,8 @@ num-traits = "0.2.14"
 rand = { version = "0.8.4", features = ["small_rng"] }
 
 perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a" }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "8f7c48f568d983a91d85516bd39f0a1d49486597" }
-catwalk = { git = "https://github.com/demikernel/catwalk", rev = "063cf220c3e81beb6562f798ebadab3d9c24f336" }
-
-[dev-dependencies]
-criterion = "0.3.4"
+runtime = { git = "https://github.com/demikernel/runtime", rev = "abe0912c98fca4c3dee63403668074dd81db8eb4" }
+catwalk = { git = "https://github.com/demikernel/catwalk", rev = "767670cae4f800af3f053d815bba16237420f860" }
 
 [features]
 threadunsafe = []
