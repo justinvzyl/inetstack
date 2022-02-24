@@ -12,7 +12,7 @@ use crate::common::{
     arp, libos::*, runtime::DummyRuntime, ALICE_IPV4, ALICE_MAC, BOB_IPV4, BOB_MAC, PORT_BASE,
 };
 use ::catnip::{
-    libos::LibOS,
+    Catnip,
     protocols::{ip, ipv4::Ipv4Endpoint},
 };
 use ::crossbeam_channel::{self};
@@ -28,7 +28,7 @@ use libc;
 //==============================================================================
 
 /// Tests if a passive socket may be successfully opened and closed.
-fn do_tcp_connection_setup(libos: &mut LibOS<DummyRuntime>, port: u16) {
+fn do_tcp_connection_setup(libos: &mut Catnip<DummyRuntime>, port: u16) {
     let port = ip::Port::try_from(port).unwrap();
     let local = Ipv4Endpoint::new(ALICE_IPV4, port);
 
