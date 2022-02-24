@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    futures::result::FutureResult, operations::OperationResult, protocols::udp::UdpPopFuture,
-};
+use crate::{operations::OperationResult, protocols::udp::UdpPopFuture};
+use ::catwalk::FutureResult;
 use ::runtime::{fail::Fail, memory::MemoryRuntime, queue::IoQueueDescriptor};
 use ::std::{
     future::Future,
