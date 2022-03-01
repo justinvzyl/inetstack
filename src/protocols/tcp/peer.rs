@@ -29,7 +29,7 @@ use ::std::{
 #[cfg(feature = "profiler")]
 use perftools::timer;
 
-enum Socket {
+pub enum Socket {
     Inactive {
         local: Option<Ipv4Endpoint>,
     },
@@ -52,11 +52,11 @@ pub struct Inner<RT: Runtime> {
     ephemeral_ports: EphemeralPorts,
 
     // FD -> local port
-    sockets: HashMap<IoQueueDescriptor, Socket>,
+    pub(crate) sockets: HashMap<IoQueueDescriptor, Socket>,
 
     passive: HashMap<Ipv4Endpoint, PassiveSocket<RT>>,
     connecting: HashMap<(Ipv4Endpoint, Ipv4Endpoint), ActiveOpenSocket<RT>>,
-    established: HashMap<(Ipv4Endpoint, Ipv4Endpoint), EstablishedSocket<RT>>,
+    pub(crate) established: HashMap<(Ipv4Endpoint, Ipv4Endpoint), EstablishedSocket<RT>>,
 
     rt: RT,
     arp: ArpPeer<RT>,
@@ -65,7 +65,7 @@ pub struct Inner<RT: Runtime> {
 }
 
 pub struct TcpPeer<RT: Runtime> {
-    pub(super) inner: Rc<RefCell<Inner<RT>>>,
+    pub(crate) inner: Rc<RefCell<Inner<RT>>>,
 }
 
 impl<RT: Runtime> TcpPeer<RT> {

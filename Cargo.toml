@@ -25,6 +25,8 @@ log = "0.4.14"
 num-derive = "0.3.3"
 num-traits = "0.2.14"
 rand = { version = "0.8.4", features = ["small_rng"] }
+serde = { version = "1.0", features = ["derive"]}
+
 
 perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a" }
 runtime = { git = "https://github.com/demikernel/runtime", rev = "8f7c48f568d983a91d85516bd39f0a1d49486597" }

@@ -13,13 +13,14 @@
 use std::cmp::Ordering;
 use std::convert::From;
 use std::fmt;
+use serde::{Serialize, Deserialize};
 
 // Internally, we store sequence numbers as unsigned 32-bit integers.
 //
 // We allow our sequence numbers to be cloned, copied, created, and checked for equality the same as for u32.  We
 // restrict all other behaviors to those we explicitly define below.
 //
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SeqNumber {
     value: u32,
 }

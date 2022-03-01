@@ -3,8 +3,9 @@
 
 use crate::protocols::ip;
 use std::net::Ipv4Addr;
+use serde::{Serialize, Deserialize};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Ipv4Endpoint {
     addr: Ipv4Addr,
     port: ip::Port,

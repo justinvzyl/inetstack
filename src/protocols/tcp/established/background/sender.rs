@@ -14,7 +14,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         futures::pin_mut!(unsent_seq_changed);
 
         // TODO: We don't need to watch this value since we're the only mutator.
-        let (sent_seq, sent_seq_changed) = cb.get_sent_seq_no();
+        let (sent_seq, sent_seq_changed) = cb.get_snd_nxt();
         futures::pin_mut!(sent_seq_changed);
 
         if sent_seq == unsent_seq {
@@ -26,7 +26,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
 
         // Okay, we know we have some unsent data past this point. Next, check to see that the
         // remote side has available window.
-        let (win_sz, win_sz_changed) = cb.get_window_size();
+        let (win_sz, win_sz_changed) = cb.get_snd_wnd();
         futures::pin_mut!(win_sz_changed);
 
         // If we don't have any window size at all, we need to transition to PERSIST state and
@@ -66,7 +66,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         }
 
         // The remote window is nonzero, but there still may not be room.
-        let (base_seq, base_seq_changed) = cb.get_base_seq_no();
+        let (base_seq, base_seq_changed) = cb.get_snd_una();
         futures::pin_mut!(base_seq_changed);
 
         // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle

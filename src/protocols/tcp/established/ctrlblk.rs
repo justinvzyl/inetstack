@@ -62,6 +62,22 @@ pub enum State {
 }
 
 struct ReceiveQueue<RT: Runtime> {
+    // Omar: Correct Diagram.
+    // Receive Sequence Space
+    //
+    // 1          2          3
+    // ----------|----------|----------
+    //        RCV.NXT    RCV.NXT
+    //                  +RCV.WND
+    //
+    // 1 - old sequence numbers which have been acknowledged
+    // 2 - sequence numbers allowed for new reception
+    // 3 - future sequence numbers which are not yet allowed
+    //
+    // Receive Sequence Space
+    //
+    // Figure 5.
+
     // TODO: This diagram appears to be wrong.  It doesn't appear to reflect how the code is currently written, and it
     // certainly doesn't reflect how the code should be written.  See RFC 793, Figure 5 for what this should look like.
     // Instead of base_seq_no, ack_seq_no, and recv_seq_no, we should just be tracking RCV.NXT and how much unread data
@@ -84,8 +100,7 @@ struct ReceiveQueue<RT: Runtime> {
     pub base_seq_no: WatchedValue<SeqNumber>,
 
     // Running counter of ack sequence number we have sent to peer.
-    // TODO: In RFC 793 terms, this appears to be RCV.NXT.  Probably should rename to rcv_nxt or something.
-    pub ack_seq_no: WatchedValue<SeqNumber>,
+    pub rcv_nxt: WatchedValue<SeqNumber>,
 
     // Our sequence number based on how much data we have sent.
     // TODO: Fix above comment, as it is clearly wrong.  It has nothing to do with how much data we have sent.  From
@@ -101,7 +116,7 @@ impl<RT: Runtime> ReceiveQueue<RT> {
     pub fn new(base_seq_no: SeqNumber, ack_seq_no: SeqNumber, recv_seq_no: SeqNumber) -> Self {
         Self {
             base_seq_no: WatchedValue::new(base_seq_no),
-            ack_seq_no: WatchedValue::new(ack_seq_no),
+            rcv_nxt: WatchedValue::new(ack_seq_no),
             recv_seq_no: WatchedValue::new(recv_seq_no),
             recv_queue: RefCell::new(VecDeque::with_capacity(RECV_QUEUE_SZ)),
         }
@@ -132,6 +147,14 @@ impl<RT: Runtime> ReceiveQueue<RT> {
             .map(|b| b.len())
             .sum::<usize>()
     }
+
+    pub fn flush_receive_queue(&self) -> VecDeque<RT::Buf> {
+        // We don't expect to use the recv_queue ever again. So we won't every have to grow the
+        // capacity.
+        let mut temp: VecDeque<RT::Buf> = VecDeque::with_capacity(0);
+        std::mem::swap(&mut temp, &mut *self.recv_queue.borrow_mut());
+        temp
+    }
 }
 
 /// Transmission control block for representing our TCP connection.
@@ -143,7 +166,7 @@ pub struct ControlBlock<RT: Runtime> {
     arp: Rc<ArpPeer<RT>>,
 
     // Send-side state.  TODO: Pull this back into the ControlBlock.
-    sender: Sender<RT>,
+    pub sender: Sender<RT>,
 
     state: WatchedValue<State>,
 
@@ -192,7 +215,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             remote,
             rt: Rc::new(rt),
             arp: Rc::new(arp),
-            sender: sender,
+            sender,
             state: WatchedValue::new(State::Established),
             ack_delay_timeout,
             ack_deadline: WatchedValue::new(None),
@@ -271,24 +294,24 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.get_mss()
     }
 
-    pub fn get_window_size(&self) -> (u32, WatchFuture<u32>) {
-        self.sender.get_window_size()
+    pub fn get_snd_wnd(&self) -> (u32, WatchFuture<u32>) {
+        self.sender.get_snd_wnd()
     }
 
-    pub fn get_base_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.sender.get_base_seq_no()
+    pub fn get_snd_una(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.sender.get_snd_una()
     }
 
     pub fn get_unsent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
         self.sender.get_unsent_seq_no()
     }
 
-    pub fn get_sent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.sender.get_sent_seq_no()
+    pub fn get_snd_nxt(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.sender.get_snd_nxt()
     }
 
     pub fn modify_sent_seq_no(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
-        self.sender.modify_sent_seq_no(f)
+        self.sender.modify_snd_nxt(f)
     }
 
     pub fn get_retransmit_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
@@ -430,7 +453,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         header.ack_num = self.receive_queue.recv_seq_no.get();
 
         // TODO: Think about moving this to tcp_header() as well.
-        let (seq_num, _): (SeqNumber, _) = self.get_sent_seq_no();
+        let (seq_num, _): (SeqNumber, _) = self.get_snd_nxt();
         header.seq_num = seq_num;
 
         // TODO: If our user has called close and we've sent all our data (nothing left unsent), then set the FIN flag.
@@ -452,7 +475,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                 assert_eq!(header.ack_num, recv_seq_no);
             }
             self.set_ack_deadline(None);
-            self.set_ack_seq_no(header.ack_num);
+            self.set_rcv_nxt(header.ack_num);
         }
 
         debug!("Sending {} bytes + {:?}", data.len(), header);
@@ -482,13 +505,13 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.current_rto()
     }
 
-    pub fn get_ack_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        let (seq_no, fut) = self.receive_queue.ack_seq_no.watch();
+    pub fn get_rcv_nxt(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        let (seq_no, fut) = self.receive_queue.rcv_nxt.watch();
         (seq_no, fut)
     }
 
-    pub fn set_ack_seq_no(&self, new_value: SeqNumber) {
-        self.receive_queue.ack_seq_no.set(new_value)
+    pub fn set_rcv_nxt(&self, new_value: SeqNumber) {
+        self.receive_queue.rcv_nxt.set(new_value)
     }
 
     pub fn get_recv_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
@@ -524,7 +547,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     /// If all received bytes have been acknowledged returns None.
     /// TODO: Again, we should *always* ACK.  So this should always return the current acknowledgement sequence number.
     pub fn current_ack(&self) -> Option<SeqNumber> {
-        let ack_seq_no = self.receive_queue.ack_seq_no.get();
+        let rcv_nxt = self.receive_queue.rcv_nxt.get();
         let recv_seq_no = self.receive_queue.recv_seq_no.get();
 
         // It is okay if ack_seq_no is greater than the seq number. This can happen when we have
@@ -532,7 +555,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         // TODO: The above comment is confusing, ambiguous, and likely also wrong.  FINs consume sequence number space,
         // so we should be including them in our record keeping of the sequence number space received from our peer.
         // Update: There should only be one value involved/returned here, the one equivalent to RCV.NXT.
-        if ack_seq_no == recv_seq_no {
+        if rcv_nxt == recv_seq_no {
             None
         } else {
             Some(recv_seq_no)
@@ -681,5 +704,13 @@ impl<RT: Runtime> ControlBlock<RT> {
         }
 
         Ok(())
+    }
+
+    pub fn flush_receive_queue(&self) -> VecDeque<RT::Buf> {
+        self.receive_queue.flush_receive_queue()
+    }
+
+    pub fn flush_retransmission_queue(&self) -> VecDeque<RT::Buf> {
+        self.sender.flush_retransmission_queue()
     }
 }

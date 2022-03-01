@@ -3,7 +3,7 @@
 
 use runtime::fail::Fail;
 use std::{convert::TryFrom, num::NonZeroU16};
-
+use serde::{Serialize, Deserialize};
 //==============================================================================
 // Constants
 //==============================================================================
@@ -14,7 +14,7 @@ const FIRST_PRIVATE_PORT: u16 = 49152;
 // Structures
 //==============================================================================
 
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, Display, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, Display, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct Port(NonZeroU16);
 
 //==============================================================================

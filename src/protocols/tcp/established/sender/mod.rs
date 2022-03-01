@@ -31,22 +31,28 @@ pub struct UnackedSegment<RT: Runtime> {
 const UNSENT_QUEUE_CUTOFF: usize = 1024;
 
 pub struct Sender<RT: Runtime> {
-    // TODO: Just use Figure 5 from RFC 793 here.
+    // Send Sequence Space
     //
-    //                    |------------window_size------------|
+    // 1         2          3          4
+    // ----------|----------|----------|----------
+    //        SND.UNA    SND.NXT    SND.UNA
+    //                             +SND.WND
     //
-    //               base_seq_no               sent_seq_no           unsent_seq_no
-    //                    v                         v                      v
-    // ... ---------------|-------------------------|----------------------| (unavailable)
-    //       acknowledged        unacknowledged     ^        unsent
+    // 1 - old sequence numbers which have been acknowledged
+    // 2 - sequence numbers of unacknowledged data
+    // 3 - sequence numbers allowed for new data transmission
+    // 4 - future sequence numbers which are not yet allowed
     //
-    base_seq_no: WatchedValue<SeqNumber>,
+    // Send Sequence Space
+    //
+    // Figure 4.
+    snd_una: WatchedValue<SeqNumber>,
     unacked_queue: RefCell<VecDeque<UnackedSegment<RT>>>,
-    sent_seq_no: WatchedValue<SeqNumber>,
-    unsent_queue: RefCell<VecDeque<RT::Buf>>,
+    snd_nxt: WatchedValue<SeqNumber>,
+    retransmission_queue: RefCell<VecDeque<RT::Buf>>,
     unsent_seq_no: WatchedValue<SeqNumber>,
 
-    window_size: WatchedValue<u32>,
+    snd_wnd: WatchedValue<u32>,
     // RFC 1323: Number of bits to shift advertised window, defaults to zero.
     window_scale: u8,
 
@@ -61,10 +67,10 @@ pub struct Sender<RT: Runtime> {
 impl<RT: Runtime> fmt::Debug for Sender<RT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender")
-            .field("base_seq_no", &self.base_seq_no)
-            .field("sent_seq_no", &self.sent_seq_no)
+            .field("snd_una", &self.snd_una)
+            .field("snd_nxt", &self.snd_nxt)
             .field("unsent_seq_no", &self.unsent_seq_no)
-            .field("window_size", &self.window_size)
+            .field("snd_wnd", &self.snd_wnd)
             .field("window_scale", &self.window_scale)
             .field("mss", &self.mss)
             .field("retransmit_deadline", &self.retransmit_deadline)
@@ -83,13 +89,13 @@ impl<RT: Runtime> Sender<RT> {
         congestion_control_options: Option<cc::Options>,
     ) -> Self {
         Self {
-            base_seq_no: WatchedValue::new(seq_no),
+            snd_una: WatchedValue::new(seq_no),
             unacked_queue: RefCell::new(VecDeque::new()),
-            sent_seq_no: WatchedValue::new(seq_no),
-            unsent_queue: RefCell::new(VecDeque::new()),
+            snd_nxt: WatchedValue::new(seq_no),
+            retransmission_queue: RefCell::new(VecDeque::new()),
             unsent_seq_no: WatchedValue::new(seq_no),
 
-            window_size: WatchedValue::new(window_size),
+            snd_wnd: WatchedValue::new(window_size),
             window_scale,
             mss,
 
@@ -104,20 +110,20 @@ impl<RT: Runtime> Sender<RT> {
         self.mss
     }
 
-    pub fn get_window_size(&self) -> (u32, WatchFuture<u32>) {
-        self.window_size.watch()
+    pub fn get_snd_wnd(&self) -> (u32, WatchFuture<u32>) {
+        self.snd_wnd.watch()
     }
 
-    pub fn get_base_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.base_seq_no.watch()
+    pub fn get_snd_una(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.snd_una.watch()
     }
 
-    pub fn get_sent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.sent_seq_no.watch()
+    pub fn get_snd_nxt(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.snd_nxt.watch()
     }
 
-    pub fn modify_sent_seq_no(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
-        self.sent_seq_no.modify(f)
+    pub fn modify_snd_nxt(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
+        self.snd_nxt.modify(f)
     }
 
     pub fn get_unsent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
@@ -153,9 +159,9 @@ impl<RT: Runtime> Sender<RT> {
             details: "Buffer too large",
         })?;
 
-        let win_sz = self.window_size.get();
-        let base_seq = self.base_seq_no.get();
-        let sent_seq = self.sent_seq_no.get();
+        let win_sz = self.snd_wnd.get();
+        let base_seq = self.snd_una.get();
+        let sent_seq = self.snd_nxt.get();
         let sent_data: u32 = (sent_seq - base_seq).into();
 
         // Fast path: Try to send the data immediately.
@@ -167,7 +173,7 @@ impl<RT: Runtime> Sender<RT> {
         // The limited transmit algorithm can increase the effective size of cwnd by up to 2MSS
         let effective_cwnd = cwnd + self.congestion_ctrl.get_limited_transmit_cwnd_increase();
 
-        if self.unsent_queue.borrow().len() == 0 {
+        if self.retransmission_queue.borrow().len() == 0 {
             if win_sz > 0
                 && win_sz >= in_flight_after_send
                 && effective_cwnd >= in_flight_after_send
@@ -183,7 +189,7 @@ impl<RT: Runtime> Sender<RT> {
                     cb.emit(header, buf.clone(), remote_link_addr);
 
                     self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
-                    self.sent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
+                    self.snd_nxt.modify(|s| s + SeqNumber::from(buf_len));
                     let unacked_segment = UnackedSegment {
                         bytes: buf,
                         initial_tx: Some(cb.rt().now()),
@@ -199,22 +205,22 @@ impl<RT: Runtime> Sender<RT> {
         }
 
         // Too fast.
-        if self.unsent_queue.borrow().len() > UNSENT_QUEUE_CUTOFF {
+        if self.retransmission_queue.borrow().len() > UNSENT_QUEUE_CUTOFF {
             return Err(Fail::ResourceBusy {
                 details: "too many packets to send",
             });
         }
 
         // Slow path: Delegating sending the data to background processing.
-        self.unsent_queue.borrow_mut().push_back(buf);
+        self.retransmission_queue.borrow_mut().push_back(buf);
         self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
 
         Ok(())
     }
 
     pub fn remote_ack(&self, ack_seq_no: SeqNumber, now: Instant) -> Result<(), Fail> {
-        let base_seq_no = self.base_seq_no.get();
-        let sent_seq_no = self.sent_seq_no.get();
+        let base_seq_no = self.snd_una.get();
+        let sent_seq_no = self.snd_nxt.get();
 
         let bytes_outstanding: u32 = (sent_seq_no - base_seq_no).into();
         let bytes_acknowledged: u32 = (ack_seq_no - base_seq_no).into();
@@ -261,9 +267,9 @@ impl<RT: Runtime> Sender<RT> {
                 break;
             }
         }
-        self.base_seq_no
+        self.snd_una
             .modify(|b| b + SeqNumber::from(bytes_acknowledged));
-        let new_base_seq_no = self.base_seq_no.get();
+        let new_base_seq_no = self.snd_una.get();
         if new_base_seq_no < base_seq_no {
             // We've wrapped around, and so we need to do some bookkeeping
             // TODO: Figure out what this is doing -- it's probably wrong.
@@ -274,7 +280,7 @@ impl<RT: Runtime> Sender<RT> {
     }
 
     pub fn pop_one_unsent_byte(&self) -> Option<RT::Buf> {
-        let mut queue = self.unsent_queue.borrow_mut();
+        let mut queue = self.retransmission_queue.borrow_mut();
 
         let buf = queue.front_mut()?;
         let mut cloned_buf = buf.clone();
@@ -289,7 +295,7 @@ impl<RT: Runtime> Sender<RT> {
 
     pub fn pop_unsent(&self, max_bytes: usize) -> Option<RT::Buf> {
         // TODO: Use a scatter/gather array to coalesce multiple buffers into a single segment.
-        let mut unsent_queue = self.unsent_queue.borrow_mut();
+        let mut unsent_queue = self.retransmission_queue.borrow_mut();
         let mut buf = unsent_queue.pop_front()?;
         let buf_len = buf.len();
 
@@ -306,7 +312,7 @@ impl<RT: Runtime> Sender<RT> {
     }
 
     pub fn top_size_unsent(&self) -> Option<usize> {
-        let unsent_queue = self.unsent_queue.borrow_mut();
+        let unsent_queue = self.retransmission_queue.borrow_mut();
         Some(unsent_queue.front()?.len())
     }
 
@@ -322,7 +328,7 @@ impl<RT: Runtime> Sender<RT> {
             "Updating window size -> {} (hdr {}, scale {})",
             window_size, window_size_hdr, self.window_scale
         );
-        self.window_size.set(window_size);
+        self.snd_wnd.set(window_size);
 
         Ok(())
     }
@@ -361,5 +367,11 @@ impl<RT: Runtime> Sender<RT> {
 
     pub fn congestion_ctrl_watch_limited_transmit_cwnd_increase(&self) -> (u32, WatchFuture<u32>) {
         self.congestion_ctrl.watch_limited_transmit_cwnd_increase()
+    }
+
+    pub fn flush_retransmission_queue(&self) -> VecDeque<RT::Buf> {
+        let mut temp: VecDeque<RT::Buf> = VecDeque::with_capacity(0);
+        std::mem::swap(&mut temp, &mut *self.retransmission_queue.borrow_mut());
+        temp
     }
 }

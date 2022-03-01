@@ -41,7 +41,7 @@ async fn retransmit<RT: Runtime>(
     // Unset the initial timestamp so we don't use this for RTT estimation.
     segment.initial_tx.take();
 
-    let (seq_no, _) = cb.get_base_seq_no();
+    let (seq_no, _) = cb.get_snd_una();
     let mut header = cb.tcp_header();
     header.seq_num = seq_no;
     cb.emit(header, segment.bytes.clone(), remote_link_addr);
@@ -78,7 +78,7 @@ pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, F
             _ = rtx_deadline_changed => continue,
             _ = rtx_fast_retransmit_changed => continue,
             _ = rtx_future => {
-                let (base_seq_no, _) = cb.get_base_seq_no();
+                let (base_seq_no, _) = cb.get_snd_una();
                 cb.congestion_ctrl_on_rto(base_seq_no);
                 retransmit(RetransmitCause::TimeOut, &cb).await?;
             },

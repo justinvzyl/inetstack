@@ -33,7 +33,7 @@ async fn active_send_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fai
 
         // Wait for `sent_seq_no` to catch up to `unsent_seq_no` and
         // then send a FIN segment.
-        let (sent_seq, sent_seq_changed) = cb.get_sent_seq_no();
+        let (sent_seq, sent_seq_changed) = cb.get_snd_nxt();
         let (unsent_seq, _) = cb.get_unsent_seq_no();
         if sent_seq != unsent_seq {
             sent_seq_changed.await;
@@ -70,7 +70,7 @@ async fn active_ack_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail
         }
 
         // Wait for all data to be acknowledged.
-        let (ack_seq, ack_seq_changed) = cb.get_ack_seq_no();
+        let (ack_seq, ack_seq_changed) = cb.get_rcv_nxt();
         let (recv_seq, _) = cb.get_recv_seq_no();
         if ack_seq != recv_seq {
             ack_seq_changed.await;
@@ -135,7 +135,7 @@ async fn passive_close<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
         }
 
         // Wait for all data to be acknowledged.
-        let (ack_seq, ack_seq_changed) = cb.get_ack_seq_no();
+        let (ack_seq, ack_seq_changed) = cb.get_rcv_nxt();
         let (recv_seq, _) = cb.get_recv_seq_no();
         if ack_seq != recv_seq {
             ack_seq_changed.await;
@@ -168,7 +168,7 @@ async fn passive_send_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fa
         }
 
         // Wait for `sent_seq_no` to catch up to `unsent_seq_no` and then send a FIN segment.
-        let (sent_seq, sent_seq_changed) = cb.get_sent_seq_no();
+        let (sent_seq, sent_seq_changed) = cb.get_snd_nxt();
         let (unsent_seq, _) = cb.get_unsent_seq_no();
         if sent_seq != unsent_seq {
             sent_seq_changed.await;
