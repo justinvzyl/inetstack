@@ -14,7 +14,7 @@ const FIRST_PRIVATE_PORT: u16 = 49152;
 // Structures
 //==============================================================================
 
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, Display, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, Ord, PartialOrd)]
 pub struct Port(NonZeroU16);
 
 //==============================================================================
