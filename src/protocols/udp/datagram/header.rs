@@ -1,12 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::protocols::{
-    ip,
-    ipv4::{Ipv4Header, Ipv4Protocol2},
-};
+use crate::protocols::ipv4::{Ipv4Header, Ipv4Protocol2};
 use ::byteorder::{ByteOrder, NetworkEndian};
-use ::runtime::{fail::Fail, memory::Buffer};
+use ::runtime::{fail::Fail, memory::Buffer, network::types::Port16};
 use ::std::convert::{TryFrom, TryInto};
 
 //==============================================================================
@@ -28,9 +25,9 @@ pub const UDP_HEADER_SIZE: usize = 8;
 #[derive(Debug)]
 pub struct UdpHeader {
     /// Port used on sender side (optional).
-    src_port: Option<ip::Port>,
+    src_port: Option<Port16>,
     /// Port used receiver side.
-    dst_port: ip::Port,
+    dst_port: Port16,
 }
 
 //==============================================================================
@@ -40,17 +37,17 @@ pub struct UdpHeader {
 /// Associate functions for [UdpHeader].
 impl UdpHeader {
     /// Creates a UDP header.
-    pub fn new(src_port: Option<ip::Port>, dst_port: ip::Port) -> Self {
+    pub fn new(src_port: Option<Port16>, dst_port: Port16) -> Self {
         Self { src_port, dst_port }
     }
 
     /// Returns the source port stored in the target UDP header.
-    pub fn src_port(&self) -> Option<ip::Port> {
+    pub fn src_port(&self) -> Option<Port16> {
         self.src_port
     }
 
     /// Returns the destination port stored in the target UDP header.
-    pub fn dest_port(&self) -> ip::Port {
+    pub fn dest_port(&self) -> Port16 {
         self.dst_port
     }
 
@@ -74,8 +71,8 @@ impl UdpHeader {
 
         // Deserialize buffer.
         let hdr_buf = &buf[..UDP_HEADER_SIZE];
-        let src_port = ip::Port::try_from(NetworkEndian::read_u16(&hdr_buf[0..2])).ok();
-        let dst_port = ip::Port::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
+        let src_port = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[0..2])).ok();
+        let dst_port = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
         let length = NetworkEndian::read_u16(&hdr_buf[4..6]) as usize;
         if length != buf.len() {
             return Err(Fail::Malformed {

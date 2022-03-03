@@ -11,17 +11,13 @@ mod common;
 use crate::common::{
     arp, libos::*, runtime::DummyRuntime, ALICE_IPV4, ALICE_MAC, BOB_IPV4, BOB_MAC, PORT_BASE,
 };
-use ::catnip::{
-    protocols::{ip, ipv4::Ipv4Endpoint},
-    Catnip,
-};
+use ::catnip::{protocols::ipv4::Ipv4Endpoint, Catnip};
 use ::crossbeam_channel::{self};
-use ::runtime::fail::Fail;
-use ::runtime::memory::MemoryRuntime;
-use ::runtime::types::dmtr_opcode_t;
-use ::runtime::QDesc;
+use ::libc;
+use ::runtime::{
+    fail::Fail, memory::MemoryRuntime, network::types::Port16, types::dmtr_opcode_t, QDesc,
+};
 use ::std::{convert::TryFrom, net::Ipv4Addr, thread};
-use libc;
 
 //==============================================================================
 // Open/Close Passive Socket
@@ -29,7 +25,7 @@ use libc;
 
 /// Tests if a passive socket may be successfully opened and closed.
 fn do_tcp_connection_setup(libos: &mut Catnip<DummyRuntime>, port: u16) {
-    let port = ip::Port::try_from(port).unwrap();
+    let port = Port16::try_from(port).unwrap();
     let local = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Open and close a connection.
@@ -59,7 +55,7 @@ fn do_tcp_establish_connection(port: u16) {
     let alice = thread::spawn(move || {
         let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port = ip::Port::try_from(port).unwrap();
+        let port = Port16::try_from(port).unwrap();
         let local = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
@@ -79,7 +75,7 @@ fn do_tcp_establish_connection(port: u16) {
     let bob = thread::spawn(move || {
         let mut libos = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port = ip::Port::try_from(port).unwrap();
+        let port = Port16::try_from(port).unwrap();
         let remote = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
@@ -112,7 +108,7 @@ fn do_tcp_push_remote(port: u16) {
     let alice = thread::spawn(move || {
         let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port = ip::Port::try_from(port).unwrap();
+        let port = Port16::try_from(port).unwrap();
         let local = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
@@ -142,7 +138,7 @@ fn do_tcp_push_remote(port: u16) {
     let bob = thread::spawn(move || {
         let mut libos = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port = ip::Port::try_from(port).unwrap();
+        let port = Port16::try_from(port).unwrap();
         let remote = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
@@ -267,7 +263,7 @@ fn do_tcp_bad_bind(port: u16) {
     let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     // Invalid file descriptor.
-    let port = ip::Port::try_from(port).unwrap();
+    let port = Port16::try_from(port).unwrap();
     let local = Ipv4Endpoint::new(ALICE_IPV4, port);
     let e = libos.bind(QDesc::from(0), local).unwrap_err();
     assert_eq!(e, (Fail::BadFileDescriptor {}));
@@ -287,7 +283,7 @@ fn do_tcp_bad_listen(port: u16) {
     let (tx, rx) = crossbeam_channel::unbounded();
     let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port = ip::Port::try_from(port).unwrap();
+    let port = Port16::try_from(port).unwrap();
     let local = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Invalid file descriptor.
@@ -342,7 +338,7 @@ fn do_tcp_bad_connect(port: u16) {
 
     let alice = thread::spawn(move || {
         let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
-        let port = ip::Port::try_from(port).unwrap();
+        let port = Port16::try_from(port).unwrap();
         let local = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
@@ -362,7 +358,7 @@ fn do_tcp_bad_connect(port: u16) {
     let bob = thread::spawn(move || {
         let mut libos = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port = ip::Port::try_from(port).unwrap();
+        let port = Port16::try_from(port).unwrap();
         let remote = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         println!("BAD FD");

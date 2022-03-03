@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::protocols::ip::Port;
+use ::runtime::network::types::Port16;
 use ::runtime::{fail::Fail, Runtime};
+use ::std::convert::TryFrom;
 use ::std::num::NonZeroU16;
 
 //==============================================================================
@@ -17,7 +18,7 @@ const LAST_PRIVATE_PORT: u16 = 65535;
 //==============================================================================
 
 pub struct EphemeralPorts {
-    ports: Vec<Port>,
+    ports: Vec<Port16>,
 }
 
 //==============================================================================
@@ -26,9 +27,10 @@ pub struct EphemeralPorts {
 
 impl EphemeralPorts {
     pub fn new<RT: Runtime>(rt: &RT) -> Self {
-        let mut ports: Vec<Port> = Vec::<Port>::new();
+        let mut ports: Vec<Port16> = Vec::<Port16>::new();
         for n in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
-            let p: Port = Port::new(NonZeroU16::new(n).expect("failed to allocate ephemeral port"));
+            let p: Port16 =
+                Port16::new(NonZeroU16::new(n).expect("failed to allocate ephemeral port"));
             ports.push(p);
         }
 
@@ -36,13 +38,21 @@ impl EphemeralPorts {
         Self { ports }
     }
 
-    pub fn alloc(&mut self) -> Result<Port, Fail> {
+    pub fn first_private_port() -> Port16 {
+        Port16::try_from(FIRST_PRIVATE_PORT).unwrap()
+    }
+
+    pub fn is_private(port: Port16) -> bool {
+        u16::from(port) >= FIRST_PRIVATE_PORT
+    }
+
+    pub fn alloc(&mut self) -> Result<Port16, Fail> {
         self.ports.pop().ok_or(Fail::ResourceExhausted {
             details: "Out of private ports",
         })
     }
 
-    pub fn free(&mut self, port: Port) {
+    pub fn free(&mut self, port: Port16) {
         self.ports.push(port);
     }
 }

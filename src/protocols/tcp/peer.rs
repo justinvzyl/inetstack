@@ -8,7 +8,6 @@ use super::{
 use crate::protocols::{
     arp::ArpPeer,
     ethernet2::{EtherType2, Ethernet2Header},
-    ip,
     ip::EphemeralPorts,
     ipv4::{Ipv4Endpoint, Ipv4Header, Ipv4Protocol2},
     tcp::{
@@ -95,7 +94,7 @@ impl<RT: Runtime> TcpPeer<RT> {
 
     pub fn bind(&self, fd: QDesc, addr: Ipv4Endpoint) -> Result<(), Fail> {
         let mut inner = self.inner.borrow_mut();
-        if addr.get_port() >= ip::Port::first_private_port() {
+        if addr.get_port() >= EphemeralPorts::first_private_port() {
             return Err(Fail::Malformed {
                 details: "Port number in private port range",
             });
