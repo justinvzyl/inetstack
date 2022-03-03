@@ -12,14 +12,14 @@ use crate::common::{
     arp, libos::*, runtime::DummyRuntime, ALICE_IPV4, ALICE_MAC, BOB_IPV4, BOB_MAC, PORT_BASE,
 };
 use ::catnip::{
-    libos::LibOS,
     protocols::{ip, ipv4::Ipv4Endpoint},
+    Catnip,
 };
 use ::crossbeam_channel::{self};
 use ::runtime::fail::Fail;
 use ::runtime::memory::MemoryRuntime;
-use ::runtime::queue::IoQueueDescriptor;
 use ::runtime::types::dmtr_opcode_t;
+use ::runtime::QDesc;
 use ::std::{convert::TryFrom, net::Ipv4Addr, thread};
 use libc;
 
@@ -28,7 +28,7 @@ use libc;
 //==============================================================================
 
 /// Tests if a passive socket may be successfully opened and closed.
-fn do_tcp_connection_setup(libos: &mut LibOS<DummyRuntime>, port: u16) {
+fn do_tcp_connection_setup(libos: &mut Catnip<DummyRuntime>, port: u16) {
     let port = ip::Port::try_from(port).unwrap();
     let local = Ipv4Endpoint::new(ALICE_IPV4, port);
 
@@ -69,7 +69,7 @@ fn do_tcp_establish_connection(port: u16) {
         let qt = libos.accept(sockfd).unwrap();
         let r = libos.wait(qt);
         assert_eq!(r.qr_opcode, dmtr_opcode_t::DMTR_OPC_ACCEPT);
-        let qd = IoQueueDescriptor::from(unsafe { r.qr_value.ares.qd } as usize);
+        let qd = QDesc::from(unsafe { r.qr_value.ares.qd } as usize);
 
         // Close connection.
         libos.close(qd).unwrap();
@@ -124,7 +124,7 @@ fn do_tcp_push_remote(port: u16) {
         assert_eq!(r.qr_opcode, dmtr_opcode_t::DMTR_OPC_ACCEPT);
 
         // Pop data.
-        let qd = IoQueueDescriptor::from(unsafe { r.qr_value.ares.qd } as usize);
+        let qd = QDesc::from(unsafe { r.qr_value.ares.qd } as usize);
         let qt = libos.pop(qd).unwrap();
         let qr = libos.wait(qt);
         assert_eq!(qr.qr_opcode, dmtr_opcode_t::DMTR_OPC_POP);
@@ -269,7 +269,7 @@ fn do_tcp_bad_bind(port: u16) {
     // Invalid file descriptor.
     let port = ip::Port::try_from(port).unwrap();
     let local = Ipv4Endpoint::new(ALICE_IPV4, port);
-    let e = libos.bind(IoQueueDescriptor::from(0), local).unwrap_err();
+    let e = libos.bind(QDesc::from(0), local).unwrap_err();
     assert_eq!(e, (Fail::BadFileDescriptor {}));
 }
 
@@ -291,7 +291,7 @@ fn do_tcp_bad_listen(port: u16) {
     let local = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Invalid file descriptor.
-    let e = libos.listen(IoQueueDescriptor::from(0), 8).unwrap_err();
+    let e = libos.listen(QDesc::from(0), 8).unwrap_err();
     assert_eq!(e, (Fail::BadFileDescriptor {}));
 
     // Invalid backlog length
@@ -322,7 +322,7 @@ fn do_tcp_bad_accept() {
     let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     // Invalid file descriptor.
-    let e = libos.accept(IoQueueDescriptor::from(0)).unwrap_err();
+    let e = libos.accept(QDesc::from(0)).unwrap_err();
     assert_eq!(e, (Fail::BadFileDescriptor {}));
 }
 
@@ -352,7 +352,7 @@ fn do_tcp_bad_connect(port: u16) {
         let qt = libos.accept(sockfd).unwrap();
         let r = libos.wait(qt);
         assert_eq!(r.qr_opcode, dmtr_opcode_t::DMTR_OPC_ACCEPT);
-        let qd = IoQueueDescriptor::from(unsafe { r.qr_value.ares.qd } as usize);
+        let qd = QDesc::from(unsafe { r.qr_value.ares.qd } as usize);
 
         // Close connection.
         libos.close(qd).unwrap();
@@ -367,9 +367,7 @@ fn do_tcp_bad_connect(port: u16) {
 
         println!("BAD FD");
         // Bad file descriptor.
-        let e = libos
-            .connect(IoQueueDescriptor::from(0), remote)
-            .unwrap_err();
+        let e = libos.connect(QDesc::from(0), remote).unwrap_err();
         assert_eq!(e, (Fail::BadFileDescriptor {}));
 
         println!("BAD endpoint");

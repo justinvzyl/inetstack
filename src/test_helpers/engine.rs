@@ -10,10 +10,7 @@ use crate::protocols::{
     Peer,
 };
 use ::runtime::{
-    fail::Fail,
-    network::types::MacAddress,
-    queue::{IoQueueDescriptor, IoQueueTable, IoQueueType},
-    Runtime,
+    fail::Fail, network::types::MacAddress, queue::IoQueueTable, QDesc, QType, Runtime,
 };
 
 use std::{collections::HashMap, future::Future, net::Ipv4Addr, time::Duration};
@@ -64,77 +61,64 @@ impl<RT: Runtime> Engine<RT> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
-    pub fn udp_pushto(
-        &self,
-        fd: IoQueueDescriptor,
-        buf: RT::Buf,
-        to: Ipv4Endpoint,
-    ) -> Result<(), Fail> {
+    pub fn udp_pushto(&self, fd: QDesc, buf: RT::Buf, to: Ipv4Endpoint) -> Result<(), Fail> {
         self.ipv4.udp.do_pushto(fd, buf, to)
     }
 
-    pub fn udp_pop(&mut self, fd: IoQueueDescriptor) -> UdpPopFuture<RT> {
+    pub fn udp_pop(&mut self, fd: QDesc) -> UdpPopFuture<RT> {
         self.ipv4.udp.do_pop(fd)
     }
 
-    pub fn udp_socket(&mut self) -> Result<IoQueueDescriptor, Fail> {
-        let fd = self.file_table.alloc(IoQueueType::UdpSocket);
+    pub fn udp_socket(&mut self) -> Result<QDesc, Fail> {
+        let fd = self.file_table.alloc(QType::UdpSocket.into());
         self.ipv4.udp.do_socket(fd);
         Ok(fd)
     }
 
-    pub fn udp_bind(
-        &mut self,
-        socket_fd: IoQueueDescriptor,
-        endpoint: Ipv4Endpoint,
-    ) -> Result<(), Fail> {
+    pub fn udp_bind(&mut self, socket_fd: QDesc, endpoint: Ipv4Endpoint) -> Result<(), Fail> {
         self.ipv4.udp.do_bind(socket_fd, endpoint)
     }
 
-    pub fn udp_close(&mut self, socket_fd: IoQueueDescriptor) -> Result<(), Fail> {
+    pub fn udp_close(&mut self, socket_fd: QDesc) -> Result<(), Fail> {
         self.ipv4.udp.do_close(socket_fd)
     }
 
-    pub fn tcp_socket(&mut self) -> Result<IoQueueDescriptor, Fail> {
-        let fd = self.file_table.alloc(IoQueueType::TcpSocket);
+    pub fn tcp_socket(&mut self) -> Result<QDesc, Fail> {
+        let fd = self.file_table.alloc(QType::TcpSocket.into());
         self.ipv4.tcp.do_socket(fd);
         Ok(fd)
     }
 
     pub fn tcp_connect(
         &mut self,
-        socket_fd: IoQueueDescriptor,
+        socket_fd: QDesc,
         remote_endpoint: Ipv4Endpoint,
     ) -> ConnectFuture<RT> {
         self.ipv4.tcp.connect(socket_fd, remote_endpoint)
     }
 
-    pub fn tcp_bind(
-        &mut self,
-        socket_fd: IoQueueDescriptor,
-        endpoint: Ipv4Endpoint,
-    ) -> Result<(), Fail> {
+    pub fn tcp_bind(&mut self, socket_fd: QDesc, endpoint: Ipv4Endpoint) -> Result<(), Fail> {
         self.ipv4.tcp.bind(socket_fd, endpoint)
     }
 
-    pub fn tcp_accept(&mut self, fd: IoQueueDescriptor) -> AcceptFuture<RT> {
-        let newfd = self.file_table.alloc(IoQueueType::TcpSocket);
+    pub fn tcp_accept(&mut self, fd: QDesc) -> AcceptFuture<RT> {
+        let newfd = self.file_table.alloc(QType::TcpSocket.into());
         self.ipv4.tcp.do_accept(fd, newfd)
     }
 
-    pub fn tcp_push(&mut self, socket_fd: IoQueueDescriptor, buf: RT::Buf) -> PushFuture<RT> {
+    pub fn tcp_push(&mut self, socket_fd: QDesc, buf: RT::Buf) -> PushFuture<RT> {
         self.ipv4.tcp.push(socket_fd, buf)
     }
 
-    pub fn tcp_pop(&mut self, socket_fd: IoQueueDescriptor) -> PopFuture<RT> {
+    pub fn tcp_pop(&mut self, socket_fd: QDesc) -> PopFuture<RT> {
         self.ipv4.tcp.pop(socket_fd)
     }
 
-    pub fn tcp_close(&mut self, socket_fd: IoQueueDescriptor) -> Result<(), Fail> {
+    pub fn tcp_close(&mut self, socket_fd: QDesc) -> Result<(), Fail> {
         self.ipv4.tcp.do_close(socket_fd)
     }
 
-    pub fn tcp_listen(&mut self, socket_fd: IoQueueDescriptor, backlog: usize) -> Result<(), Fail> {
+    pub fn tcp_listen(&mut self, socket_fd: QDesc, backlog: usize) -> Result<(), Fail> {
         self.ipv4.tcp.listen(socket_fd, backlog)
     }
 
@@ -142,11 +126,11 @@ impl<RT: Runtime> Engine<RT> {
         self.arp.query(ipv4_addr)
     }
 
-    pub fn tcp_mss(&self, handle: IoQueueDescriptor) -> Result<usize, Fail> {
+    pub fn tcp_mss(&self, handle: QDesc) -> Result<usize, Fail> {
         self.ipv4.tcp_mss(handle)
     }
 
-    pub fn tcp_rto(&self, handle: IoQueueDescriptor) -> Result<Duration, Fail> {
+    pub fn tcp_rto(&self, handle: QDesc) -> Result<Duration, Fail> {
         self.ipv4.tcp_rto(handle)
     }
 

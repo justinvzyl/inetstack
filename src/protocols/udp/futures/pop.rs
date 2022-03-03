@@ -3,7 +3,7 @@
 
 use super::super::listener::SharedListener;
 use crate::protocols::ipv4::Ipv4Endpoint;
-use runtime::queue::IoQueueDescriptor;
+use runtime::QDesc;
 use runtime::{fail::Fail, memory::MemoryRuntime};
 use std::{
     future::Future,
@@ -18,7 +18,7 @@ use std::{
 /// Future for Pop Operation
 pub struct UdpPopFuture<RT: MemoryRuntime> {
     /// File descriptor.
-    qd: IoQueueDescriptor,
+    qd: QDesc,
     /// Listener.
     listener: Result<SharedListener<RT::Buf>, Fail>,
 }
@@ -30,12 +30,12 @@ pub struct UdpPopFuture<RT: MemoryRuntime> {
 /// Associate functions for [PopFuture].
 impl<RT: MemoryRuntime> UdpPopFuture<RT> {
     /// Creates a future for the pop operation.
-    pub fn new(qd: IoQueueDescriptor, listener: Result<SharedListener<RT::Buf>, Fail>) -> Self {
+    pub fn new(qd: QDesc, listener: Result<SharedListener<RT::Buf>, Fail>) -> Self {
         Self { qd, listener }
     }
 
-    /// Returns the [IoQueueDescriptor] associated to the target [UdpPopFuture].
-    pub fn get_qd(&self) -> IoQueueDescriptor {
+    /// Returns the [QDesc] associated to the target [UdpPopFuture].
+    pub fn get_qd(&self) -> QDesc {
         self.qd
     }
 }

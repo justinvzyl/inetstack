@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::protocols::ipv4::Ipv4Endpoint;
-use ::runtime::{fail::Fail, memory::MemoryRuntime, queue::IoQueueDescriptor};
+use ::runtime::{fail::Fail, memory::MemoryRuntime, QDesc};
 use std::fmt;
 
 //==============================================================================
@@ -11,7 +11,7 @@ use std::fmt;
 
 pub enum OperationResult<RT: MemoryRuntime> {
     Connect,
-    Accept(IoQueueDescriptor),
+    Accept(QDesc),
     Push,
     Pop(Option<Ipv4Endpoint>, RT::Buf),
     Failed(Fail),

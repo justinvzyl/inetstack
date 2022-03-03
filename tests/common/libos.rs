@@ -2,9 +2,10 @@
 // Licensed under the MIT license.
 
 use super::runtime::DummyRuntime;
-use ::catnip::libos::LibOS;
+use ::catnip::Catnip;
 use ::crossbeam_channel::{Receiver, Sender};
 use ::runtime::{
+    logging,
     memory::{Bytes, BytesMut, MemoryRuntime},
     network::types::MacAddress,
     types::dmtr_sgarray_t,
@@ -25,15 +26,15 @@ impl DummyLibOS {
         tx: Sender<Bytes>,
         rx: Receiver<Bytes>,
         arp: HashMap<Ipv4Addr, MacAddress>,
-    ) -> LibOS<DummyRuntime> {
+    ) -> Catnip<DummyRuntime> {
         let now = Instant::now();
         let rt = DummyRuntime::new(now, link_addr, ipv4_addr, rx, tx, arp);
-        ::runtime::logging::initialize();
-        LibOS::new(rt).unwrap()
+        logging::initialize();
+        Catnip::new(rt).unwrap()
     }
 
     /// Cooks a SGA buffer.
-    pub fn cook_data(libos: &mut LibOS<DummyRuntime>, size: usize) -> dmtr_sgarray_t {
+    pub fn cook_data(libos: &mut Catnip<DummyRuntime>, size: usize) -> dmtr_sgarray_t {
         let fill_char = b'a';
 
         let mut buf = BytesMut::zeroed(size).unwrap();

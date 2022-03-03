@@ -4,7 +4,7 @@
 use super::peer::{Inner, TcpPeer};
 use crate::operations::OperationResult;
 use ::catwalk::FutureResult;
-use ::runtime::{fail::Fail, queue::IoQueueDescriptor, Runtime};
+use ::runtime::{fail::Fail, QDesc, Runtime};
 use ::std::{
     cell::RefCell,
     fmt,
@@ -59,7 +59,7 @@ impl<RT: Runtime> Future for TcpOperation<RT> {
 }
 
 impl<RT: Runtime> TcpOperation<RT> {
-    pub fn expect_result(self) -> (IoQueueDescriptor, OperationResult<RT>) {
+    pub fn expect_result(self) -> (QDesc, OperationResult<RT>) {
         use TcpOperation::*;
 
         match self {
@@ -110,7 +110,7 @@ pub enum ConnectFutureState {
 }
 
 pub struct ConnectFuture<RT: Runtime> {
-    pub fd: IoQueueDescriptor,
+    pub fd: QDesc,
     pub state: ConnectFutureState,
     pub inner: Rc<RefCell<Inner<RT>>>,
 }
@@ -137,8 +137,8 @@ impl<RT: Runtime> Future for ConnectFuture<RT> {
 }
 
 pub struct AcceptFuture<RT: Runtime> {
-    pub fd: IoQueueDescriptor,
-    pub newfd: IoQueueDescriptor,
+    pub fd: QDesc,
+    pub newfd: QDesc,
     pub inner: Rc<RefCell<Inner<RT>>>,
 }
 
@@ -149,7 +149,7 @@ impl<RT: Runtime> fmt::Debug for AcceptFuture<RT> {
 }
 
 impl<RT: Runtime> Future for AcceptFuture<RT> {
-    type Output = Result<IoQueueDescriptor, Fail>;
+    type Output = Result<QDesc, Fail>;
 
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
@@ -161,7 +161,7 @@ impl<RT: Runtime> Future for AcceptFuture<RT> {
 }
 
 pub struct PushFuture<RT: Runtime> {
-    pub fd: IoQueueDescriptor,
+    pub fd: QDesc,
     pub err: Option<Fail>,
     pub _marker: std::marker::PhantomData<RT>,
 }
@@ -184,7 +184,7 @@ impl<RT: Runtime> Future for PushFuture<RT> {
 }
 
 pub struct PopFuture<RT: Runtime> {
-    pub fd: IoQueueDescriptor,
+    pub fd: QDesc,
     pub inner: Rc<RefCell<Inner<RT>>>,
 }
 

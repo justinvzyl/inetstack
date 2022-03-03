@@ -19,7 +19,7 @@ use crate::{
 use ::catwalk::SchedulerHandle;
 use ::futures::FutureExt;
 use ::futures::{channel::mpsc, stream::StreamExt};
-use ::runtime::{fail::Fail, network::types::MacAddress, queue::IoQueueDescriptor, Runtime};
+use ::runtime::{fail::Fail, network::types::MacAddress, QDesc, Runtime};
 use ::std::collections::HashMap;
 
 #[cfg(feature = "profiler")]
@@ -44,7 +44,7 @@ pub struct UdpPeer<RT: Runtime> {
     rt: RT,
     arp: ArpPeer<RT>,
 
-    sockets: HashMap<IoQueueDescriptor, UdpSocket>,
+    sockets: HashMap<QDesc, UdpSocket>,
     bound: HashMap<Ipv4Endpoint, SharedListener<RT::Buf>>,
     outgoing: OutgoingSender<RT::Buf>,
 
@@ -87,7 +87,7 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     /// Opens a UDP socket.
-    pub fn do_socket(&mut self, fd: IoQueueDescriptor) {
+    pub fn do_socket(&mut self, fd: QDesc) {
         #[cfg(feature = "profiler")]
         timer!("udp::socket");
 
@@ -106,7 +106,7 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     /// Binds a socket to a local endpoint address.
-    pub fn do_bind(&mut self, fd: IoQueueDescriptor, addr: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn do_bind(&mut self, fd: QDesc, addr: Ipv4Endpoint) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::bind");
 
@@ -135,7 +135,7 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     /// Closes a UDP socket.
-    pub fn do_close(&mut self, fd: IoQueueDescriptor) -> Result<(), Fail> {
+    pub fn do_close(&mut self, fd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::close");
 
@@ -189,12 +189,7 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     /// Pushes data to a remote UDP peer.
-    pub fn do_pushto(
-        &self,
-        fd: IoQueueDescriptor,
-        buf: RT::Buf,
-        to: Ipv4Endpoint,
-    ) -> Result<(), Fail> {
+    pub fn do_pushto(&self, fd: QDesc, buf: RT::Buf, to: Ipv4Endpoint) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::pushto");
 
@@ -240,7 +235,7 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     /// Pops data from a socket.
-    pub fn do_pop(&self, fd: IoQueueDescriptor) -> UdpPopFuture<RT> {
+    pub fn do_pop(&self, fd: QDesc) -> UdpPopFuture<RT> {
         #[cfg(feature = "profiler")]
         timer!("udp::pop");
 

@@ -15,7 +15,7 @@ use crate::protocols::ipv4::Ipv4Endpoint;
 use crate::protocols::tcp::segment::TcpHeader;
 use ::catwalk::SchedulerHandle;
 use ::futures::{channel::mpsc, FutureExt};
-use ::runtime::{fail::Fail, queue::IoQueueDescriptor, Runtime};
+use ::runtime::{fail::Fail, QDesc, Runtime};
 use ::std::{
     rc::Rc,
     task::{Context, Poll},
@@ -31,8 +31,8 @@ pub struct EstablishedSocket<RT: Runtime> {
 impl<RT: Runtime> EstablishedSocket<RT> {
     pub fn new(
         cb: ControlBlock<RT>,
-        fd: IoQueueDescriptor,
-        dead_socket_tx: mpsc::UnboundedSender<IoQueueDescriptor>,
+        fd: QDesc,
+        dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
         let cb = Rc::new(cb);
         let future = background(cb.clone(), fd, dead_socket_tx);

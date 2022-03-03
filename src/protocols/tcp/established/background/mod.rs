@@ -12,15 +12,15 @@ use self::{
 };
 use super::{ControlBlock, State};
 use ::futures::{channel::mpsc, FutureExt};
-use ::runtime::{queue::IoQueueDescriptor, Runtime};
+use ::runtime::{QDesc, Runtime};
 use ::std::{future::Future, rc::Rc};
 
 pub type BackgroundFuture<RT> = impl Future<Output = ()>;
 
 pub fn background<RT: Runtime>(
     cb: Rc<ControlBlock<RT>>,
-    fd: IoQueueDescriptor,
-    _dead_socket_tx: mpsc::UnboundedSender<IoQueueDescriptor>,
+    fd: QDesc,
+    _dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 ) -> BackgroundFuture<RT> {
     async move {
         let acknowledger = acknowledger(cb.clone()).fuse();

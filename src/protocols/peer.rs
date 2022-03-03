@@ -12,7 +12,7 @@ use ::runtime::{fail::Fail, Runtime};
 use ::std::{future::Future, net::Ipv4Addr, time::Duration};
 
 #[cfg(test)]
-use runtime::queue::IoQueueDescriptor;
+use runtime::QDesc;
 
 pub struct Peer<RT: Runtime> {
     rt: RT,
@@ -58,11 +58,11 @@ impl<RT: Runtime> Peer<RT> {
 
 #[cfg(test)]
 impl<RT: Runtime> Peer<RT> {
-    pub fn tcp_mss(&self, fd: IoQueueDescriptor) -> Result<usize, Fail> {
+    pub fn tcp_mss(&self, fd: QDesc) -> Result<usize, Fail> {
         self.tcp.remote_mss(fd)
     }
 
-    pub fn tcp_rto(&self, fd: IoQueueDescriptor) -> Result<Duration, Fail> {
+    pub fn tcp_rto(&self, fd: QDesc) -> Result<Duration, Fail> {
         self.tcp.current_rto(fd)
     }
 }
