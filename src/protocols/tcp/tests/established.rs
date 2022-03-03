@@ -3,7 +3,6 @@
 
 use crate::{
     protocols::{
-        ip::{self},
         ipv4::Ipv4Endpoint,
         tcp::{
             operations::PushFuture,
@@ -32,6 +31,7 @@ use ::std::{
     task::{Context, Poll},
     time::Instant,
 };
+use runtime::network::types::Port16;
 
 //=============================================================================
 
@@ -300,7 +300,7 @@ pub fn test_send_recv_loop() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: ip::Port = ip::Port::try_from(80).unwrap();
+    let listen_port: Port16 = Port16::try_from(80).unwrap();
     let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
@@ -346,7 +346,7 @@ pub fn test_send_recv_round_loop() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: ip::Port = ip::Port::try_from(80).unwrap();
+    let listen_port: Port16 = Port16::try_from(80).unwrap();
     let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
@@ -395,7 +395,7 @@ pub fn test_send_recv_with_delay() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: ip::Port = ip::Port::try_from(80).unwrap();
+    let listen_port: Port16 = Port16::try_from(80).unwrap();
     let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
@@ -482,7 +482,7 @@ fn test_connect_disconnect() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: ip::Port = ip::Port::try_from(80).unwrap();
+    let listen_port: Port16 = Port16::try_from(80).unwrap();
     let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.

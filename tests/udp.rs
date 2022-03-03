@@ -9,10 +9,11 @@
 mod common;
 
 use crate::common::{arp, libos::*, ALICE_IPV4, ALICE_MAC, BOB_IPV4, BOB_MAC, PORT_BASE};
-use ::catnip::protocols::{ip, ipv4::Ipv4Endpoint};
+use ::catnip::protocols::ipv4::Ipv4Endpoint;
 use ::crossbeam_channel::{self};
 use ::libc;
 use ::runtime::{memory::MemoryRuntime, types::dmtr_opcode_t};
+use runtime::network::types::Port16;
 use std::{convert::TryFrom, thread};
 
 //==============================================================================
@@ -26,7 +27,7 @@ fn udp_connect_remote() {
     let (tx, rx) = crossbeam_channel::unbounded();
     let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port = ip::Port::try_from(PORT_BASE).unwrap();
+    let port = Port16::try_from(PORT_BASE).unwrap();
     let local = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Open and close a connection.
@@ -41,7 +42,7 @@ fn udp_connect_loopback() {
     let (tx, rx) = crossbeam_channel::unbounded();
     let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port = ip::Port::try_from(PORT_BASE).unwrap();
+    let port = Port16::try_from(PORT_BASE).unwrap();
     let local = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Open and close a connection.
@@ -61,9 +62,9 @@ fn udp_push_remote() {
     let (alice_tx, alice_rx) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx) = crossbeam_channel::unbounded();
 
-    let bob_port = ip::Port::try_from(PORT_BASE).unwrap();
+    let bob_port = Port16::try_from(PORT_BASE).unwrap();
     let bob_addr = Ipv4Endpoint::new(BOB_IPV4, bob_port);
-    let alice_port = ip::Port::try_from(PORT_BASE).unwrap();
+    let alice_port = Port16::try_from(PORT_BASE).unwrap();
     let alice_addr = Ipv4Endpoint::new(ALICE_IPV4, alice_port);
 
     let alice = thread::spawn(move || {
@@ -132,9 +133,9 @@ fn udp_lookback() {
     let (alice_tx, alice_rx) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx) = crossbeam_channel::unbounded();
 
-    let bob_port = ip::Port::try_from(PORT_BASE).unwrap();
+    let bob_port = Port16::try_from(PORT_BASE).unwrap();
     let bob_addr = Ipv4Endpoint::new(ALICE_IPV4, bob_port);
-    let alice_port = ip::Port::try_from(PORT_BASE).unwrap();
+    let alice_port = Port16::try_from(PORT_BASE).unwrap();
     let alice_addr = Ipv4Endpoint::new(ALICE_IPV4, alice_port);
 
     let alice = thread::spawn(move || {

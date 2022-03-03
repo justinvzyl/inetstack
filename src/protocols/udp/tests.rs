@@ -1,14 +1,11 @@
 // // Copyright (c) Microsoft Corporation.
 // // Licensed under the MIT license.
 
-use crate::{
-    protocols::{ip, ipv4::Ipv4Endpoint},
-    test_helpers,
-};
+use crate::{protocols::ipv4::Ipv4Endpoint, test_helpers};
 use futures::task::{noop_waker_ref, Context};
-use runtime::fail::Fail;
 use runtime::memory::BytesMut;
 use runtime::QDesc;
+use runtime::{fail::Fail, network::types::Port16};
 use std::{
     convert::TryFrom,
     future::Future,
@@ -27,14 +24,14 @@ fn udp_bind_udp_close() {
 
     // Setup Alice.
     let mut alice = test_helpers::new_alice2(now);
-    let alice_port = ip::Port::try_from(80).unwrap();
+    let alice_port = Port16::try_from(80).unwrap();
     let alice_addr = Ipv4Endpoint::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket().unwrap();
     alice.udp_bind(alice_fd, alice_addr).unwrap();
 
     // Setup Bob.
     let mut bob = test_helpers::new_bob2(now);
-    let bob_port = ip::Port::try_from(80).unwrap();
+    let bob_port = Port16::try_from(80).unwrap();
     let bob_addr = Ipv4Endpoint::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket().unwrap();
     bob.udp_bind(bob_fd, bob_addr).unwrap();
@@ -57,14 +54,14 @@ fn udp_push_pop() {
 
     // Setup Alice.
     let mut alice = test_helpers::new_alice2(now);
-    let alice_port = ip::Port::try_from(80).unwrap();
+    let alice_port = Port16::try_from(80).unwrap();
     let alice_addr = Ipv4Endpoint::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket().unwrap();
     alice.udp_bind(alice_fd, alice_addr).unwrap();
 
     // Setup Bob.
     let mut bob = test_helpers::new_bob2(now);
-    let bob_port = ip::Port::try_from(80).unwrap();
+    let bob_port = Port16::try_from(80).unwrap();
     let bob_addr = Ipv4Endpoint::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket().unwrap();
     bob.udp_bind(bob_fd, bob_addr).unwrap();
@@ -103,14 +100,14 @@ fn udp_ping_pong() {
 
     // Setup Alice.
     let mut alice = test_helpers::new_alice2(now);
-    let alice_port = ip::Port::try_from(80).unwrap();
+    let alice_port = Port16::try_from(80).unwrap();
     let alice_addr = Ipv4Endpoint::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket().unwrap();
     alice.udp_bind(alice_fd, alice_addr).unwrap();
 
     // Setup Bob.
     let mut bob = test_helpers::new_bob2(now);
-    let bob_port = ip::Port::try_from(80).unwrap();
+    let bob_port = Port16::try_from(80).unwrap();
     let bob_addr = Ipv4Endpoint::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket().unwrap();
     bob.udp_bind(bob_fd, bob_addr).unwrap();
@@ -176,12 +173,12 @@ fn udp_loop2_bind_udp_close() {
 
     // Alice.
     let mut alice = test_helpers::new_alice2(now);
-    let alice_port = ip::Port::try_from(80).unwrap();
+    let alice_port = Port16::try_from(80).unwrap();
     let alice_addr = Ipv4Endpoint::new(test_helpers::ALICE_IPV4, alice_port);
 
     // Bob.
     let mut bob = test_helpers::new_bob2(now);
-    let bob_port = ip::Port::try_from(80).unwrap();
+    let bob_port = Port16::try_from(80).unwrap();
     let bob_addr = Ipv4Endpoint::new(test_helpers::BOB_IPV4, bob_port);
 
     // Loop.
@@ -221,14 +218,14 @@ fn udp_loop2_push_pop() {
 
     // Setup Alice.
     let mut alice = test_helpers::new_alice2(now);
-    let alice_port = ip::Port::try_from(80).unwrap();
+    let alice_port = Port16::try_from(80).unwrap();
     let alice_addr = Ipv4Endpoint::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket().unwrap();
     alice.udp_bind(alice_fd, alice_addr).unwrap();
 
     // Setup Bob.
     let mut bob = test_helpers::new_bob2(now);
-    let bob_port = ip::Port::try_from(80).unwrap();
+    let bob_port = Port16::try_from(80).unwrap();
     let bob_addr = Ipv4Endpoint::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket().unwrap();
     bob.udp_bind(bob_fd, bob_addr).unwrap();
@@ -277,14 +274,14 @@ fn udp_loop2_ping_pong() {
 
     // Setup Alice.
     let mut alice = test_helpers::new_alice2(now);
-    let alice_port = ip::Port::try_from(80).unwrap();
+    let alice_port = Port16::try_from(80).unwrap();
     let alice_addr = Ipv4Endpoint::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket().unwrap();
     alice.udp_bind(alice_fd, alice_addr).unwrap();
 
     // Setup Bob.
     let mut bob = test_helpers::new_bob2(now);
-    let bob_port = ip::Port::try_from(80).unwrap();
+    let bob_port = Port16::try_from(80).unwrap();
     let bob_addr = Ipv4Endpoint::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket().unwrap();
     bob.udp_bind(bob_fd, bob_addr).unwrap();
@@ -351,7 +348,7 @@ fn udp_bind_address_in_use() {
 
     // Setup Alice.
     let mut alice = test_helpers::new_alice2(now);
-    let alice_port = ip::Port::try_from(80).unwrap();
+    let alice_port = Port16::try_from(80).unwrap();
     let alice_addr = Ipv4Endpoint::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket().unwrap();
     alice.udp_bind(alice_fd, alice_addr).unwrap();
@@ -375,7 +372,7 @@ fn udp_bind_bad_file_descriptor() {
 
     // Setup Alice.
     let mut alice = test_helpers::new_alice2(now);
-    let alice_port = ip::Port::try_from(80).unwrap();
+    let alice_port = Port16::try_from(80).unwrap();
     let alice_addr = Ipv4Endpoint::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = QDesc::try_from(usize::MAX).unwrap();
 
@@ -398,7 +395,7 @@ fn udp_udp_close_bad_file_descriptor() {
     // Setup Alice.
     let mut alice = test_helpers::new_alice2(now);
     let alice_fd: QDesc = alice.udp_socket().unwrap();
-    let alice_port = ip::Port::try_from(80).unwrap();
+    let alice_port = Port16::try_from(80).unwrap();
     let alice_addr = Ipv4Endpoint::new(test_helpers::ALICE_IPV4, alice_port);
     alice.udp_bind(alice_fd, alice_addr).unwrap();
 
@@ -428,14 +425,14 @@ fn udp_pop_not_bound() {
 
     // Setup Alice.
     let mut alice = test_helpers::new_alice2(now);
-    let alice_port = ip::Port::try_from(80).unwrap();
+    let alice_port = Port16::try_from(80).unwrap();
     let alice_addr = Ipv4Endpoint::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket().unwrap();
     alice.udp_bind(alice_fd, alice_addr).unwrap();
 
     // Setup Bob.
     let mut bob = test_helpers::new_bob2(now);
-    let bob_port = ip::Port::try_from(80).unwrap();
+    let bob_port = Port16::try_from(80).unwrap();
     let bob_addr = Ipv4Endpoint::new(test_helpers::BOB_IPV4, bob_port);
     // Bob does not create a socket.
 
@@ -470,14 +467,14 @@ fn udp_push_bad_file_descriptor() {
 
     // Setup Alice.
     let mut alice = test_helpers::new_alice2(now);
-    let alice_port = ip::Port::try_from(80).unwrap();
+    let alice_port = Port16::try_from(80).unwrap();
     let alice_addr = Ipv4Endpoint::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket().unwrap();
     alice.udp_bind(alice_fd, alice_addr).unwrap();
 
     // Setup Bob.
     let mut bob = test_helpers::new_bob2(now);
-    let bob_port = ip::Port::try_from(80).unwrap();
+    let bob_port = Port16::try_from(80).unwrap();
     let bob_addr = Ipv4Endpoint::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket().unwrap();
     bob.udp_bind(bob_fd, bob_addr).unwrap();

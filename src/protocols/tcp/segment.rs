@@ -3,12 +3,15 @@
 
 use crate::protocols::{
     ethernet2::Ethernet2Header,
-    ip,
     ipv4::{Ipv4Header, Ipv4Protocol2},
     tcp::SeqNumber,
 };
 use ::byteorder::{ByteOrder, NetworkEndian, ReadBytesExt};
-use ::runtime::{fail::Fail, memory::Buffer, network::PacketBuf};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    network::{types::Port16, PacketBuf},
+};
 use ::std::{
     convert::{TryFrom, TryInto},
     io::Cursor,
@@ -158,8 +161,8 @@ impl TcpOptions2 {
 
 #[derive(Debug)]
 pub struct TcpHeader {
-    pub src_port: ip::Port,
-    pub dst_port: ip::Port,
+    pub src_port: Port16,
+    pub dst_port: Port16,
     pub seq_num: SeqNumber,
     pub ack_num: SeqNumber,
 
@@ -189,7 +192,7 @@ pub struct TcpHeader {
 }
 
 impl TcpHeader {
-    pub fn new(src_port: ip::Port, dst_port: ip::Port) -> Self {
+    pub fn new(src_port: Port16, dst_port: Port16) -> Self {
         Self {
             src_port,
             dst_port,
@@ -241,8 +244,8 @@ impl TcpHeader {
         }
         let (hdr_buf, data_buf) = buf[..].split_at(data_offset);
 
-        let src_port = ip::Port::try_from(NetworkEndian::read_u16(&hdr_buf[0..2]))?;
-        let dst_port = ip::Port::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
+        let src_port = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[0..2]))?;
+        let dst_port = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
 
         let seq_num = SeqNumber::from(NetworkEndian::read_u32(&hdr_buf[4..8]));
         let ack_num = SeqNumber::from(NetworkEndian::read_u32(&hdr_buf[8..12]));

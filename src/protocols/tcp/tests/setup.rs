@@ -4,7 +4,6 @@
 use crate::{
     protocols::{
         ethernet2::{EtherType2, Ethernet2Header},
-        ip::{self, Port},
         ipv4::{Ipv4Endpoint, Ipv4Header},
         tcp::{
             operations::{AcceptFuture, ConnectFuture},
@@ -19,14 +18,17 @@ use ::runtime::{
     fail::Fail,
     memory::Buffer,
     memory::{Bytes, BytesMut, MemoryRuntime},
-    network::{types::MacAddress, NetworkRuntime, PacketBuf},
+    network::{
+        types::MacAddress,
+        types::{Ipv4Addr, Port16},
+        NetworkRuntime, PacketBuf,
+    },
     task::SchedulerRuntime,
     QDesc,
 };
 use ::std::{
     convert::TryFrom,
     future::Future,
-    net::Ipv4Addr,
     pin::Pin,
     task::{Context, Poll},
     time::{Duration, Instant},
@@ -42,7 +44,7 @@ fn test_connection_timeout() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: ip::Port = ip::Port::try_from(80).unwrap();
+    let listen_port: Port16 = Port16::try_from(80).unwrap();
     let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup client.
@@ -90,7 +92,7 @@ fn test_refuse_connection_early_rst() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: ip::Port = ip::Port::try_from(80).unwrap();
+    let listen_port: Port16 = Port16::try_from(80).unwrap();
     let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
@@ -161,7 +163,7 @@ fn test_refuse_connection_early_ack() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: ip::Port = ip::Port::try_from(80).unwrap();
+    let listen_port: Port16 = Port16::try_from(80).unwrap();
     let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
@@ -232,7 +234,7 @@ fn test_refuse_connection_missing_syn() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: ip::Port = ip::Port::try_from(80).unwrap();
+    let listen_port: Port16 = Port16::try_from(80).unwrap();
     let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
@@ -393,7 +395,7 @@ fn check_packet_pure_syn(
     eth2_dst_addr: MacAddress,
     ipv4_src_addr: Ipv4Addr,
     ipv4_dst_addr: Ipv4Addr,
-    dst_port: Port,
+    dst_port: Port16,
 ) {
     let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
     assert_eq!(eth2_header.src_addr(), eth2_src_addr);
@@ -416,7 +418,7 @@ fn check_packet_syn_ack(
     eth2_dst_addr: MacAddress,
     ipv4_src_addr: Ipv4Addr,
     ipv4_dst_addr: Ipv4Addr,
-    src_port: Port,
+    src_port: Port16,
 ) {
     let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
     assert_eq!(eth2_header.src_addr(), eth2_src_addr);
@@ -442,7 +444,7 @@ fn check_packet_pure_ack_on_syn_ack(
     eth2_dst_addr: MacAddress,
     ipv4_src_addr: Ipv4Addr,
     ipv4_dst_addr: Ipv4Addr,
-    dst_port: Port,
+    dst_port: Port16,
 ) {
     let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
     assert_eq!(eth2_header.src_addr(), eth2_src_addr);
@@ -479,7 +481,7 @@ pub fn connection_setup(
     now: &mut Instant,
     server: &mut Engine<TestRuntime>,
     client: &mut Engine<TestRuntime>,
-    listen_port: ip::Port,
+    listen_port: Port16,
     listen_addr: Ipv4Endpoint,
 ) -> (QDesc, QDesc) {
     // Server: LISTEN state at T(0).
@@ -561,7 +563,7 @@ fn test_good_connect() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: ip::Port = ip::Port::try_from(80).unwrap();
+    let listen_port: Port16 = Port16::try_from(80).unwrap();
     let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
