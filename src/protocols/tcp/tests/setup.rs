@@ -20,8 +20,8 @@ use ::runtime::{
     memory::Buffer,
     memory::{Bytes, BytesMut, MemoryRuntime},
     network::{types::MacAddress, NetworkRuntime, PacketBuf},
-    queue::IoQueueDescriptor,
     task::SchedulerRuntime,
+    QDesc,
 };
 use ::std::{
     convert::TryFrom,
@@ -54,7 +54,7 @@ fn test_connection_timeout() {
     advance_clock(None, Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, mut connect_future, bytes): (IoQueueDescriptor, ConnectFuture<TestRuntime>, Bytes) =
+    let (_, mut connect_future, bytes): (QDesc, ConnectFuture<TestRuntime>, Bytes) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Sanity check packet.
@@ -104,7 +104,7 @@ fn test_refuse_connection_early_rst() {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (IoQueueDescriptor, ConnectFuture<TestRuntime>, Bytes) =
+    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Bytes) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Temper packet.
@@ -175,7 +175,7 @@ fn test_refuse_connection_early_ack() {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (IoQueueDescriptor, ConnectFuture<TestRuntime>, Bytes) =
+    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Bytes) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Temper packet.
@@ -246,7 +246,7 @@ fn test_refuse_connection_missing_syn() {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (IoQueueDescriptor, ConnectFuture<TestRuntime>, Bytes) =
+    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Bytes) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Sanity check packet.
@@ -335,9 +335,9 @@ fn serialize_segment(pkt: TcpSegment<Bytes>) -> Bytes {
 fn connection_setup_listen_syn_sent(
     client: &mut Engine<TestRuntime>,
     listen_addr: Ipv4Endpoint,
-) -> (IoQueueDescriptor, ConnectFuture<TestRuntime>, Bytes) {
+) -> (QDesc, ConnectFuture<TestRuntime>, Bytes) {
     // Issue CONNECT operation.
-    let client_fd: IoQueueDescriptor = client.tcp_socket().unwrap();
+    let client_fd: QDesc = client.tcp_socket().unwrap();
     let connect_future: ConnectFuture<TestRuntime> = client.tcp_connect(client_fd, listen_addr);
 
     // SYN_SENT state.
@@ -353,7 +353,7 @@ fn connection_setup_closed_listen(
     listen_addr: Ipv4Endpoint,
 ) -> AcceptFuture<TestRuntime> {
     // Issue ACCEPT operation.
-    let socket_fd: IoQueueDescriptor = server.tcp_socket().unwrap();
+    let socket_fd: QDesc = server.tcp_socket().unwrap();
     server.tcp_bind(socket_fd, listen_addr).unwrap();
     server.tcp_listen(socket_fd, 1).unwrap();
     let accept_future: AcceptFuture<TestRuntime> = server.tcp_accept(socket_fd);
@@ -481,7 +481,7 @@ pub fn connection_setup(
     client: &mut Engine<TestRuntime>,
     listen_port: ip::Port,
     listen_addr: Ipv4Endpoint,
-) -> (IoQueueDescriptor, IoQueueDescriptor) {
+) -> (QDesc, QDesc) {
     // Server: LISTEN state at T(0).
     let mut accept_future: AcceptFuture<TestRuntime> =
         connection_setup_closed_listen(server, listen_addr);
@@ -490,11 +490,8 @@ pub fn connection_setup(
     advance_clock(Some(server), Some(client), now);
 
     // Client: SYN_SENT state at T(1).
-    let (client_fd, mut connect_future, mut bytes): (
-        IoQueueDescriptor,
-        ConnectFuture<TestRuntime>,
-        Bytes,
-    ) = connection_setup_listen_syn_sent(client, listen_addr);
+    let (client_fd, mut connect_future, mut bytes): (QDesc, ConnectFuture<TestRuntime>, Bytes) =
+        connection_setup_listen_syn_sent(client, listen_addr);
 
     // Sanity check packet.
     check_packet_pure_syn(
@@ -571,7 +568,7 @@ fn test_good_connect() {
     let mut server = test_helpers::new_bob2(now);
     let mut client = test_helpers::new_alice2(now);
 
-    let (_, _): (IoQueueDescriptor, IoQueueDescriptor) = connection_setup(
+    let (_, _): (QDesc, QDesc) = connection_setup(
         &mut ctx,
         &mut now,
         &mut server,

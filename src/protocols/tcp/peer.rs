@@ -17,7 +17,7 @@ use crate::protocols::{
     },
 };
 use ::futures::channel::mpsc;
-use ::runtime::{fail::Fail, memory::Buffer, queue::IoQueueDescriptor, Runtime};
+use ::runtime::{fail::Fail, memory::Buffer, QDesc, Runtime};
 use ::std::{
     cell::RefCell,
     collections::HashMap,
@@ -52,7 +52,7 @@ pub struct Inner<RT: Runtime> {
     ephemeral_ports: EphemeralPorts,
 
     // FD -> local port
-    sockets: HashMap<IoQueueDescriptor, Socket>,
+    sockets: HashMap<QDesc, Socket>,
 
     passive: HashMap<Ipv4Endpoint, PassiveSocket<RT>>,
     connecting: HashMap<(Ipv4Endpoint, Ipv4Endpoint), ActiveOpenSocket<RT>>,
@@ -61,7 +61,7 @@ pub struct Inner<RT: Runtime> {
     rt: RT,
     arp: ArpPeer<RT>,
 
-    dead_socket_tx: mpsc::UnboundedSender<IoQueueDescriptor>,
+    dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
 pub struct TcpPeer<RT: Runtime> {
@@ -76,7 +76,7 @@ impl<RT: Runtime> TcpPeer<RT> {
     }
 
     /// Opens a TCP socket.
-    pub fn do_socket(&self, fd: IoQueueDescriptor) {
+    pub fn do_socket(&self, fd: QDesc) {
         #[cfg(feature = "profiler")]
         timer!("tcp::socket");
 
@@ -93,7 +93,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         inner.sockets.insert(fd, socket);
     }
 
-    pub fn bind(&self, fd: IoQueueDescriptor, addr: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn bind(&self, fd: QDesc, addr: Ipv4Endpoint) -> Result<(), Fail> {
         let mut inner = self.inner.borrow_mut();
         if addr.get_port() >= ip::Port::first_private_port() {
             return Err(Fail::Malformed {
@@ -115,7 +115,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         self.inner.borrow_mut().receive(ip_header, buf)
     }
 
-    pub fn listen(&self, fd: IoQueueDescriptor, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&self, fd: QDesc, backlog: usize) -> Result<(), Fail> {
         let mut inner = self.inner.borrow_mut();
         let local = match inner.sockets.get_mut(&fd) {
             Some(Socket::Inactive { local: Some(local) }) => *local,
@@ -139,7 +139,7 @@ impl<RT: Runtime> TcpPeer<RT> {
     }
 
     /// Accepts an incoming connection.
-    pub fn do_accept(&self, fd: IoQueueDescriptor, newfd: IoQueueDescriptor) -> AcceptFuture<RT> {
+    pub fn do_accept(&self, fd: QDesc, newfd: QDesc) -> AcceptFuture<RT> {
         AcceptFuture {
             fd,
             newfd,
@@ -150,10 +150,10 @@ impl<RT: Runtime> TcpPeer<RT> {
     /// Handles an incoming connection.
     pub fn poll_accept(
         &self,
-        fd: IoQueueDescriptor,
-        newfd: IoQueueDescriptor,
+        fd: QDesc,
+        newfd: QDesc,
         ctx: &mut Context,
-    ) -> Poll<Result<IoQueueDescriptor, Fail>> {
+    ) -> Poll<Result<QDesc, Fail>> {
         let mut inner_ = self.inner.borrow_mut();
         let inner = &mut *inner_;
 
@@ -188,7 +188,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         Poll::Ready(Ok(newfd))
     }
 
-    pub fn connect(&self, fd: IoQueueDescriptor, remote: Ipv4Endpoint) -> ConnectFuture<RT> {
+    pub fn connect(&self, fd: QDesc, remote: Ipv4Endpoint) -> ConnectFuture<RT> {
         let mut inner = self.inner.borrow_mut();
 
         let r = try {
@@ -229,11 +229,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    pub fn poll_recv(
-        &self,
-        fd: IoQueueDescriptor,
-        ctx: &mut Context,
-    ) -> Poll<Result<RT::Buf, Fail>> {
+    pub fn poll_recv(&self, fd: QDesc, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -262,7 +258,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    pub fn push(&self, fd: IoQueueDescriptor, buf: RT::Buf) -> PushFuture<RT> {
+    pub fn push(&self, fd: QDesc, buf: RT::Buf) -> PushFuture<RT> {
         let err = match self.send(fd, buf) {
             Ok(()) => None,
             Err(e) => Some(e),
@@ -274,14 +270,14 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    pub fn pop(&self, fd: IoQueueDescriptor) -> PopFuture<RT> {
+    pub fn pop(&self, fd: QDesc) -> PopFuture<RT> {
         PopFuture {
             fd,
             inner: self.inner.clone(),
         }
     }
 
-    fn send(&self, fd: IoQueueDescriptor, buf: RT::Buf) -> Result<(), Fail> {
+    fn send(&self, fd: QDesc, buf: RT::Buf) -> Result<(), Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -301,7 +297,7 @@ impl<RT: Runtime> TcpPeer<RT> {
     }
 
     /// Closes a TCP socket.
-    pub fn do_close(&self, fd: IoQueueDescriptor) -> Result<(), Fail> {
+    pub fn do_close(&self, fd: QDesc) -> Result<(), Fail> {
         let inner = self.inner.borrow_mut();
 
         match inner.sockets.get(&fd) {
@@ -328,7 +324,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         Ok(())
     }
 
-    pub fn remote_mss(&self, fd: IoQueueDescriptor) -> Result<usize, Fail> {
+    pub fn remote_mss(&self, fd: QDesc) -> Result<usize, Fail> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -347,7 +343,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    pub fn current_rto(&self, fd: IoQueueDescriptor) -> Result<Duration, Fail> {
+    pub fn current_rto(&self, fd: QDesc) -> Result<Duration, Fail> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -366,7 +362,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    pub fn endpoints(&self, fd: IoQueueDescriptor) -> Result<(Ipv4Endpoint, Ipv4Endpoint), Fail> {
+    pub fn endpoints(&self, fd: QDesc) -> Result<(Ipv4Endpoint, Ipv4Endpoint), Fail> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -390,8 +386,8 @@ impl<RT: Runtime> Inner<RT> {
     fn new(
         rt: RT,
         arp: ArpPeer<RT>,
-        dead_socket_tx: mpsc::UnboundedSender<IoQueueDescriptor>,
-        _dead_socket_rx: mpsc::UnboundedReceiver<IoQueueDescriptor>,
+        dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+        _dead_socket_rx: mpsc::UnboundedReceiver<QDesc>,
     ) -> Self {
         Self {
             isn_generator: IsnGenerator::new(rt.rng_gen()),
@@ -479,7 +475,7 @@ impl<RT: Runtime> Inner<RT> {
 
     pub(super) fn poll_connect_finished(
         &mut self,
-        fd: IoQueueDescriptor,
+        fd: QDesc,
         context: &mut Context,
     ) -> Poll<Result<(), Fail>> {
         let key = match self.sockets.get(&fd) {

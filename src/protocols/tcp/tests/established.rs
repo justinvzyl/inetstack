@@ -22,7 +22,7 @@ use ::rand;
 use ::runtime::{
     memory::{Bytes, BytesMut},
     network::NetworkRuntime,
-    queue::IoQueueDescriptor,
+    QDesc,
 };
 use ::std::{
     collections::VecDeque,
@@ -51,7 +51,7 @@ fn send_data(
     now: &mut Instant,
     receiver: &mut Engine<TestRuntime>,
     sender: &mut Engine<TestRuntime>,
-    sender_fd: IoQueueDescriptor,
+    sender_fd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
     ack_num: Option<SeqNumber>,
@@ -98,7 +98,7 @@ fn recv_data(
     ctx: &mut Context,
     receiver: &mut Engine<TestRuntime>,
     sender: &mut Engine<TestRuntime>,
-    receiver_fd: IoQueueDescriptor,
+    receiver_fd: QDesc,
     bytes: Bytes,
 ) {
     trace!(
@@ -162,8 +162,8 @@ fn send_recv(
     now: &mut Instant,
     server: &mut Engine<TestRuntime>,
     client: &mut Engine<TestRuntime>,
-    server_fd: IoQueueDescriptor,
-    client_fd: IoQueueDescriptor,
+    server_fd: QDesc,
+    client_fd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
     bytes: Bytes,
@@ -203,8 +203,8 @@ fn send_recv_round(
     now: &mut Instant,
     server: &mut Engine<TestRuntime>,
     client: &mut Engine<TestRuntime>,
-    server_fd: IoQueueDescriptor,
-    client_fd: IoQueueDescriptor,
+    server_fd: QDesc,
+    client_fd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
     bytes: Bytes,
@@ -250,8 +250,8 @@ fn connection_hangup(
     now: &mut Instant,
     server: &mut Engine<TestRuntime>,
     client: &mut Engine<TestRuntime>,
-    server_fd: IoQueueDescriptor,
-    client_fd: IoQueueDescriptor,
+    server_fd: QDesc,
+    client_fd: QDesc,
 ) {
     // Send FIN: Client -> Server
     client.tcp_close(client_fd).unwrap();
@@ -311,7 +311,7 @@ pub fn test_send_recv_loop() {
         .checked_shl(window_scale as u32)
         .unwrap();
 
-    let (server_fd, client_fd): (IoQueueDescriptor, IoQueueDescriptor) = connection_setup(
+    let (server_fd, client_fd): (QDesc, QDesc) = connection_setup(
         &mut ctx,
         &mut now,
         &mut server,
@@ -357,7 +357,7 @@ pub fn test_send_recv_round_loop() {
         .checked_shl(window_scale as u32)
         .unwrap();
 
-    let (server_fd, client_fd): (IoQueueDescriptor, IoQueueDescriptor) = connection_setup(
+    let (server_fd, client_fd): (QDesc, QDesc) = connection_setup(
         &mut ctx,
         &mut now,
         &mut server,
@@ -406,7 +406,7 @@ pub fn test_send_recv_with_delay() {
         .checked_shl(window_scale as u32)
         .unwrap();
 
-    let (server_fd, client_fd): (IoQueueDescriptor, IoQueueDescriptor) = connection_setup(
+    let (server_fd, client_fd): (QDesc, QDesc) = connection_setup(
         &mut ctx,
         &mut now,
         &mut server,
@@ -489,7 +489,7 @@ fn test_connect_disconnect() {
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
     let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
 
-    let (server_fd, client_fd): (IoQueueDescriptor, IoQueueDescriptor) = connection_setup(
+    let (server_fd, client_fd): (QDesc, QDesc) = connection_setup(
         &mut ctx,
         &mut now,
         &mut server,

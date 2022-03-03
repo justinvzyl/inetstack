@@ -3,16 +3,15 @@
 
 use crate::operations::OperationResult;
 use ::runtime::{
-    queue::IoQueueDescriptor,
     types::{dmtr_accept_result_t, dmtr_opcode_t, dmtr_qr_value_t, dmtr_qresult_t},
-    Runtime,
+    QDesc, Runtime,
 };
 use ::std::mem;
 
 pub fn pack_result<RT: Runtime>(
     rt: &RT,
     result: OperationResult<RT>,
-    qd: IoQueueDescriptor,
+    qd: QDesc,
     qt: u64,
 ) -> dmtr_qresult_t {
     match result {

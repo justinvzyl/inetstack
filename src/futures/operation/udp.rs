@@ -3,7 +3,7 @@
 
 use crate::{operations::OperationResult, protocols::udp::UdpPopFuture};
 use ::catwalk::FutureResult;
-use ::runtime::{fail::Fail, memory::MemoryRuntime, queue::IoQueueDescriptor};
+use ::runtime::{fail::Fail, memory::MemoryRuntime, QDesc};
 use ::std::{
     future::Future,
     pin::Pin,
@@ -16,8 +16,8 @@ use ::std::{
 
 /// Operations on UDP Layer
 pub enum UdpOperation<RT: MemoryRuntime> {
-    Connect(IoQueueDescriptor, Result<(), Fail>),
-    Push(IoQueueDescriptor, Result<(), Fail>),
+    Connect(QDesc, Result<(), Fail>),
+    Push(QDesc, Result<(), Fail>),
     Pop(FutureResult<UdpPopFuture<RT>>),
 }
 
@@ -26,7 +26,7 @@ pub enum UdpOperation<RT: MemoryRuntime> {
 //==============================================================================
 
 impl<RT: MemoryRuntime> UdpOperation<RT> {
-    pub fn expect_result(self) -> (IoQueueDescriptor, OperationResult<RT>) {
+    pub fn expect_result(self) -> (QDesc, OperationResult<RT>) {
         match self {
             UdpOperation::Push(fd, Err(e)) | UdpOperation::Connect(fd, Err(e)) => {
                 (fd, OperationResult::Failed(e))

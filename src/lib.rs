@@ -37,11 +37,11 @@ use ::catwalk::{FutureResult, SchedulerHandle};
 use ::libc::c_int;
 use ::runtime::{
     fail::Fail,
-    queue::{IoQueueDescriptor, IoQueueTable, IoQueueType},
+    queue::IoQueueTable,
     types::{dmtr_qresult_t, dmtr_sgarray_t},
-    Runtime,
+    QDesc, QToken, QType, Runtime,
 };
-use ::std::{any::Any, time::Instant};
+use ::std::{any::Any, convert::TryFrom, time::Instant};
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
@@ -66,9 +66,6 @@ pub mod protocols;
 
 const TIMER_RESOLUTION: usize = 64;
 const MAX_RECV_ITERS: usize = 2;
-
-/// Queue Token for our IO Queue abstraction. Analogous to a file descriptor in POSIX.
-pub type QToken = u64;
 
 pub struct Catnip<RT: Runtime> {
     arp: ArpPeer<RT>,
@@ -121,7 +118,7 @@ impl<RT: Runtime> Catnip<RT> {
         domain: c_int,
         socket_type: c_int,
         _protocol: c_int,
-    ) -> Result<IoQueueDescriptor, Fail> {
+    ) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::socket");
         trace!(
@@ -135,12 +132,12 @@ impl<RT: Runtime> Catnip<RT> {
         }
         match socket_type {
             libc::SOCK_STREAM => {
-                let qd = self.file_table.alloc(IoQueueType::TcpSocket);
+                let qd = self.file_table.alloc(QType::TcpSocket.into());
                 self.ipv4.tcp.do_socket(qd);
                 Ok(qd)
             }
             libc::SOCK_DGRAM => {
-                let qd = self.file_table.alloc(IoQueueType::UdpSocket);
+                let qd = self.file_table.alloc(QType::UdpSocket.into());
                 self.ipv4.udp.do_socket(qd);
                 Ok(qd)
             }
@@ -159,13 +156,16 @@ impl<RT: Runtime> Catnip<RT> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn bind(&mut self, fd: IoQueueDescriptor, local: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn bind(&mut self, fd: QDesc, local: Ipv4Endpoint) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::bind");
         trace!("bind(): fd={:?} local={:?}", fd, local);
         match self.file_table.get(fd) {
-            Some(IoQueueType::TcpSocket) => self.ipv4.tcp.bind(fd, local),
-            Some(IoQueueType::UdpSocket) => self.ipv4.udp.do_bind(fd, local),
+            Some(qtype) => match QType::try_from(qtype) {
+                Ok(QType::TcpSocket) => self.ipv4.tcp.bind(fd, local),
+                Ok(QType::UdpSocket) => self.ipv4.udp.do_bind(fd, local),
+                _ => Err(Fail::BadFileDescriptor {}),
+            },
             _ => Err(Fail::BadFileDescriptor {}),
         }
     }
@@ -186,7 +186,7 @@ impl<RT: Runtime> Catnip<RT> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn listen(&mut self, fd: IoQueueDescriptor, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, fd: QDesc, backlog: usize) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::listen");
         trace!("listen(): fd={:?} backlog={:?}", fd, backlog);
@@ -196,7 +196,10 @@ impl<RT: Runtime> Catnip<RT> {
             });
         }
         match self.file_table.get(fd) {
-            Some(IoQueueType::TcpSocket) => self.ipv4.tcp.listen(fd, backlog),
+            Some(qtype) => match QType::try_from(qtype) {
+                Ok(QType::TcpSocket) => self.ipv4.tcp.listen(fd, backlog),
+                _ => Err(Fail::BadFileDescriptor {}),
+            },
             _ => Err(Fail::BadFileDescriptor {}),
         }
     }
@@ -213,19 +216,22 @@ impl<RT: Runtime> Catnip<RT> {
     /// used to wait for a connection request to arrive. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn accept(&mut self, fd: IoQueueDescriptor) -> Result<QToken, Fail> {
+    pub fn accept(&mut self, fd: QDesc) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::accept");
         trace!("accept(): {:?}", fd);
         let r = match self.file_table.get(fd) {
-            Some(IoQueueType::TcpSocket) => {
-                let newfd = self.file_table.alloc(IoQueueType::TcpSocket);
-                Ok(FutureOperation::from(self.ipv4.tcp.do_accept(fd, newfd)))
-            }
+            Some(qtype) => match QType::try_from(qtype) {
+                Ok(QType::TcpSocket) => {
+                    let newfd = self.file_table.alloc(QType::TcpSocket.into());
+                    Ok(FutureOperation::from(self.ipv4.tcp.do_accept(fd, newfd)))
+                }
+                _ => Err(Fail::BadFileDescriptor {}),
+            },
             _ => Err(Fail::BadFileDescriptor {}),
         };
         match r {
-            Ok(future) => Ok(self.rt.schedule(future).into_raw()),
+            Ok(future) => Ok(self.rt.schedule(future).into_raw().into()),
             Err(fail) => Err(fail),
         }
     }
@@ -242,18 +248,21 @@ impl<RT: Runtime> Catnip<RT> {
     /// remote endpoints. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn connect(&mut self, fd: IoQueueDescriptor, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, fd: QDesc, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::connect");
         trace!("connect(): fd={:?} remote={:?}", fd, remote);
         let future = match self.file_table.get(fd) {
-            Some(IoQueueType::TcpSocket) => {
-                Ok(FutureOperation::from(self.ipv4.tcp.connect(fd, remote)))
-            }
+            Some(qtype) => match QType::try_from(qtype) {
+                Ok(QType::TcpSocket) => {
+                    Ok(FutureOperation::from(self.ipv4.tcp.connect(fd, remote)))
+                }
+                _ => Err(Fail::BadFileDescriptor {}),
+            },
             _ => Err(Fail::BadFileDescriptor {}),
         }?;
 
-        Ok(self.rt.schedule(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw().into())
     }
 
     ///
@@ -266,21 +275,18 @@ impl<RT: Runtime> Catnip<RT> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn close(&mut self, fd: IoQueueDescriptor) -> Result<(), Fail> {
+    pub fn close(&mut self, fd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::close");
         trace!("close(): fd={:?}", fd);
 
         match self.file_table.get(fd) {
-            Some(IoQueueType::TcpSocket) => {
-                self.ipv4.tcp.do_close(fd)?;
-            }
-            Some(IoQueueType::UdpSocket) => {
-                self.ipv4.udp.do_close(fd)?;
-            }
-            _ => {
-                return Err(Fail::BadFileDescriptor {});
-            }
+            Some(qtype) => match QType::try_from(qtype) {
+                Ok(QType::TcpSocket) => self.ipv4.tcp.do_close(fd)?,
+                Ok(QType::UdpSocket) => self.ipv4.udp.do_close(fd)?,
+                _ => return Err(Fail::BadFileDescriptor {}),
+            },
+            _ => return Err(Fail::BadFileDescriptor {}),
         }
 
         self.file_table.free(fd);
@@ -288,13 +294,12 @@ impl<RT: Runtime> Catnip<RT> {
         Ok(())
     }
 
-    fn do_push(
-        &mut self,
-        fd: IoQueueDescriptor,
-        buf: RT::Buf,
-    ) -> Result<FutureOperation<RT>, Fail> {
+    fn do_push(&mut self, fd: QDesc, buf: RT::Buf) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(fd) {
-            Some(IoQueueType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.push(fd, buf))),
+            Some(qtype) => match QType::try_from(qtype) {
+                Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.push(fd, buf))),
+                _ => Err(Fail::BadFileDescriptor {}),
+            },
             _ => Err(Fail::BadFileDescriptor {}),
         }
     }
@@ -302,7 +307,7 @@ impl<RT: Runtime> Catnip<RT> {
     /// Create a push request for Demikernel to asynchronously write data from `sga` to the
     /// IO connection represented by `fd`. This operation returns immediately with a `QToken`.
     /// The data has been written when [`wait`ing](Self::wait) on the QToken returns.
-    pub fn push(&mut self, fd: IoQueueDescriptor, sga: &dmtr_sgarray_t) -> Result<QToken, Fail> {
+    pub fn push(&mut self, fd: QDesc, sga: &dmtr_sgarray_t) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::push");
         trace!("push(): fd={:?}", fd);
@@ -313,12 +318,12 @@ impl<RT: Runtime> Catnip<RT> {
             });
         }
         let future = self.do_push(fd, buf)?;
-        Ok(self.rt.schedule(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw().into())
     }
 
     /// Similar to [push](Self::push) but uses a [Runtime]-specific buffer instead of the
     /// [dmtr_sgarray_t].
-    pub fn push2(&mut self, fd: IoQueueDescriptor, buf: RT::Buf) -> Result<QToken, Fail> {
+    pub fn push2(&mut self, fd: QDesc, buf: RT::Buf) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::push2");
         trace!("push2(): fd={:?}", fd);
@@ -328,27 +333,30 @@ impl<RT: Runtime> Catnip<RT> {
             });
         }
         let future = self.do_push(fd, buf)?;
-        Ok(self.rt.schedule(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw().into())
     }
 
     fn do_pushto(
         &mut self,
-        fd: IoQueueDescriptor,
+        fd: QDesc,
         buf: RT::Buf,
         to: Ipv4Endpoint,
     ) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(fd) {
-            Some(IoQueueType::UdpSocket) => {
-                let udp_op = UdpOperation::Push(fd, self.ipv4.udp.do_pushto(fd, buf, to));
-                Ok(FutureOperation::Udp(udp_op))
-            }
+            Some(qtype) => match QType::try_from(qtype) {
+                Ok(QType::UdpSocket) => {
+                    let udp_op = UdpOperation::Push(fd, self.ipv4.udp.do_pushto(fd, buf, to));
+                    Ok(FutureOperation::Udp(udp_op))
+                }
+                _ => Err(Fail::BadFileDescriptor {}),
+            },
             _ => Err(Fail::BadFileDescriptor {}),
         }
     }
 
     pub fn pushto(
         &mut self,
-        fd: IoQueueDescriptor,
+        fd: QDesc,
         sga: &dmtr_sgarray_t,
         to: Ipv4Endpoint,
     ) -> Result<QToken, Fail> {
@@ -361,15 +369,10 @@ impl<RT: Runtime> Catnip<RT> {
             });
         }
         let future = self.do_pushto(fd, buf, to)?;
-        Ok(self.rt.schedule(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw().into())
     }
 
-    pub fn pushto2(
-        &mut self,
-        fd: IoQueueDescriptor,
-        buf: RT::Buf,
-        to: Ipv4Endpoint,
-    ) -> Result<QToken, Fail> {
+    pub fn pushto2(&mut self, fd: QDesc, buf: RT::Buf, to: Ipv4Endpoint) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto2");
         if buf.len() == 0 {
@@ -378,7 +381,7 @@ impl<RT: Runtime> Catnip<RT> {
             });
         }
         let future = self.do_pushto(fd, buf, to)?;
-        Ok(self.rt.schedule(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw().into())
     }
 
     ///
@@ -390,27 +393,31 @@ impl<RT: Runtime> Catnip<RT> {
     pub fn drop_qtoken(&mut self, qt: QToken) {
         #[cfg(feature = "profiler")]
         timer!("catnip::drop_qtoken");
-        drop(self.rt.get_handle(qt).unwrap());
+        drop(self.rt.get_handle(qt.into()).unwrap());
     }
 
     /// Create a pop request to write data from IO connection represented by `fd` into a buffer
     /// allocated by the application.
-    pub fn pop(&mut self, fd: IoQueueDescriptor) -> Result<QToken, Fail> {
+    pub fn pop(&mut self, fd: QDesc) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pop");
 
         trace!("pop(): fd={:?}", fd);
 
         let future = match self.file_table.get(fd) {
-            Some(IoQueueType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.pop(fd))),
-            Some(IoQueueType::UdpSocket) => {
-                let udp_op = UdpOperation::Pop(FutureResult::new(self.ipv4.udp.do_pop(fd), None));
-                Ok(FutureOperation::Udp(udp_op))
-            }
+            Some(qtype) => match QType::try_from(qtype) {
+                Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.pop(fd))),
+                Ok(QType::UdpSocket) => {
+                    let udp_op =
+                        UdpOperation::Pop(FutureResult::new(self.ipv4.udp.do_pop(fd), None));
+                    Ok(FutureOperation::Udp(udp_op))
+                }
+                _ => Err(Fail::BadFileDescriptor {}),
+            },
             _ => Err(Fail::BadFileDescriptor {}),
         }?;
 
-        Ok(self.rt.schedule(future).into_raw())
+        Ok(self.rt.schedule(future).into_raw().into())
     }
 
     // If this returns a result, `qt` is no longer valid.
@@ -419,7 +426,7 @@ impl<RT: Runtime> Catnip<RT> {
         timer!("catnip::poll");
         trace!("poll(): qt={:?}", qt);
         self.poll_bg_work();
-        let handle = match self.rt.get_handle(qt) {
+        let handle = match self.rt.get_handle(qt.into()) {
             None => {
                 panic!("Invalid handle {}", qt);
             }
@@ -430,7 +437,7 @@ impl<RT: Runtime> Catnip<RT> {
             return None;
         }
         let (qd, r) = self.take_operation(handle);
-        Some(pack_result(&self.rt, r, qd, qt))
+        Some(pack_result(&self.rt, r, qd, qt.into()))
     }
 
     /// Block until request represented by `qt` is finished returning the results of this request.
@@ -439,16 +446,16 @@ impl<RT: Runtime> Catnip<RT> {
         timer!("catnip::wait");
         trace!("wait(): qt={:?}", qt);
         let (qd, result) = self.wait2(qt);
-        pack_result(&self.rt, result, qd, qt)
+        pack_result(&self.rt, result, qd, qt.into())
     }
 
     /// Block until request represented by `qt` is finished returning the file descriptor
     /// representing this request and the results of that operation.
-    pub fn wait2(&mut self, qt: QToken) -> (IoQueueDescriptor, OperationResult<RT>) {
+    pub fn wait2(&mut self, qt: QToken) -> (QDesc, OperationResult<RT>) {
         #[cfg(feature = "profiler")]
         timer!("catnip::wait2");
         trace!("wait2(): qt={:?}", qt);
-        let handle = self.rt.get_handle(qt).unwrap();
+        let handle = self.rt.get_handle(qt.into()).unwrap();
 
         // Continously call the scheduler to make progress until the future represented by `qt`
         // finishes.
@@ -466,7 +473,7 @@ impl<RT: Runtime> Catnip<RT> {
         trace!("wait_all_pushes(): qts={:?}", qts);
         self.poll_bg_work();
         for qt in qts.drain(..) {
-            let handle = self.rt.get_handle(qt).unwrap();
+            let handle = self.rt.get_handle(qt.into()).unwrap();
             // TODO I don't understand what guarantees that this task will be done by the time we
             // get here and make this assert true.
             assert!(handle.has_completed());
@@ -489,24 +496,24 @@ impl<RT: Runtime> Catnip<RT> {
         loop {
             self.poll_bg_work();
             for (i, &qt) in qts.iter().enumerate() {
-                let handle = self.rt.get_handle(qt).unwrap();
+                let handle = self.rt.get_handle(qt.into()).unwrap();
                 if handle.has_completed() {
                     let (qd, r) = self.take_operation(handle);
-                    return (i, pack_result(&self.rt, r, qd, qt));
+                    return (i, pack_result(&self.rt, r, qd, qt.into()));
                 }
                 handle.into_raw();
             }
         }
     }
 
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, IoQueueDescriptor, OperationResult<RT>) {
+    pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<RT>) {
         #[cfg(feature = "profiler")]
         timer!("catnip::wait_any2");
         trace!("wait_any2(): qts={:?}", qts);
         loop {
             self.poll_bg_work();
             for (i, &qt) in qts.iter().enumerate() {
-                let handle = self.rt.get_handle(qt).unwrap();
+                let handle = self.rt.get_handle(qt.into()).unwrap();
                 if handle.has_completed() {
                     let (qd, r) = self.take_operation(handle);
                     return (i, qd, r);
@@ -516,7 +523,7 @@ impl<RT: Runtime> Catnip<RT> {
         }
     }
 
-    pub fn is_qd_valid(&self, _fd: IoQueueDescriptor) -> bool {
+    pub fn is_qd_valid(&self, _fd: QDesc) -> bool {
         true
     }
 
@@ -524,10 +531,7 @@ impl<RT: Runtime> Catnip<RT> {
     /// and the file descriptor for this connection.
     ///
     /// This function will panic if the specified future had not completed or is _background_ future.
-    fn take_operation(
-        &mut self,
-        handle: SchedulerHandle,
-    ) -> (IoQueueDescriptor, OperationResult<RT>) {
+    fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult<RT>) {
         let boxed_future: Box<dyn Any> = self.rt.take(handle).as_any();
 
         let boxed_concrete_type = *boxed_future
