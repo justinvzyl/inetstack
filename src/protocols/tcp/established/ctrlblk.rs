@@ -65,18 +65,20 @@ pub enum State {
     Closed,
 }
 
-// ToDo: Rename this struct (or just incorporate this directly into ControlBlock).
-struct ReceiveQueue<RT: Runtime> {
+// ToDo: Consider incorporating this directly into ControlBlock.
+struct Receiver<RT: Runtime> {
     //
     // Receive Sequence Space:
     //
-    //                     |---------------receive buffer size----------------|
-    //                     |                                                  |
-    //                     |                         |-----receive window-----|
-    //                reader_next              receive_next              receive_next + receive window
-    //                     v                         v                        v
-    // ... ----------------|-------------------------|------------------------|------------------------------
-    //      read by user   |  received but not read  |   willing to receive   | future sequence number space
+    //                     |<---------------receive_buffer_size---------------->|
+    //                     |                                                    |
+    //                     |                         |<-----receive window----->|
+    //                reader_next              receive_next       receive_next + receive window
+    //                     v                         v                          v
+    // ... ----------------|-------------------------|--------------------------|------------------------------
+    //      read by user   |  received but not read  |    willing to receive    | future sequence number space
+    //
+    // Note: In RFC 793 terminology, receive_next is RCV.NXT, and "receive window" is RCV.WND.
     //
 
     // Sequence number of next byte of data in the unread queue.
@@ -95,7 +97,7 @@ struct ReceiveQueue<RT: Runtime> {
     recv_queue: RefCell<VecDeque<RT::Buf>>,
 }
 
-impl<RT: Runtime> ReceiveQueue<RT> {
+impl<RT: Runtime> Receiver<RT> {
     pub fn new(reader_next: SeqNumber, ack_seq_no: SeqNumber, receive_next: SeqNumber) -> Self {
         Self {
             reader_next: Cell::new(reader_next),
@@ -136,9 +138,12 @@ pub struct ControlBlock<RT: Runtime> {
     remote: Ipv4Endpoint,
 
     rt: Rc<RT>,
+
+    // ToDo: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
+    // this along with other remote IP information (such as routing, path MTU, etc).
     arp: Rc<ArpPeer<RT>>,
 
-    // Send-side state.  ToDo: Pull this back into the ControlBlock.
+    // Send-side state information.  ToDo: Consider incorporating this directly into ControlBlock.
     sender: Sender<RT>,
 
     // ToDo: Change this from a WatchedValue to a Cell once the closer closures are removed.
@@ -148,13 +153,27 @@ pub struct ControlBlock<RT: Runtime> {
 
     ack_deadline: WatchedValue<Option<Instant>>,
 
-    max_window_size: u32,
+    // This is our receive buffer size, which is also the maximum size of our receive window.
+    // Note: The maximum possible advertised window is 1 GiB with window scaling and 64 KiB without.
+    receive_buffer_size: u32,
+
+    // ToDo: Review how this is used.  We could have separate window scale factors, so there should be one for the
+    // receiver and one for the sender.
+    // This is the receive-side window scale factor.
+    // This is the number of bits to shift to convert to/from the scaled value, and has a maximum value of 14.
+    // ToDo: Keep this as a u8?
     window_scale: u32,
 
     waker: RefCell<Option<Waker>>,
+
+    // Queue of out-of-order segments.  This is where we hold onto data that we've received (because it was within our
+    // receive window) but can't yet present to the user because we're missing some other data that comes between this
+    // and what we've already presented to the user.
+    //
     out_of_order: RefCell<VecDeque<(SeqNumber, RT::Buf)>>,
 
-    receive_queue: ReceiveQueue<RT>,
+    // Receive-side state information.  ToDo: Consider incorporating this directly into ControlBlock.
+    receiver: Receiver<RT>,
 }
 
 //==============================================================================
@@ -193,11 +212,11 @@ impl<RT: Runtime> ControlBlock<RT> {
             state: WatchedValue::new(State::Established),
             ack_delay_timeout,
             ack_deadline: WatchedValue::new(None),
-            max_window_size: receiver_window_size,
+            receive_buffer_size: receiver_window_size,
             window_scale: receiver_window_scale,
             waker: RefCell::new(None),
             out_of_order: RefCell::new(VecDeque::new()),
-            receive_queue: ReceiveQueue::new(receiver_seq_no, receiver_seq_no, receiver_seq_no),
+            receiver: Receiver::new(receiver_seq_no, receiver_seq_no, receiver_seq_no),
         }
     }
 
@@ -205,6 +224,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.state.watch()
     }
 
+    // ToDo: Remove after we remove the closer closures.
     pub fn set_state(&self, new_value: State) {
         self.state.set(new_value)
     }
@@ -221,11 +241,13 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.rt.clone()
     }
 
+    // ToDo: Remove this.  ARP doesn't belong at this layer.
     pub fn arp(&self) -> Rc<ArpPeer<RT>> {
         self.arp.clone()
     }
 
     pub fn send(&self, buf: RT::Buf) -> Result<(), Fail> {
+        // ToDo: There is a bug here.  We can legitimately send while in CloseWait (CLOSE_WAIT).
         if self.state.get() != State::Established {
             return Err(Fail::new(ENOTCONN, "sender closed"));
         }
@@ -266,6 +288,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.get_mss()
     }
 
+    // ToDo: Rename this?  There is both a send window size and a receive window size.
     pub fn get_window_size(&self) -> (u32, WatchFuture<u32>) {
         self.sender.get_window_size()
     }
@@ -322,28 +345,138 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.pop_one_unsent_byte()
     }
 
-    pub fn receive(&self, header: &TcpHeader, data: RT::Buf) {
+    pub fn receive(&self, mut header: &mut TcpHeader, mut data: RT::Buf) {
         debug!(
             "{:?} Connection Receiving {} bytes + {:?}",
             self.state.get(),
             data.len(),
             header
         );
+
+        // ToDo: We're probably getting "now" here in order to get a timestamp as close as possible to when we received
+        // the packet.  However, this is wasteful if we don't take a path below that actually uses it.  Review this.
         let now = self.rt.now();
 
-        // ToDo: Fix the following checks to match the spec.  The first thing we need to do is check to see if the
-        // segment is acceptable sequence-wise (i.e. contains some data that fits within the receive window, or is a
-        // non-data segment with a sequence number that falls within the window).  Unacceptable segments should be ACK'd
-        // (unless they are RSTs), and then dropped.
+        // Check to see if the segment is acceptable sequence-wise (i.e. contains some data that fits within the receive
+        // window, or is a non-data segment with a sequence number that falls within the window).  Unacceptable segments
+        // should be ACK'd (unless they are RSTs), and then dropped.
         //
+        // [From RFC 793]
+        // There are four cases for the acceptability test for an incoming segment:
+        //
+        // Segment Receive  Test
+        // Length  Window
+        // ------- -------  -------------------------------------------
+        //
+        //   0       0     SEG.SEQ = RCV.NXT
+        //
+        //   0      >0     RCV.NXT =< SEG.SEQ < RCV.NXT+RCV.WND
+        //
+        //  >0       0     not acceptable
+        //
+        //  >0      >0     RCV.NXT =< SEG.SEQ < RCV.NXT+RCV.WND
+        //              or RCV.NXT =< SEG.SEQ+SEG.LEN-1 < RCV.NXT+RCV.WND
+
+        let mut seg_start: SeqNumber = header.seq_num;
+
+        let mut seg_end: SeqNumber = seg_start;
+        let mut seg_len: u32 = data.len() as u32;
+        if header.syn {
+            seg_len += 1;
+        }
+        if header.fin {
+            seg_len += 1;
+        }
+        if seg_len > 0 {
+            seg_end = seg_start + SeqNumber::from(seg_len - 1);
+        }
+
+        let receive_next = self.receiver.receive_next.get();
+
+        let after_receive_window = receive_next + SeqNumber::from(self.get_receive_window_size());
+
+        // Check if this segment fits in our receive window.
+        // In the optimal case it starts at RCV.NXT, so we check for that first.
+        //
+        if seg_start != receive_next {
+            // The start of this segment is not what we expected.  See if it comes before or after.
+            //
+            if seg_start < receive_next {
+                // This segment contains duplicate data (i.e. data we've already received).
+                // See if it is a complete duplicate, or if some of the data is new.
+                //
+                if seg_end < receive_next {
+                    // This is an entirely duplicate segment.  ACK (if not RST) and drop.
+                    //
+                    if !header.rst {
+                        self.send_ack();
+                    }
+                    return;
+                } else {
+                    // Some of this segment's data is new.  Cut the duplicate data off of the front.
+                    // If there is a SYN at the start of this segment, remove it too.
+                    //
+                    let mut duplicate = u32::from(receive_next - seg_start);
+                    seg_start = seg_start + SeqNumber::from(duplicate);
+                    seg_len -= duplicate;
+                    if header.syn {
+                        header.syn = false;
+                        duplicate -= 1;
+                    }
+                    data.adjust(duplicate as usize);
+                }
+            } else {
+                // This segment contains entirely new data, but is later in the sequence than what we're expecting.
+                // See if any part of the data fits within our receive window.
+                //
+                if seg_start >= after_receive_window {
+                    // This segment is completely outside of our window.  ACK (if not RST) and drop.
+                    //
+                    if !header.rst {
+                        self.send_ack();
+                    }
+                    return;
+                }
+
+                // At least the beginning of this segment is in the window.  We'll check the end below.
+            }
+        }
+
+        // The start of the segment is in the window.
+        // Check that the end of the segment is in the window, and trim it down if it is not.
+        //
+        if seg_len > 0 && seg_end >= after_receive_window {
+            let mut excess = u32::from(seg_end - after_receive_window);
+            excess += 1;
+            seg_end = seg_end - SeqNumber::from(excess);
+            seg_len -= excess;
+            if header.fin {
+                header.fin = false;
+                excess -= 1;
+            }
+            data.trim(excess as usize);
+        }
 
         // Check the RST bit.
         if header.rst {
+            // Shut the connection down hard.
             match self.state.get() {
                 // ToDo: Replace these "return"s with handler functions for each case.
                 // ToDo: Can we be in SynReceived here?  If so, // State::SynReceived => return,
+
+                // Data transfer states.
+                // ToDo: Return all outstanding Receive and Send requests with "reset" responses.
+                // ToDo: Flush all segment queues.
+                // ToDo: Enter Closed state.
+                // ToDo: Delete the ControlBlock.
                 State::Established | State::FinWait1 | State::FinWait2 | State::CloseWait => return,
+
+                // Closing states.
+                // ToDo: Enter Closed state.
+                // ToDo: Delete the ControlBlock.
                 State::Closing | State::LastAck | State::TimeWait => return,
+
+                // Should never happen.
                 state => panic!("Bad TCP state {:?}", state),
             }
 
@@ -354,49 +487,37 @@ impl<RT: Runtime> ControlBlock<RT> {
 
         // Check the SYN bit.
         if header.syn {
-            warn!("Received in-window SYN on established connection.");
             // Receiving a SYN here is an error.
+            warn!("Received in-window SYN on established connection.");
             // ToDo: Send Reset.
             // ToDo: Return all outstanding Receive and Send requests with "reset" responses.
             // ToDo: Flush all segment queues.
-            // ToDo: Enter Closed state.
+            // Enter Closed state.
+            self.set_state(State::Closed);
             // ToDo: Delete the ControlBlock.
             return;
         }
 
         // Check the ACK bit.
-
-        // ToDo: Fix handling of both ACK and FIN below.
-
-        if header.fin && header.ack {
-            match self.state.get() {
-                State::FinWait1 => self.state.set(State::TimeWait),
-                state => panic!("Bad TCP state {:?}", state),
-            }
-        } else {
-            if header.fin {
-                match self.state.get() {
-                    State::FinWait1 => self.state.set(State::Closing),
-                    State::FinWait2 => self.state.set(State::FinWait3),
-                    State::Established => self.state.set(State::PassiveClose),
-                    state => panic!("Bad TCP state {:?}", state),
-                }
-            }
-            if header.ack {
-                match self.state.get() {
-                    State::FinWait1 => self.state.set(State::FinWait2),
-                    State::Closing2 => self.state.set(State::TimeWait2),
-                    State::Established => {
-                        if let Err(e) = self.sender.remote_ack(header.ack_num, now) {
-                            warn!("Ignoring remote ack for {:?}: {:?}", header, e);
-                        }
-                    }
-                    State::LastAck => self.state.set(State::Closed),
-                    state => panic!("Bad TCP state {:?}", state),
-                }
-            }
+        if !header.ack {
+            // All segments on established connections should be ACKs.
+            warn!("Received non-ACK segment on established connection.");
+            return;
         }
 
+        // Process the ACK.
+        // ToDo: Fix handling of ACK below.  See p. 72 and 73 of RFC 793.
+        match self.state.get() {
+            State::FinWait1 => self.state.set(State::FinWait2),
+            State::Closing2 => self.state.set(State::TimeWait2),
+            State::Established => {
+                if let Err(e) = self.sender.remote_ack(header.ack_num, now) {
+                    warn!("Ignoring remote ack for {:?}: {:?}", header, e);
+                }
+            },
+            State::LastAck => self.state.set(State::Closed),
+            state => panic!("Bad TCP state {:?}", state),
+        }
         if self.state.get() == State::Established {
             if let Err(e) = self.sender.update_remote_window(header.window_size as u16) {
                 warn!("Invalid window size update for {:?}: {:?}", header, e);
@@ -421,9 +542,34 @@ impl<RT: Runtime> ControlBlock<RT> {
             // ToDo: Arrange for an ACK to be sent soon.
         }
 
-        // ToDo: Check the FIN bit.
+        // ToDo: If new segment was out-of-order above, make sure we've cleared the FIN by now.  Likewise, if this new
+        // segment filled a hole allowing a previous out-of-order segment to be processed, and it had a FIN, make sure
+        // we've set the FIN bit by now.
+
+        // Check the FIN bit.
+        if header.fin {
+            // ToDo: Signal the user "connection closing" and return any pending Receive requests.
+            // ToDo: Advance RCV.NXT over the FIN and send ACK (delayed?).
+            //
+            match self.state.get() {
+                State::Established => self.state.set(State::CloseWait),
+                State::FinWait1 => {
+                    // ToDo: If our FIN has now been ACK'd, enter TIME-WAIT, start the time-wait timer and turn off the
+                    // other timers.  Otherwise, enter the CLOSING state.
+                },
+                State::FinWait2 => {
+                    // ToDo: Enter TIME-WAIT, start the time-wait timer and turn off the other timers.
+                },
+                State::CloseWait | State::Closing | State::LastAck => (),  // Do nothing.
+                State::TimeWait => {
+
+                },
+                state => panic!("Bad TCP state {:?}", state),
+            }
+        }
     }
 
+    // ToDo: Fix this function.
     pub fn close(&self) -> Result<(), Fail> {
         match self.state.get() {
             State::Established => self.state.set(State::ActiveClose),
@@ -459,7 +605,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         let mut header: TcpHeader = self.tcp_header();
         // ToDo: remove the following once tcp_header() is fixed to always set the ACK info.
         header.ack = true;
-        header.ack_num = self.receive_queue.receive_next.get();
+        header.ack_num = self.receiver.receive_next.get();
 
         // ToDo: Think about moving this to tcp_header() as well.
         let (seq_num, _): (SeqNumber, _) = self.get_sent_seq_no();
@@ -525,16 +671,16 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     pub fn get_ack_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        let (seq_no, fut) = self.receive_queue.ack_seq_no.watch();
+        let (seq_no, fut) = self.receiver.ack_seq_no.watch();
         (seq_no, fut)
     }
 
     pub fn set_ack_seq_no(&self, new_value: SeqNumber) {
-        self.receive_queue.ack_seq_no.set(new_value)
+        self.receiver.ack_seq_no.set(new_value)
     }
 
     pub fn get_recv_seq_no(&self) -> SeqNumber {
-        self.receive_queue.receive_next.get()
+        self.receiver.receive_next.get()
     }
 
     pub fn get_ack_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
@@ -545,10 +691,13 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.ack_deadline.set(when);
     }
 
+    pub fn get_receive_window_size(&self) -> u32 {
+        let bytes_unread: u32 = (self.receiver.receive_next.get() - self.receiver.reader_next.get()).into();
+        self.receive_buffer_size - bytes_unread
+    }
+
     pub fn hdr_window_size(&self) -> u16 {
-        let bytes_outstanding: u32 =
-            (self.receive_queue.receive_next.get() - self.receive_queue.reader_next.get()).into();
-        let window_size = self.max_window_size - bytes_outstanding;
+        let window_size = self.get_receive_window_size();
         let hdr_window_size = (window_size >> self.window_scale)
             .try_into()
             .expect("Window size overflow");
@@ -566,8 +715,8 @@ impl<RT: Runtime> ControlBlock<RT> {
     /// If all received bytes have been acknowledged returns None.
     /// TODO: Again, we should *always* ACK.  So this should always return the current acknowledgement sequence number.
     pub fn current_ack(&self) -> Option<SeqNumber> {
-        let ack_seq_no = self.receive_queue.ack_seq_no.get();
-        let recv_seq_no = self.receive_queue.receive_next.get();
+        let ack_seq_no = self.receiver.ack_seq_no.get();
+        let recv_seq_no = self.receiver.receive_next.get();
 
         // It is okay if ack_seq_no is greater than the seq number. This can happen when we have
         // ACKed a FIN so our ACK number is +1 greater than our seq number.
@@ -582,13 +731,13 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {
-        if self.receive_queue.reader_next.get() == self.receive_queue.receive_next.get() {
+        if self.receiver.reader_next.get() == self.receiver.receive_next.get() {
             *self.waker.borrow_mut() = Some(ctx.waker().clone());
             return Poll::Pending;
         }
 
         let segment = self
-            .receive_queue
+            .receiver
             .pop()
             .expect("recv_seq > base_seq without data in queue?");
 
@@ -602,7 +751,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     // corresponding to the minumum number allowed for new reception (RCV.NXT in RFC 793 terms).
     //
     pub fn receive_data(&self, seq_no: SeqNumber, buf: RT::Buf, now: Instant) -> Result<(), Fail> {
-        let recv_seq_no = self.receive_queue.receive_next.get();
+        let recv_seq_no = self.receiver.receive_next.get();
 
         if seq_no > recv_seq_no {
             // This new segment comes after what we're expecting (i.e. the new segment arrived out-of-order).
@@ -653,20 +802,20 @@ impl<RT: Runtime> ControlBlock<RT> {
         // TODO: Since this is the "good" case, we should have a fast-path check for it first above, instead of falling
         // through to it (performance improvement).
 
-        let unread_bytes: usize = self.receive_queue.size();
+        let unread_bytes: usize = self.receiver.size();
 
         // This appears to drop segments if their total contents would exceed the receive window.
         // TODO: There is a bug here.  The segment could also contain some data that fits within the window.  We should
         // still accept the data that fits within the window.
         // TODO: We should restructure this to convert usize things to known (fixed) sizes, not the other way around.
-        if unread_bytes + buf.len() > self.max_window_size as usize {
+        if unread_bytes + buf.len() > self.receive_buffer_size as usize {
             // TODO: There is a bug here.  We should send an ACK if we drop the segment.
             return Err(Fail::new(ENOMEM, "full receive window"));
         }
 
         // Push the new segment data onto the end of the receive queue.
         let mut recv_seq_no = recv_seq_no + SeqNumber::from(buf.len() as u32);
-        self.receive_queue.push(buf);
+        self.receiver.push(buf);
 
         // Okay, we've successfully received some new data.  Check if any of the formerly out-of-order data waiting in
         // the out-of-order queue is now in-order.  If so, we can move it to the receive queue.
@@ -679,7 +828,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                     info!("Recovering out-of-order packet at {}", recv_seq_no);
                     if let Some(temp) = out_of_order.pop_front() {
                         recv_seq_no = recv_seq_no + SeqNumber::from(temp.1.len() as u32);
-                        self.receive_queue.push(temp.1);
+                        self.receiver.push(temp.1);
                     }
                 } else {
                     // Since our out-of-order list is sorted, we can stop when the next segment is not in sequence.
@@ -688,7 +837,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             }
         }
 
-        // TODO: Review recent change to update control block copy of recv_seq_no upon each push to the receive_queue.
+        // TODO: Review recent change to update control block copy of recv_seq_no upon each push to the receiver.
         // When receiving a retransmitted segment that fills a "hole" in the receive space, thus allowing a number
         // (potentially large number) of out-of-order segments to be added, we'll be modifying the TCB copy of the
         // recv_seq_no many times.  Since this potentially wakes a waker, we might want to wait until we've added all
