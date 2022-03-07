@@ -17,8 +17,8 @@ use crate::{
     },
 };
 use ::catwalk::SchedulerHandle;
-use ::futures::FutureExt;
-use ::futures::{channel::mpsc, stream::StreamExt};
+use ::futures::{channel::mpsc, stream::StreamExt, FutureExt};
+use ::libc::{EADDRINUSE, EBADF, ENOTCONN};
 use ::runtime::{fail::Fail, network::types::MacAddress, QDesc, Runtime};
 use ::std::collections::HashMap;
 
@@ -112,9 +112,7 @@ impl<RT: Runtime> UdpPeer<RT> {
 
         // Local endpoint address in use.
         if self.bound.contains_key(&addr) {
-            return Err(Fail::Malformed {
-                details: "Port already listening",
-            });
+            return Err(Fail::new(EADDRINUSE, "port already listening"));
         }
 
         // Register local endpoint address.
@@ -122,13 +120,13 @@ impl<RT: Runtime> UdpPeer<RT> {
             Some(s) if s.get_local().is_none() => {
                 s.set_local(Some(addr));
             }
-            _ => return Err(Fail::BadFileDescriptor {}),
+            _ => return Err(Fail::new(EBADF, "invalid queue descriptor")),
         }
 
         // Bind endpoint and register a listener for it.
         let listener = SharedListener::default();
         if self.bound.insert(addr, listener).is_some() {
-            return Err(Fail::AddressInUse {});
+            return Err(Fail::new(EADDRINUSE, "address in use"));
         }
 
         Ok(())
@@ -141,17 +139,17 @@ impl<RT: Runtime> UdpPeer<RT> {
 
         let socket: UdpSocket = match self.sockets.remove(&fd) {
             Some(s) => s,
-            None => return Err(Fail::BadFileDescriptor {}),
+            None => return Err(Fail::new(EBADF, "invalid queue descriptor")),
         };
 
         // Remove endpoint binding.
         match socket.get_local() {
             Some(local) => {
                 if self.bound.remove(&local).is_none() {
-                    return Err(Fail::BadFileDescriptor {});
+                    return Err(Fail::new(EBADF, "invalid queue descriptor"));
                 }
             }
-            None => return Err(Fail::BadFileDescriptor {}),
+            None => return Err(Fail::new(EBADF, "invalid queue descriptor")),
         }
 
         Ok(())
@@ -175,9 +173,10 @@ impl<RT: Runtime> UdpPeer<RT> {
             .map(|p| Ipv4Endpoint::new(ipv4_header.src_addr(), p));
 
         // TODO: Send ICMPv4 error in this condition.
-        let listener = self.bound.get_mut(&local).ok_or(Fail::Malformed {
-            details: "Port not bound",
-        })?;
+        let listener = self
+            .bound
+            .get_mut(&local)
+            .ok_or(Fail::new(ENOTCONN, "port not bound"))?;
 
         // Consume data and wakeup receiver.
         listener.push_data(remote, data);
@@ -195,7 +194,7 @@ impl<RT: Runtime> UdpPeer<RT> {
 
         let local: Option<Ipv4Endpoint> = match self.sockets.get(&fd) {
             Some(s) if s.get_local().is_some() => s.get_local(),
-            _ => return Err(Fail::BadFileDescriptor {}),
+            _ => return Err(Fail::new(EBADF, "invalid queue descriptor")),
         };
 
         // Try to send the packet immediately.
@@ -243,9 +242,7 @@ impl<RT: Runtime> UdpPeer<RT> {
             Some(s) if s.get_local().is_some() => {
                 Ok(self.bound.get(&s.get_local().unwrap()).unwrap().clone())
             }
-            _ => Err(Fail::Malformed {
-                details: "Invalid file descriptor",
-            }),
+            _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
         };
 
         UdpPopFuture::new(fd, listener)

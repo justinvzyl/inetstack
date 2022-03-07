@@ -11,6 +11,7 @@ use ::futures::{
     channel::oneshot::{channel, Receiver, Sender},
     FutureExt,
 };
+use ::libc::{EBADMSG, ETIMEDOUT};
 use ::runtime::{fail::Fail, network::config::ArpConfig, network::types::MacAddress, Runtime};
 use ::std::{
     cell::RefCell,
@@ -142,9 +143,7 @@ impl<RT: Runtime> ArpPeer<RT> {
                 return Ok(());
             } else {
                 // we didn't do anything.
-                return Err(Fail::Ignored {
-                    details: "unrecognized IP address",
-                });
+                return Err(Fail::new(EBADMSG, "unrecognized IP address"));
             }
         }
         // from RFC 826:
@@ -243,7 +242,7 @@ impl<RT: Runtime> ArpPeer<RT> {
                         }
                     }
                 }
-                Err(Fail::Timeout {})
+                Err(Fail::new(ETIMEDOUT, "ARP query timeout"))
             };
 
             arp.do_drop(ipv4_addr);

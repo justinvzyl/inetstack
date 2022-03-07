@@ -3,6 +3,7 @@
 
 use crate::protocols::ipv4::Ipv4Protocol2;
 use ::byteorder::{ByteOrder, NetworkEndian};
+use ::libc::{EBADMSG, ENOTSUP};
 use ::runtime::{fail::Fail, memory::Buffer};
 use ::std::{
     convert::{TryFrom, TryInto},
@@ -85,29 +86,21 @@ impl Ipv4Header {
 
     pub fn parse<T: Buffer>(mut buf: T) -> Result<(Self, T), Fail> {
         if buf.len() < IPV4_HEADER_SIZE {
-            return Err(Fail::Malformed {
-                details: "Datagram too small",
-            });
+            return Err(Fail::new(EBADMSG, "datagram too small"));
         }
         let hdr_buf = &buf[..IPV4_HEADER_SIZE];
 
         let version = hdr_buf[0] >> 4;
         if version != IPV4_VERSION {
-            return Err(Fail::Unsupported {
-                details: "Unsupported IP version",
-            });
+            return Err(Fail::new(ENOTSUP, "unsupported IP version"));
         }
 
         let ihl = hdr_buf[0] & 0xF;
         if ihl < IPV4_IHL_NO_OPTIONS {
-            return Err(Fail::Malformed {
-                details: "IPv4 IHL is too small",
-            });
+            return Err(Fail::new(EBADMSG, "IPv4 IHL is too small"));
         }
         if ihl > IPV4_IHL_NO_OPTIONS {
-            return Err(Fail::Unsupported {
-                details: "IPv4 options are unsupported",
-            });
+            return Err(Fail::new(ENOTSUP, "IPv4 options are not supported"));
         }
 
         let dscp = hdr_buf[1] >> 2;
@@ -117,14 +110,13 @@ impl Ipv4Header {
 
         // The TOTALLEN is definitely malformed if it doesn't have room for our header.
         if total_length < IPV4_HEADER_SIZE {
-            return Err(Fail::Malformed {
-                details: "IPv4 TOTALLEN smaller than header",
-            });
+            return Err(Fail::new(EBADMSG, "IPv4 TOTALLEN smaller than header"));
         }
         if total_length > buf.len() {
-            return Err(Fail::Malformed {
-                details: "IPv4 TOTALLEN greater than header + payload",
-            });
+            return Err(Fail::new(
+                EBADMSG,
+                "IPv4 TOTALLEN greater than header + payload",
+            ));
         }
 
         let identification = NetworkEndian::read_u16(&hdr_buf[4..6]);
@@ -132,9 +124,7 @@ impl Ipv4Header {
 
         let fragment_offset = NetworkEndian::read_u16(&hdr_buf[6..8]) & 0x1fff;
         if fragment_offset != 0 {
-            return Err(Fail::Unsupported {
-                details: "IPv4 fragmentation is unsupported",
-            });
+            return Err(Fail::new(ENOTSUP, "IPv4 fragmentation is unsupported"));
         }
 
         let time_to_live = hdr_buf[8];
@@ -142,14 +132,10 @@ impl Ipv4Header {
 
         let header_checksum = NetworkEndian::read_u16(&hdr_buf[10..12]);
         if header_checksum == 0xffff {
-            return Err(Fail::Malformed {
-                details: "IPv4 checksum is 0xFFFF",
-            });
+            return Err(Fail::new(EBADMSG, "IPv4 checksum is 0xFFFF"));
         }
         if header_checksum != ipv4_checksum(hdr_buf) {
-            return Err(Fail::Malformed {
-                details: "Invalid IPv4 checksum",
-            });
+            return Err(Fail::new(EBADMSG, "Invalid IPv4 checksum"));
         }
 
         let src_addr = Ipv4Addr::from(NetworkEndian::read_u32(&hdr_buf[12..16]));

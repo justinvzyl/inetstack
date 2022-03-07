@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use async_trait::async_trait;
-use futures::{future::FusedFuture, FutureExt};
-use runtime::fail::Fail;
-use std::future::Future;
+use ::async_trait::async_trait;
+use ::futures::{future::FusedFuture, FutureExt};
+use ::runtime::fail::Fail;
+use ::std::future::Future;
 
 /// Provides useful high-level future-related methods.
 #[async_trait(?Send)]
@@ -17,7 +17,9 @@ pub trait UtilityMethods: Future + FusedFuture + Unpin {
     {
         futures::select! {
             result = self => Ok(result),
-            _ = timer.fuse() => Err(Fail::Timeout {})
+            _ = timer.fuse() => Err(
+                Fail::new(libc::ETIMEDOUT, "timer expired")
+            )
         }
     }
 }

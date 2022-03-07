@@ -16,6 +16,7 @@ use crate::{
 };
 use ::catwalk::SchedulerHandle;
 use ::futures::FutureExt;
+use ::libc::{ECONNREFUSED, ETIMEDOUT};
 use ::runtime::{fail::Fail, memory::Buffer, Runtime};
 use ::std::{
     cell::RefCell,
@@ -111,7 +112,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
 
         // Check if our peer is refusing our connection request.
         if header.rst {
-            self.set_result(Err(Fail::ConnectionRefused {}));
+            self.set_result(Err(Fail::new(ECONNREFUSED, "connection refused")));
             return;
         }
 
@@ -279,7 +280,8 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             if let Some(w) = r.waker.take() {
                 w.wake()
             }
-            r.result.replace(Err(Fail::Timeout {}));
+            r.result
+                .replace(Err(Fail::new(ETIMEDOUT, "handshake timeout")));
         }
     }
 }

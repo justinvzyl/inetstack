@@ -13,10 +13,8 @@ use crate::common::{
 };
 use ::catnip::{protocols::ipv4::Ipv4Endpoint, Catnip};
 use ::crossbeam_channel::{self};
-use ::libc;
-use ::runtime::{
-    fail::Fail, memory::MemoryRuntime, network::types::Port16, types::dmtr_opcode_t, QDesc,
-};
+use ::libc::{EBADF, EINVAL, ENOTSUP};
+use ::runtime::{memory::MemoryRuntime, network::types::Port16, types::dmtr_opcode_t, QDesc};
 use ::std::{convert::TryFrom, net::Ipv4Addr, thread};
 
 //==============================================================================
@@ -237,14 +235,14 @@ fn do_tcp_bad_socket() {
     for d in domains {
         let sockfd = libos.socket(d, libc::SOCK_STREAM, 0);
         let e = sockfd.unwrap_err();
-        assert_eq!(e, (Fail::AddressFamilySupport {}));
+        assert_eq!(e.errno, ENOTSUP);
     }
 
     // Invalid socket tpe.
     for t in scoket_types {
         let sockfd = libos.socket(libc::AF_INET, t, 0);
         let e = sockfd.unwrap_err();
-        assert_eq!(e, (Fail::SocketTypeSupport {}));
+        assert_eq!(e.errno, ENOTSUP);
     }
 }
 
@@ -266,7 +264,7 @@ fn do_tcp_bad_bind(port: u16) {
     let port = Port16::try_from(port).unwrap();
     let local = Ipv4Endpoint::new(ALICE_IPV4, port);
     let e = libos.bind(QDesc::from(0), local).unwrap_err();
-    assert_eq!(e, (Fail::BadFileDescriptor {}));
+    assert_eq!(e.errno, EBADF);
 }
 
 #[test]
@@ -288,18 +286,13 @@ fn do_tcp_bad_listen(port: u16) {
 
     // Invalid file descriptor.
     let e = libos.listen(QDesc::from(0), 8).unwrap_err();
-    assert_eq!(e, (Fail::BadFileDescriptor {}));
+    assert_eq!(e.errno, EBADF);
 
     // Invalid backlog length
     let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     let e = libos.listen(sockfd, 0).unwrap_err();
-    assert_eq!(
-        e,
-        (Fail::Invalid {
-            details: "backlog length"
-        })
-    );
+    assert_eq!(e.errno, EINVAL);
     libos.close(sockfd).unwrap_err();
 }
 
@@ -319,7 +312,7 @@ fn do_tcp_bad_accept() {
 
     // Invalid file descriptor.
     let e = libos.accept(QDesc::from(0)).unwrap_err();
-    assert_eq!(e, (Fail::BadFileDescriptor {}));
+    assert_eq!(e.errno, EBADF);
 }
 
 #[test]
@@ -361,12 +354,9 @@ fn do_tcp_bad_connect(port: u16) {
         let port = Port16::try_from(port).unwrap();
         let remote = Ipv4Endpoint::new(ALICE_IPV4, port);
 
-        println!("BAD FD");
         // Bad file descriptor.
         let e = libos.connect(QDesc::from(0), remote).unwrap_err();
-        assert_eq!(e, (Fail::BadFileDescriptor {}));
-
-        println!("BAD endpoint");
+        assert_eq!(e.errno, EBADF);
 
         // Bad endpoint.
         let remote = Ipv4Endpoint::new(Ipv4Addr::new(0, 0, 0, 0), port);

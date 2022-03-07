@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use byteorder::{ByteOrder, NetworkEndian};
-use runtime::fail::Fail;
+use ::byteorder::{ByteOrder, NetworkEndian};
+use ::libc::EBADMSG;
+use ::runtime::fail::Fail;
 
 //==============================================================================
 // Icmpv4Type2
@@ -46,9 +47,7 @@ impl Icmpv4Type2 {
             12 => Ok(BadIpHeader),
             13 => Ok(Timestamp),
             14 => Ok(TimestampReply),
-            _ => Err(Fail::Malformed {
-                details: "Invalid type byte",
-            }),
+            _ => Err(Fail::new(EBADMSG, "invalid type byte")),
         }
     }
 

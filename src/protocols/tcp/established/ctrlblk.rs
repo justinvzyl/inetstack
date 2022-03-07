@@ -16,6 +16,7 @@ use crate::protocols::{
         SeqNumber,
     },
 };
+use ::libc::{EBADMSG, ENOMEM, ENOTCONN};
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
@@ -233,9 +234,7 @@ impl<RT: Runtime> ControlBlock<RT> {
 
     pub fn send(&self, buf: RT::Buf) -> Result<(), Fail> {
         if self.state.get() != State::Established {
-            return Err(Fail::Ignored {
-                details: "Sender closed",
-            });
+            return Err(Fail::new(ENOTCONN, "sender closed"));
         }
 
         self.sender.send(buf, self)
@@ -575,9 +574,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                 if stored_segment.0 == seq_no {
                     // Drop this segment as a duplicate.
                     // TODO: We should ACK when we drop a segment.
-                    return Err(Fail::Ignored {
-                        details: "Out of order segment (duplicate)",
-                    });
+                    return Err(Fail::new(EBADMSG, "out of order segment (duplicate)"));
                 }
             }
 
@@ -601,9 +598,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             }
 
             // TODO: There is a bug here.  We should send an ACK when we drop a segment.
-            return Err(Fail::Ignored {
-                details: "Out of order segment (reordered)",
-            });
+            return Err(Fail::new(EBADMSG, "out of order segment (reordered)"));
         }
 
         // Check if we've already received this data (i.e. new segment contains duplicate data).
@@ -611,9 +606,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         // all away.  We need to check if any part of the new segment falls within our receive window.
         if seq_no < recv_seq_no {
             // TODO: There is a bug here.  We should send an ACK if we drop the segment.
-            return Err(Fail::Ignored {
-                details: "Out of order segment (duplicate)",
-            });
+            return Err(Fail::new(EBADMSG, "out of order segment (duplicate)"));
         }
 
         // If we get here, the new segment begins with the sequence number we're expecting.
@@ -628,9 +621,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         // TODO: We should restructure this to convert usize things to known (fixed) sizes, not the other way around.
         if unread_bytes + buf.len() > self.max_window_size as usize {
             // TODO: There is a bug here.  We should send an ACK if we drop the segment.
-            return Err(Fail::Ignored {
-                details: "Full receive window",
-            });
+            return Err(Fail::new(ENOMEM, "full receive window"));
         }
 
         // Push the new segment data onto the end of the receive queue.

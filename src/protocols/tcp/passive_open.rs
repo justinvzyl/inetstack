@@ -17,6 +17,7 @@ use crate::{
 };
 use ::catwalk::SchedulerHandle;
 use ::futures::FutureExt;
+use ::libc::{EBADMSG, ECONNREFUSED, ETIMEDOUT};
 use ::runtime::{fail::Fail, memory::Buffer, Runtime};
 use ::std::{
     cell::RefCell,
@@ -127,9 +128,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
         // If the packet is for an inflight connection, route it there.
         if self.inflight.contains_key(&remote) {
             if !header.ack {
-                return Err(Fail::Malformed {
-                    details: "Expected ACK",
-                });
+                return Err(Fail::new(EBADMSG, "expeting ACK"));
             }
             debug!("Received ACK: {:?}", header);
             let &InflightAccept {
@@ -141,9 +140,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 ..
             } = self.inflight.get(&remote).unwrap();
             if header.ack_num != local_isn + SeqNumber::from(1) {
-                return Err(Fail::Malformed {
-                    details: "Invalid SYN+ACK seq num",
-                });
+                return Err(Fail::new(EBADMSG, "invalid SYN+ACK seq num"));
             }
 
             let tcp_options = self.rt.tcp_options();
@@ -191,14 +188,12 @@ impl<RT: Runtime> PassiveSocket<RT> {
 
         // Otherwise, start a new connection.
         if !header.syn || header.ack || header.rst {
-            return Err(Fail::Malformed {
-                details: "Invalid flags",
-            });
+            return Err(Fail::new(EBADMSG, "invalid flags"));
         }
         debug!("Received SYN: {:?}", header);
         if inflight_len + self.ready.borrow().len() >= self.max_backlog {
             // TODO: Should we send a RST here?
-            return Err(Fail::ConnectionRefused {});
+            return Err(Fail::new(ECONNREFUSED, "connection refused"));
         }
         let local_isn = self.isn_generator.generate(&self.local, &remote);
         let remote_isn = header.seq_num;
@@ -300,7 +295,9 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 rt.transmit(segment);
                 rt.wait(handshake_timeout).await;
             }
-            ready.borrow_mut().push_err(Fail::Timeout {});
+            ready
+                .borrow_mut()
+                .push_err(Fail::new(ETIMEDOUT, "handshake timeout"));
         }
     }
 }

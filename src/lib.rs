@@ -31,15 +31,15 @@ use crate::{
     },
 };
 use ::catwalk::{FutureResult, SchedulerHandle};
-use ::libc::c_int;
+use ::libc::{c_int, EBADF, EINVAL, ENOTSUP};
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
     queue::IoQueueTable,
     types::{dmtr_qresult_t, dmtr_sgarray_t},
     QDesc, QToken, QType, Runtime,
 };
 use ::std::{any::Any, convert::TryFrom, time::Instant};
-use runtime::memory::Buffer;
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
@@ -126,7 +126,7 @@ impl<RT: Runtime> Catnip<RT> {
             _protocol
         );
         if domain != libc::AF_INET {
-            return Err(Fail::AddressFamilySupport {});
+            return Err(Fail::new(ENOTSUP, "address family not supported"));
         }
         match socket_type {
             libc::SOCK_STREAM => {
@@ -139,7 +139,7 @@ impl<RT: Runtime> Catnip<RT> {
                 self.ipv4.udp.do_socket(qd);
                 Ok(qd)
             }
-            _ => Err(Fail::SocketTypeSupport {}),
+            _ => Err(Fail::new(ENOTSUP, "socket type not supported")),
         }
     }
 
@@ -162,9 +162,9 @@ impl<RT: Runtime> Catnip<RT> {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::TcpSocket) => self.ipv4.tcp.bind(fd, local),
                 Ok(QType::UdpSocket) => self.ipv4.udp.do_bind(fd, local),
-                _ => Err(Fail::BadFileDescriptor {}),
+                _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
-            _ => Err(Fail::BadFileDescriptor {}),
+            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
         }
     }
 
@@ -189,16 +189,14 @@ impl<RT: Runtime> Catnip<RT> {
         timer!("catnip::listen");
         trace!("listen(): fd={:?} backlog={:?}", fd, backlog);
         if backlog == 0 {
-            return Err(Fail::Invalid {
-                details: "backlog length",
-            });
+            return Err(Fail::new(EINVAL, "invalid backlog length"));
         }
         match self.file_table.get(fd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::TcpSocket) => self.ipv4.tcp.listen(fd, backlog),
-                _ => Err(Fail::BadFileDescriptor {}),
+                _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
-            _ => Err(Fail::BadFileDescriptor {}),
+            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
         }
     }
 
@@ -224,9 +222,9 @@ impl<RT: Runtime> Catnip<RT> {
                     let newfd = self.file_table.alloc(QType::TcpSocket.into());
                     Ok(FutureOperation::from(self.ipv4.tcp.do_accept(fd, newfd)))
                 }
-                _ => Err(Fail::BadFileDescriptor {}),
+                _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
-            _ => Err(Fail::BadFileDescriptor {}),
+            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
         };
         match r {
             Ok(future) => Ok(self.rt.schedule(future).into_raw().into()),
@@ -255,9 +253,9 @@ impl<RT: Runtime> Catnip<RT> {
                 Ok(QType::TcpSocket) => {
                     Ok(FutureOperation::from(self.ipv4.tcp.connect(fd, remote)))
                 }
-                _ => Err(Fail::BadFileDescriptor {}),
+                _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
-            _ => Err(Fail::BadFileDescriptor {}),
+            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
         }?;
 
         Ok(self.rt.schedule(future).into_raw().into())
@@ -282,9 +280,9 @@ impl<RT: Runtime> Catnip<RT> {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::TcpSocket) => self.ipv4.tcp.do_close(fd)?,
                 Ok(QType::UdpSocket) => self.ipv4.udp.do_close(fd)?,
-                _ => return Err(Fail::BadFileDescriptor {}),
+                _ => Err(Fail::new(EINVAL, "invalid queue type"))?,
             },
-            _ => return Err(Fail::BadFileDescriptor {}),
+            _ => Err(Fail::new(EBADF, "bad queue descriptor"))?,
         }
 
         self.file_table.free(fd);
@@ -296,9 +294,9 @@ impl<RT: Runtime> Catnip<RT> {
         match self.file_table.get(fd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.push(fd, buf))),
-                _ => Err(Fail::BadFileDescriptor {}),
+                _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
-            _ => Err(Fail::BadFileDescriptor {}),
+            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
         }
     }
 
@@ -311,9 +309,7 @@ impl<RT: Runtime> Catnip<RT> {
         trace!("push(): fd={:?}", fd);
         let buf = self.rt.clone_sgarray(sga);
         if buf.len() == 0 {
-            return Err(Fail::Invalid {
-                details: "zero-length buffer",
-            });
+            return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
         let future = self.do_push(fd, buf)?;
         Ok(self.rt.schedule(future).into_raw().into())
@@ -326,9 +322,7 @@ impl<RT: Runtime> Catnip<RT> {
         timer!("catnip::push2");
         trace!("push2(): fd={:?}", fd);
         if buf.len() == 0 {
-            return Err(Fail::Invalid {
-                details: "zero-length buffer",
-            });
+            return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
         let future = self.do_push(fd, buf)?;
         Ok(self.rt.schedule(future).into_raw().into())
@@ -346,9 +340,9 @@ impl<RT: Runtime> Catnip<RT> {
                     let udp_op = UdpOperation::Push(fd, self.ipv4.udp.do_pushto(fd, buf, to));
                     Ok(FutureOperation::Udp(udp_op))
                 }
-                _ => Err(Fail::BadFileDescriptor {}),
+                _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
-            _ => Err(Fail::BadFileDescriptor {}),
+            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
         }
     }
 
@@ -362,9 +356,7 @@ impl<RT: Runtime> Catnip<RT> {
         timer!("catnip::pushto");
         let buf = self.rt.clone_sgarray(sga);
         if buf.len() == 0 {
-            return Err(Fail::Invalid {
-                details: "zero-length buffer",
-            });
+            return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
         let future = self.do_pushto(fd, buf, to)?;
         Ok(self.rt.schedule(future).into_raw().into())
@@ -380,9 +372,7 @@ impl<RT: Runtime> Catnip<RT> {
         timer!("catnip::pushto2");
         let buf = RT::Buf::from_slice(data);
         if buf.len() == 0 {
-            return Err(Fail::Invalid {
-                details: "zero-length buffer",
-            });
+            return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
 
         let future = self.do_pushto(qd, buf, remote)?;
@@ -393,9 +383,7 @@ impl<RT: Runtime> Catnip<RT> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto2");
         if buf.len() == 0 {
-            return Err(Fail::Invalid {
-                details: "zero-length buffer",
-            });
+            return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
         let future = self.do_pushto(fd, buf, to)?;
         Ok(self.rt.schedule(future).into_raw().into())
@@ -429,9 +417,9 @@ impl<RT: Runtime> Catnip<RT> {
                         UdpOperation::Pop(FutureResult::new(self.ipv4.udp.do_pop(fd), None));
                     Ok(FutureOperation::Udp(udp_op))
                 }
-                _ => Err(Fail::BadFileDescriptor {}),
+                _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
-            _ => Err(Fail::BadFileDescriptor {}),
+            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
         }?;
 
         Ok(self.rt.schedule(future).into_raw().into())
@@ -573,9 +561,7 @@ impl<RT: Runtime> Catnip<RT> {
         let (header, payload) = Ethernet2Header::parse(bytes)?;
         debug!("Engine received {:?}", header);
         if self.rt.local_link_addr() != header.dst_addr() && !header.dst_addr().is_broadcast() {
-            return Err(Fail::Ignored {
-                details: "Physical dst_addr mismatch",
-            });
+            return Err(Fail::new(EINVAL, "physical destination address mismatch"));
         }
         match header.ether_type() {
             EtherType2::Arp => self.arp.receive(payload),

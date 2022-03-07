@@ -9,11 +9,12 @@ use crate::protocols::{
     udp::UdpPopFuture,
     Peer,
 };
+use ::libc::EBADMSG;
 use ::runtime::{
     fail::Fail, network::types::MacAddress, queue::IoQueueTable, QDesc, QType, Runtime,
 };
-
 use std::{collections::HashMap, future::Future, net::Ipv4Addr, time::Duration};
+
 pub struct Engine<RT: Runtime> {
     rt: RT,
     pub arp: ArpPeer<RT>,
@@ -43,9 +44,7 @@ impl<RT: Runtime> Engine<RT> {
         let (header, payload) = Ethernet2Header::parse(bytes)?;
         debug!("Engine received {:?}", header);
         if self.rt.local_link_addr() != header.dst_addr() && !header.dst_addr().is_broadcast() {
-            return Err(Fail::Ignored {
-                details: "Physical dst_addr mismatch",
-            });
+            return Err(Fail::new(EBADMSG, "physical destination address mismatch"));
         }
         match header.ether_type() {
             EtherType2::Arp => self.arp.receive(payload),

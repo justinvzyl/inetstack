@@ -3,6 +3,7 @@
 
 use crate::protocols::ethernet2::EtherType2;
 use ::byteorder::{ByteOrder, NetworkEndian};
+use ::libc::EBADMSG;
 use ::runtime::{fail::Fail, memory::Buffer, network::types::MacAddress};
 use ::std::convert::{TryFrom, TryInto};
 
@@ -35,9 +36,7 @@ impl Ethernet2Header {
 
     pub fn parse<T: Buffer>(mut buf: T) -> Result<(Self, T), Fail> {
         if buf.len() < ETHERNET2_HEADER_SIZE {
-            return Err(Fail::Malformed {
-                details: "Frame too small",
-            });
+            return Err(Fail::new(EBADMSG, "frame too small"));
         }
         let hdr_buf = &buf[..ETHERNET2_HEADER_SIZE];
         let dst_addr = MacAddress::from_bytes(&hdr_buf[0..6]);

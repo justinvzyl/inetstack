@@ -2,11 +2,10 @@
 // // Licensed under the MIT license.
 
 use crate::{protocols::ipv4::Ipv4Endpoint, test_helpers};
-use futures::task::{noop_waker_ref, Context};
-use runtime::memory::BytesMut;
-use runtime::QDesc;
-use runtime::{fail::Fail, network::types::Port16};
-use std::{
+use ::futures::task::{noop_waker_ref, Context};
+use ::libc::{EADDRINUSE, EBADF, ENOTCONN};
+use ::runtime::{memory::BytesMut, network::types::Port16, QDesc};
+use ::std::{
     convert::TryFrom,
     future::Future,
     pin::Pin,
@@ -355,9 +354,7 @@ fn udp_bind_address_in_use() {
 
     // Try to bind Alice again.
     match alice.udp_bind(alice_fd, alice_addr) {
-        Err(Fail::Malformed {
-            details: "Port already listening",
-        }) => Ok(()),
+        Err(e) if e.errno == EADDRINUSE => Ok(()),
         _ => Err(()),
     }
     .unwrap();
@@ -378,7 +375,7 @@ fn udp_bind_bad_file_descriptor() {
 
     // Try to bind Alice.
     match alice.udp_bind(alice_fd, alice_addr) {
-        Err(Fail::BadFileDescriptor {}) => Ok(()),
+        Err(e) if e.errno == EBADF => Ok(()),
         _ => Err(()),
     }
     .unwrap();
@@ -401,7 +398,7 @@ fn udp_udp_close_bad_file_descriptor() {
 
     // Try to udp_close bad file descriptor.
     match alice.udp_close(QDesc::try_from(usize::MAX).unwrap()) {
-        Err(Fail::BadFileDescriptor {}) => Ok(()),
+        Err(e) if e.errno == EBADF => Ok(()),
         _ => Err(()),
     }
     .unwrap();
@@ -409,7 +406,7 @@ fn udp_udp_close_bad_file_descriptor() {
     // Try to udp_close Alice two times.
     alice.udp_close(alice_fd).unwrap();
     match alice.udp_close(alice_fd) {
-        Err(Fail::BadFileDescriptor {}) => Ok(()),
+        Err(e) if e.errno == EBADF => Ok(()),
         _ => Err(()),
     }
     .unwrap();
@@ -445,9 +442,7 @@ fn udp_pop_not_bound() {
 
     // Receive data from Alice.
     match bob.receive(alice.rt().pop_frame()) {
-        Err(Fail::Malformed {
-            details: "Port not bound",
-        }) => Ok(()),
+        Err(e) if e.errno == ENOTCONN => Ok(()),
         _ => Err(()),
     }
     .unwrap();
@@ -482,7 +477,7 @@ fn udp_push_bad_file_descriptor() {
     // Send data to Bob.
     let buf = BytesMut::from(&vec![0x5a; 32][..]).freeze();
     match alice.udp_pushto(QDesc::try_from(usize::MAX).unwrap(), buf.clone(), bob_addr) {
-        Err(Fail::BadFileDescriptor {}) => Ok(()),
+        Err(e) if e.errno == EBADF => Ok(()),
         _ => Err(()),
     }
     .unwrap();
