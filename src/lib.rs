@@ -39,6 +39,7 @@ use ::runtime::{
     QDesc, QToken, QType, Runtime,
 };
 use ::std::{any::Any, convert::TryFrom, time::Instant};
+use runtime::memory::Buffer;
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
@@ -369,7 +370,26 @@ impl<RT: Runtime> Catnip<RT> {
         Ok(self.rt.schedule(future).into_raw().into())
     }
 
-    pub fn pushto2(&mut self, fd: QDesc, buf: RT::Buf, to: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn pushto2(
+        &mut self,
+        qd: QDesc,
+        data: &[u8],
+        remote: Ipv4Endpoint,
+    ) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnip::pushto2");
+        let buf = RT::Buf::from_slice(data);
+        if buf.len() == 0 {
+            return Err(Fail::Invalid {
+                details: "zero-length buffer",
+            });
+        }
+
+        let future = self.do_pushto(qd, buf, remote)?;
+        Ok(self.rt.schedule(future).into_raw().into())
+    }
+
+    pub fn pushto3(&mut self, fd: QDesc, buf: RT::Buf, to: Ipv4Endpoint) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto2");
         if buf.len() == 0 {
