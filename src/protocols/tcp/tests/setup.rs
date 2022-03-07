@@ -14,8 +14,9 @@ use crate::{
     test_helpers::Engine,
     test_helpers::{self, TestRuntime},
 };
+use ::futures::task::noop_waker_ref;
+use ::libc::{EBADMSG, ETIMEDOUT};
 use ::runtime::{
-    fail::Fail,
     memory::Buffer,
     memory::{Bytes, BytesMut, MemoryRuntime},
     network::{
@@ -33,7 +34,6 @@ use ::std::{
     task::{Context, Poll},
     time::{Duration, Instant},
 };
-use futures::task::noop_waker_ref;
 
 //=============================================================================
 
@@ -77,7 +77,7 @@ fn test_connection_timeout() {
     }
 
     match Future::poll(Pin::new(&mut connect_future), &mut ctx) {
-        Poll::Ready(Err(Fail::Timeout {})) => Ok(()),
+        Poll::Ready(Err(error)) if error.errno == ETIMEDOUT => Ok(()),
         _ => Err(()),
     }
     .unwrap();
@@ -146,9 +146,7 @@ fn test_refuse_connection_early_rst() {
 
     // Server: SYN_RCVD state at T(2).
     match server.receive(buf) {
-        Err(Fail::Malformed {
-            details: "Invalid flags",
-        }) => Ok(()),
+        Err(error) if error.errno == EBADMSG => Ok(()),
         _ => Err(()),
     }
     .unwrap();
@@ -217,9 +215,7 @@ fn test_refuse_connection_early_ack() {
 
     // Server: SYN_RCVD state at T(2).
     match server.receive(buf) {
-        Err(Fail::Malformed {
-            details: "Invalid flags",
-        }) => Ok(()),
+        Err(error) if error.errno == EBADMSG => Ok(()),
         _ => Err(()),
     }
     .unwrap();
@@ -298,9 +294,7 @@ fn test_refuse_connection_missing_syn() {
 
     // Server: SYN_RCVD state at T(2).
     match server.receive(buf) {
-        Err(Fail::Malformed {
-            details: "Invalid flags",
-        }) => Ok(()),
+        Err(error) if error.errno == EBADMSG => Ok(()),
         _ => Err(()),
     }
     .unwrap();

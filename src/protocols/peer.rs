@@ -8,6 +8,7 @@ use crate::protocols::{
     tcp::TcpPeer,
     udp::UdpPeer,
 };
+use ::libc::ENOTCONN;
 use ::runtime::{fail::Fail, Runtime};
 use ::std::{future::Future, net::Ipv4Addr, time::Duration};
 
@@ -38,7 +39,7 @@ impl<RT: Runtime> Peer<RT> {
         let (header, payload) = Ipv4Header::parse(buf)?;
         debug!("Ipv4 received {:?}", header);
         if header.dst_addr() != self.rt.local_ipv4_addr() && !header.dst_addr().is_broadcast() {
-            return Err(Fail::Misdelivered {});
+            return Err(Fail::new(ENOTCONN, "invalid destination address"));
         }
         match header.protocol() {
             Ipv4Protocol2::Icmpv4 => self.icmpv4.receive(&header, payload),

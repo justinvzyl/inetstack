@@ -3,6 +3,7 @@
 
 use crate::protocols::ipv4::{Ipv4Header, Ipv4Protocol2};
 use ::byteorder::{ByteOrder, NetworkEndian};
+use ::libc::EBADMSG;
 use ::runtime::{fail::Fail, memory::Buffer, network::types::Port16};
 use ::std::convert::{TryFrom, TryInto};
 
@@ -64,9 +65,7 @@ impl UdpHeader {
     ) -> Result<(Self, T), Fail> {
         // Malformed header.
         if buf.len() < UDP_HEADER_SIZE {
-            return Err(Fail::Malformed {
-                details: "UDP segment too small",
-            });
+            return Err(Fail::new(EBADMSG, "UDP segment too small"));
         }
 
         // Deserialize buffer.
@@ -75,9 +74,7 @@ impl UdpHeader {
         let dst_port = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
         let length = NetworkEndian::read_u16(&hdr_buf[4..6]) as usize;
         if length != buf.len() {
-            return Err(Fail::Malformed {
-                details: "UDP length mismatch",
-            });
+            return Err(Fail::new(EBADMSG, "UDP length mismatch"));
         }
 
         // Verify payload.
@@ -85,9 +82,7 @@ impl UdpHeader {
             let payload_buf = &buf[UDP_HEADER_SIZE..];
             let checksum = NetworkEndian::read_u16(&hdr_buf[6..8]);
             if checksum != 0 && checksum != Self::checksum(&ipv4_header, hdr_buf, payload_buf) {
-                return Err(Fail::Malformed {
-                    details: "UDP checksum mismatch",
-                });
+                return Err(Fail::new(EBADMSG, "UDP checksum mismatch"));
             }
         }
 

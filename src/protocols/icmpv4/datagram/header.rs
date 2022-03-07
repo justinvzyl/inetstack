@@ -3,6 +3,7 @@
 
 use super::protocol::Icmpv4Type2;
 use ::byteorder::{ByteOrder, NetworkEndian};
+use ::libc::EBADMSG;
 use ::runtime::{fail::Fail, memory::Buffer};
 use ::std::convert::TryInto;
 
@@ -33,9 +34,7 @@ impl Icmpv4Header {
 
     pub fn parse<T: Buffer>(mut buf: T) -> Result<(Self, T), Fail> {
         if buf.len() < ICMPV4_HEADER_SIZE {
-            return Err(Fail::Malformed {
-                details: "ICMPv4 datagram too small for header",
-            });
+            return Err(Fail::new(EBADMSG, "ICMPv4 datagram too small for header"));
         }
         let hdr_buf: &[u8; ICMPV4_HEADER_SIZE] = &buf[..ICMPV4_HEADER_SIZE].try_into().unwrap();
 
@@ -43,9 +42,7 @@ impl Icmpv4Header {
         let code = hdr_buf[1];
         let checksum = NetworkEndian::read_u16(&hdr_buf[2..4]);
         if checksum != Self::checksum(hdr_buf, &buf[ICMPV4_HEADER_SIZE..]) {
-            return Err(Fail::Malformed {
-                details: "ICMPv4 checksum mismatch",
-            });
+            return Err(Fail::new(EBADMSG, "ICMPv4 checksum mismatch"));
         }
         let rest_of_header: &[u8; 4] = hdr_buf[4..8].try_into().unwrap();
         let icmpv4_type = Icmpv4Type2::parse(type_byte, rest_of_header)?;

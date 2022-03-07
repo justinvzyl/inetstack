@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use ::runtime::network::types::Port16;
-use ::runtime::{fail::Fail, Runtime};
-use ::std::convert::TryFrom;
-use ::std::num::NonZeroU16;
+use ::libc::EAGAIN;
+use ::runtime::{fail::Fail, network::types::Port16, Runtime};
+use ::std::{convert::TryFrom, num::NonZeroU16};
 
 //==============================================================================
 // Constants
@@ -47,9 +46,9 @@ impl EphemeralPorts {
     }
 
     pub fn alloc(&mut self) -> Result<Port16, Fail> {
-        self.ports.pop().ok_or(Fail::ResourceExhausted {
-            details: "Out of private ports",
-        })
+        self.ports
+            .pop()
+            .ok_or(Fail::new(EAGAIN, "out of private ports"))
     }
 
     pub fn free(&mut self, port: Port16) {

@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use num_traits::FromPrimitive;
-use runtime::fail::Fail;
-use std::convert::TryFrom;
+use ::libc::ENOTSUP;
+use ::num_traits::FromPrimitive;
+use ::runtime::fail::Fail;
+use ::std::convert::TryFrom;
 
 #[repr(u8)]
 #[derive(FromPrimitive, Copy, Clone, PartialEq, Eq, Debug)]
@@ -21,9 +22,7 @@ impl TryFrom<u8> for Ipv4Protocol2 {
     fn try_from(n: u8) -> Result<Self, Fail> {
         match FromPrimitive::from_u8(n) {
             Some(n) => Ok(n),
-            None => Err(Fail::Unsupported {
-                details: "Unsupported IPv4 protocol",
-            }),
+            None => Err(Fail::new(ENOTSUP, "unsupported IPv4 protocol")),
         }
     }
 }

@@ -16,6 +16,9 @@ use crate::protocols::{
     },
 };
 use ::futures::channel::mpsc;
+use ::libc::{
+    EADDRNOTAVAIL, EAGAIN, EBADF, EBADMSG, EINPROGRESS, EINVAL, ENOTCONN, ENOTSUP, EOPNOTSUPP,
+};
 use ::runtime::{fail::Fail, memory::Buffer, QDesc, Runtime};
 use ::std::{
     cell::RefCell,
@@ -95,18 +98,14 @@ impl<RT: Runtime> TcpPeer<RT> {
     pub fn bind(&self, fd: QDesc, addr: Ipv4Endpoint) -> Result<(), Fail> {
         let mut inner = self.inner.borrow_mut();
         if addr.get_port() >= EphemeralPorts::first_private_port() {
-            return Err(Fail::Malformed {
-                details: "Port number in private port range",
-            });
+            return Err(Fail::new(EBADMSG, "Port number in private port range"));
         }
         match inner.sockets.get_mut(&fd) {
             Some(Socket::Inactive { ref mut local }) => {
                 *local = Some(addr);
                 Ok(())
             }
-            _ => Err(Fail::Malformed {
-                details: "Invalid file descriptor",
-            }),
+            _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -118,17 +117,11 @@ impl<RT: Runtime> TcpPeer<RT> {
         let mut inner = self.inner.borrow_mut();
         let local = match inner.sockets.get_mut(&fd) {
             Some(Socket::Inactive { local: Some(local) }) => *local,
-            _ => {
-                return Err(Fail::Malformed {
-                    details: "Invalid file descriptor",
-                })
-            }
+            _ => return Err(Fail::new(EBADF, "invalid queue descriptor")),
         };
         // TODO: Should this move to bind?
         if inner.passive.contains_key(&local) {
-            return Err(Fail::ResourceBusy {
-                details: "Port already in use",
-            });
+            return Err(Fail::new(EADDRNOTAVAIL, "port already in use"));
         }
 
         let socket = PassiveSocket::new(local, backlog, inner.rt.clone(), inner.arp.clone());
@@ -158,12 +151,8 @@ impl<RT: Runtime> TcpPeer<RT> {
 
         let local = match inner.sockets.get(&fd) {
             Some(Socket::Listening { local }) => local,
-            Some(..) => {
-                return Poll::Ready(Err(Fail::Malformed {
-                    details: "Socket not listening",
-                }))
-            }
-            None => return Poll::Ready(Err(Fail::Malformed { details: "Bad FD" })),
+            Some(..) => return Poll::Ready(Err(Fail::new(EOPNOTSUPP, "socket not listening"))),
+            None => return Poll::Ready(Err(Fail::new(EBADF, "bad file descriptor"))),
         };
         let passive = inner
             .passive
@@ -193,9 +182,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         let r = try {
             match inner.sockets.get_mut(&fd) {
                 Some(Socket::Inactive { .. }) => (),
-                _ => Err(Fail::Malformed {
-                    details: "Invalid file descriptor",
-                })?,
+                _ => Err(Fail::new(EBADF, "invalid file descriptor"))?,
             }
 
             // TODO: We need to free these!
@@ -233,27 +220,19 @@ impl<RT: Runtime> TcpPeer<RT> {
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
             Some(Socket::Connecting { .. }) => {
-                return Poll::Ready(Err(Fail::Malformed {
-                    details: "pool_recv(): socket connecting",
-                }))
+                return Poll::Ready(Err(Fail::new(EINPROGRESS, "socket connecting")))
             }
             Some(Socket::Inactive { .. }) => {
-                return Poll::Ready(Err(Fail::Malformed {
-                    details: "pool_recv(): socket inactive",
-                }))
+                return Poll::Ready(Err(Fail::new(EBADF, "socket inactive")))
             }
             Some(Socket::Listening { .. }) => {
-                return Poll::Ready(Err(Fail::Malformed {
-                    details: "pool_recv(): socket listening",
-                }))
+                return Poll::Ready(Err(Fail::new(ENOTCONN, "socket listening")))
             }
-            None => return Poll::Ready(Err(Fail::Malformed { details: "Bad FD" })),
+            None => return Poll::Ready(Err(Fail::new(EBADF, "bad queue descriptor"))),
         };
         match inner.established.get(&key) {
             Some(ref s) => s.poll_recv(ctx),
-            None => Poll::Ready(Err(Fail::Malformed {
-                details: "Socket not established",
-            })),
+            None => Poll::Ready(Err(Fail::new(ENOTCONN, "connection not established"))),
         }
     }
 
@@ -280,18 +259,12 @@ impl<RT: Runtime> TcpPeer<RT> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => {
-                return Err(Fail::Malformed {
-                    details: "Socket not established",
-                })
-            }
-            None => return Err(Fail::Malformed { details: "Bad FD" }),
+            Some(..) => return Err(Fail::new(ENOTCONN, "connection not established")),
+            None => return Err(Fail::new(EBADF, "bad queue descriptor")),
         };
         match inner.established.get(&key) {
             Some(ref s) => s.send(buf),
-            None => Err(Fail::Malformed {
-                details: "Socket not established",
-            }),
+            None => Err(Fail::new(ENOTCONN, "connection not established")),
         }
     }
 
@@ -304,20 +277,17 @@ impl<RT: Runtime> TcpPeer<RT> {
                 let key = (*local, *remote);
                 match inner.established.get(&key) {
                     Some(ref s) => s.close()?,
-                    None => {
-                        return Err(Fail::Malformed {
-                            details: "Socket not established",
-                        })
-                    }
+                    None => return Err(Fail::new(ENOTCONN, "connection not established")),
                 }
             }
 
             Some(..) => {
-                return Err(Fail::Unsupported {
-                    details: "implement close for listening sockets",
-                })
+                return Err(Fail::new(
+                    ENOTSUP,
+                    "close not implemented for listening sockets",
+                ))
             }
-            None => return Err(Fail::Malformed { details: "Bad FD" }),
+            None => return Err(Fail::new(EBADF, "bad queue descriptor")),
         }
 
         Ok(())
@@ -327,18 +297,12 @@ impl<RT: Runtime> TcpPeer<RT> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => {
-                return Err(Fail::Malformed {
-                    details: "Socket not established",
-                })
-            }
-            None => return Err(Fail::Malformed { details: "Bad FD" }),
+            Some(..) => return Err(Fail::new(ENOTCONN, "connection not established")),
+            None => return Err(Fail::new(EBADF, "bad queue descriptor")),
         };
         match inner.established.get(&key) {
             Some(ref s) => Ok(s.remote_mss()),
-            None => Err(Fail::Malformed {
-                details: "Socket not established",
-            }),
+            None => Err(Fail::new(ENOTCONN, "connection not established")),
         }
     }
 
@@ -346,18 +310,12 @@ impl<RT: Runtime> TcpPeer<RT> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => {
-                return Err(Fail::Malformed {
-                    details: "Socket not established",
-                })
-            }
-            None => return Err(Fail::Malformed { details: "Bad FD" }),
+            Some(..) => return Err(Fail::new(ENOTCONN, "connection not established")),
+            None => return Err(Fail::new(EBADF, "bad queue descriptor")),
         };
         match inner.established.get(&key) {
             Some(ref s) => Ok(s.current_rto()),
-            None => Err(Fail::Malformed {
-                details: "Socket not established",
-            }),
+            None => Err(Fail::new(ENOTCONN, "connection not established")),
         }
     }
 
@@ -365,18 +323,12 @@ impl<RT: Runtime> TcpPeer<RT> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => {
-                return Err(Fail::Malformed {
-                    details: "Socket not established",
-                })
-            }
-            None => return Err(Fail::Malformed { details: "Bad FD" }),
+            Some(..) => return Err(Fail::new(ENOTCONN, "connection not established")),
+            None => return Err(Fail::new(EBADF, "bad queue descriptor")),
         };
         match inner.established.get(&key) {
             Some(ref s) => Ok(s.endpoints()),
-            None => Err(Fail::Malformed {
-                details: "Socket not established",
-            }),
+            None => Err(Fail::new(ENOTCONN, "connection not established")),
         }
     }
 }
@@ -412,9 +364,7 @@ impl<RT: Runtime> Inner<RT> {
             || remote.get_address().is_multicast()
             || remote.get_address().is_unspecified()
         {
-            return Err(Fail::Malformed {
-                details: "Invalid address type",
-            });
+            return Err(Fail::new(EINVAL, "invalid address type"));
         }
         let key = (local, remote);
 
@@ -442,12 +392,10 @@ impl<RT: Runtime> Inner<RT> {
 
     fn send_rst(&mut self, local: &Ipv4Endpoint, remote: &Ipv4Endpoint) -> Result<(), Fail> {
         // TODO: Make this work pending on ARP resolution if needed.
-        let remote_link_addr =
-            self.arp
-                .try_query(remote.get_address())
-                .ok_or(Fail::ResourceNotFound {
-                    details: "RST destination not in ARP cache",
-                })?;
+        let remote_link_addr = self
+            .arp
+            .try_query(remote.get_address())
+            .ok_or(Fail::new(EINVAL, "detination not in ARP cache"))?;
 
         let mut tcp_hdr = TcpHeader::new(local.get_port(), remote.get_port());
         tcp_hdr.rst = true;
@@ -479,22 +427,14 @@ impl<RT: Runtime> Inner<RT> {
     ) -> Poll<Result<(), Fail>> {
         let key = match self.sockets.get(&fd) {
             Some(Socket::Connecting { local, remote }) => (*local, *remote),
-            Some(..) => {
-                return Poll::Ready(Err(Fail::Malformed {
-                    details: "Socket not connecting",
-                }))
-            }
-            None => return Poll::Ready(Err(Fail::Malformed { details: "Bad FD" })),
+            Some(..) => return Poll::Ready(Err(Fail::new(EAGAIN, "socket not connecting"))),
+            None => return Poll::Ready(Err(Fail::new(EBADF, "bad queue descriptor"))),
         };
 
         let result = {
             let socket = match self.connecting.get_mut(&key) {
                 Some(s) => s,
-                None => {
-                    return Poll::Ready(Err(Fail::Malformed {
-                        details: "Socket not connecting",
-                    }))
-                }
+                None => return Poll::Ready(Err(Fail::new(EAGAIN, "socket not connecting"))),
             };
             match socket.poll_result(context) {
                 Poll::Pending => return Poll::Pending,

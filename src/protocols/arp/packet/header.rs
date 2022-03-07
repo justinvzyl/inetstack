@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 use ::byteorder::{ByteOrder, NetworkEndian};
+use ::libc::{EBADMSG, ENOTSUP};
 use ::num_traits::FromPrimitive;
 use ::runtime::{fail::Fail, memory::Buffer, network::types::MacAddress};
 use ::std::{convert::TryInto, net::Ipv4Addr};
@@ -73,40 +74,27 @@ impl ArpHeader {
 
     pub fn parse<T: Buffer>(buf: T) -> Result<Self, Fail> {
         if buf.len() < ARP_MESSAGE_SIZE {
-            return Err(Fail::Malformed {
-                details: "ARP message too short",
-            });
+            return Err(Fail::new(EBADMSG, "ARP message too short"));
         }
         let buf: &[u8; ARP_MESSAGE_SIZE] = &buf[..ARP_MESSAGE_SIZE].try_into().unwrap();
         let hardware_type = NetworkEndian::read_u16(&buf[0..2]);
         if hardware_type != ARP_HTYPE_ETHER2 {
-            return Err(Fail::Unsupported {
-                details: "Unsupported HTYPE",
-            });
+            return Err(Fail::new(ENOTSUP, "unsupported HTYPE"));
         }
         let protocol_type = NetworkEndian::read_u16(&buf[2..4]);
         if protocol_type != ARP_PTYPE_IPV4 {
-            return Err(Fail::Unsupported {
-                details: "Unsupported PTYPE",
-            });
+            return Err(Fail::new(ENOTSUP, "unsupported PTYPE"));
         }
         let hardware_address_len = buf[4];
         if hardware_address_len != ARP_HLEN_ETHER2 {
-            return Err(Fail::Unsupported {
-                details: "Unsupported HLEN",
-            });
+            return Err(Fail::new(ENOTSUP, "unsupported HLEN"));
         }
         let protocol_address_len = buf[5];
         if protocol_address_len != ARP_PLEN_IPV4 {
-            return Err(Fail::Unsupported {
-                details: "Unsupported PLEN",
-            });
+            return Err(Fail::new(ENOTSUP, "unsupported PLEN"));
         }
-        let operation = FromPrimitive::from_u16(NetworkEndian::read_u16(&buf[6..8])).ok_or({
-            Fail::Unsupported {
-                details: "Unsupported OPER",
-            }
-        })?;
+        let operation = FromPrimitive::from_u16(NetworkEndian::read_u16(&buf[6..8]))
+            .ok_or(Fail::new(ENOTSUP, "unsupported OPER"))?;
         let sender_hardware_addr = MacAddress::from_bytes(&buf[8..14]);
         let sender_protocol_addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[14..18]));
         let target_hardware_addr = MacAddress::from_bytes(&buf[18..24]);

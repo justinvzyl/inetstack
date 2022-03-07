@@ -4,8 +4,10 @@
 pub mod congestion_ctrl;
 mod rto;
 
+use self::{congestion_ctrl as cc, rto::RtoCalculator};
 use super::ControlBlock;
 use crate::protocols::tcp::SeqNumber;
+use ::libc::{EBADMSG, EBUSY, EINVAL, ENOBUFS};
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
@@ -20,8 +22,6 @@ use ::std::{
     fmt,
     time::{Duration, Instant},
 };
-use congestion_ctrl as cc;
-use rto::RtoCalculator;
 
 pub struct UnackedSegment<RT: Runtime> {
     pub bytes: RT::Buf,
@@ -151,9 +151,10 @@ impl<RT: Runtime> Sender<RT> {
     }
 
     pub fn send(&self, buf: RT::Buf, cb: &ControlBlock<RT>) -> Result<(), Fail> {
-        let buf_len: u32 = buf.len().try_into().map_err(|_| Fail::Ignored {
-            details: "Buffer too large",
-        })?;
+        let buf_len: u32 = buf
+            .len()
+            .try_into()
+            .map_err(|_| Fail::new(EINVAL, "buffer too large"))?;
 
         let win_sz = self.window_size.get();
         let base_seq = self.base_seq_no.get();
@@ -202,9 +203,7 @@ impl<RT: Runtime> Sender<RT> {
 
         // Too fast.
         if self.unsent_queue.borrow().len() > UNSENT_QUEUE_CUTOFF {
-            return Err(Fail::ResourceBusy {
-                details: "too many packets to send",
-            });
+            return Err(Fail::new(EBUSY, "too many packets to send"));
         }
 
         // Slow path: Delegating sending the data to background processing.
@@ -222,9 +221,7 @@ impl<RT: Runtime> Sender<RT> {
         let bytes_acknowledged: u32 = (ack_seq_no - base_seq_no).into();
 
         if bytes_acknowledged > bytes_outstanding {
-            return Err(Fail::Ignored {
-                details: "ACK is outside of send window",
-            });
+            return Err(Fail::new(EBADMSG, "ACK is outside of send window"));
         }
 
         let rto: Duration = self.current_rto();
@@ -248,9 +245,7 @@ impl<RT: Runtime> Sender<RT> {
         while let Some(segment) = self.unacked_queue.borrow_mut().pop_front() {
             if segment.bytes.len() > bytes_remaining {
                 // TODO: We need to close the connection in this case.
-                return Err(Fail::Ignored {
-                    details: "ACK isn't on segment boundary",
-                });
+                return Err(Fail::new(EBADMSG, "ACK isn't on segment boundary"));
             }
             bytes_remaining -= segment.bytes.len();
 
@@ -316,9 +311,7 @@ impl<RT: Runtime> Sender<RT> {
         // TODO: Is this the right check?
         let window_size = (window_size_hdr as u32)
             .checked_shl(self.window_scale as u32)
-            .ok_or(Fail::Ignored {
-                details: "Window size overflow",
-            })?;
+            .ok_or(Fail::new(ENOBUFS, "window size overlow"))?;
 
         debug!(
             "Updating window size -> {} (hdr {}, scale {})",

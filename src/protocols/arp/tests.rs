@@ -6,8 +6,12 @@ use crate::{
     protocols::ethernet2::Ethernet2Header,
     test_helpers::{self, TestRuntime},
 };
+use ::futures::{
+    task::{noop_waker_ref, Context},
+    FutureExt,
+};
+use ::libc::{EBADMSG, ETIMEDOUT};
 use ::runtime::{
-    fail::Fail,
     network::{types::MacAddress, NetworkRuntime},
     task::SchedulerRuntime,
 };
@@ -15,10 +19,6 @@ use ::std::{
     future::Future,
     task::Poll,
     time::{Duration, Instant},
-};
-use futures::{
-    task::{noop_waker_ref, Context},
-    FutureExt,
 };
 
 /// Tests that requests get replied.
@@ -46,7 +46,7 @@ fn immediate_reply() {
     info!("passing ARP request to bob (should be ignored)...");
     assert_eq!(
         match bob.receive(request.clone()) {
-            Err(Fail::Ignored { .. }) => Ok(()),
+            Err(e) if e.errno == EBADMSG => Ok(()),
             _ => Err(()),
         },
         Ok(())
@@ -104,7 +104,7 @@ fn slow_reply() {
     info!("passing ARP request to bob (should be ignored)...");
     assert_eq!(
         match bob.receive(request.clone()) {
-            Err(Fail::Ignored { .. }) => Ok(()),
+            Err(e) if e.errno == EBADMSG => Ok(()),
             _ => Err(()),
         },
         Ok(())
@@ -169,7 +169,7 @@ fn no_reply() {
     now += options.get_request_timeout();
     alice.rt().advance_clock(now);
     match Future::poll(fut.as_mut(), &mut ctx) {
-        Poll::Ready(Err(Fail::Timeout {})) => Ok(()),
+        Poll::Ready(Err(error)) if error.errno == ETIMEDOUT => Ok(()),
         _ => Err(()),
     }
     .unwrap();

@@ -6,6 +6,7 @@
 use super::{ControlBlock, State};
 use crate::protocols::tcp::SeqNumber;
 use ::futures::FutureExt;
+use ::libc::ECONNABORTED;
 use ::runtime::{fail::Fail, memory::Buffer, Runtime};
 use ::std::rc::Rc;
 
@@ -116,7 +117,7 @@ async fn active_wait_2msl<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fa
         }
 
         // TODO: Wait for 2*MSL if active close.
-        return Err(Fail::ConnectionAborted {});
+        return Err(Fail::new(ECONNABORTED, "connection aborted"));
     }
 }
 
@@ -197,7 +198,7 @@ async fn passive_wait_fin_ack<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!
             continue;
         }
 
-        return Err(Fail::ConnectionAborted {});
+        return Err(Fail::new(ECONNABORTED, "connection aborted"));
     }
 }
 

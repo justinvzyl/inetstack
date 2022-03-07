@@ -7,6 +7,7 @@ use crate::protocols::{
     tcp::SeqNumber,
 };
 use ::byteorder::{ByteOrder, NetworkEndian, ReadBytesExt};
+use ::libc::EBADMSG;
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
@@ -222,25 +223,17 @@ impl TcpHeader {
         rx_checksum_offload: bool,
     ) -> Result<(Self, T), Fail> {
         if buf.len() < MIN_TCP_HEADER_SIZE {
-            return Err(Fail::Malformed {
-                details: "TCP segment too small",
-            });
+            return Err(Fail::new(EBADMSG, "TCP segment too small"));
         }
         let data_offset = (buf[12] >> 4) as usize * 4;
         if buf.len() < data_offset {
-            return Err(Fail::Malformed {
-                details: "TCP segment smaller than data offset",
-            });
+            return Err(Fail::new(EBADMSG, "TCP segment smaller than data offset"));
         }
         if data_offset < MIN_TCP_HEADER_SIZE {
-            return Err(Fail::Malformed {
-                details: "TCP data offset too small",
-            });
+            return Err(Fail::new(EBADMSG, "TCP data offset too small"));
         }
         if data_offset > MAX_TCP_HEADER_SIZE {
-            return Err(Fail::Malformed {
-                details: "TCP data offset too large",
-            });
+            return Err(Fail::new(EBADMSG, "TCP data offset too large"));
         }
         let (hdr_buf, data_buf) = buf[..].split_at(data_offset);
 
@@ -266,9 +259,7 @@ impl TcpHeader {
         if !rx_checksum_offload {
             let checksum = NetworkEndian::read_u16(&hdr_buf[16..18]);
             if checksum != tcp_checksum(ipv4_header, hdr_buf, data_buf) {
-                return Err(Fail::Malformed {
-                    details: "TCP checksum mismatch",
-                });
+                return Err(Fail::new(EBADMSG, "TCP checksum mismatch"));
             }
         }
 
@@ -287,9 +278,7 @@ impl TcpHeader {
                     2 => {
                         let option_length = option_rdr.read_u8()?;
                         if option_length != 4 {
-                            return Err(Fail::Malformed {
-                                details: "MSS size was not 4",
-                            });
+                            return Err(Fail::new(EBADMSG, "MSS size was not 4"));
                         }
                         let mss = option_rdr.read_u16::<NetworkEndian>()?;
                         TcpOptions2::MaximumSegmentSize(mss)
@@ -297,9 +286,7 @@ impl TcpHeader {
                     3 => {
                         let option_length = option_rdr.read_u8()?;
                         if option_length != 3 {
-                            return Err(Fail::Malformed {
-                                details: "Window scale size was not 3",
-                            });
+                            return Err(Fail::new(EBADMSG, "window scale size was not 3"));
                         }
                         let window_scale = option_rdr.read_u8()?;
                         TcpOptions2::WindowScale(window_scale)
@@ -307,9 +294,7 @@ impl TcpHeader {
                     4 => {
                         let option_length = option_rdr.read_u8()?;
                         if option_length != 2 {
-                            return Err(Fail::Malformed {
-                                details: "SACK permitted size was not 2",
-                            });
+                            return Err(Fail::new(EBADMSG, "SACK permitted size was not 2"));
                         }
                         TcpOptions2::SelectiveAcknowlegementPermitted
                     }
@@ -317,11 +302,7 @@ impl TcpHeader {
                         let option_length = option_rdr.read_u8()?;
                         let num_sacks = match option_length {
                             10 | 18 | 26 | 34 => (option_length as usize - 2) / 8,
-                            _ => {
-                                return Err(Fail::Malformed {
-                                    details: "Invalid SACK size",
-                                })
-                            }
+                            _ => return Err(Fail::new(EBADMSG, "invalid SACK size")),
                         };
                         let mut sacks = [SelectiveAcknowlegement {
                             begin: SeqNumber::from(0),
@@ -336,9 +317,7 @@ impl TcpHeader {
                     8 => {
                         let option_length = option_rdr.read_u8()?;
                         if option_length != 10 {
-                            return Err(Fail::Malformed {
-                                details: "TCP timestamp size was not 10",
-                            });
+                            return Err(Fail::new(EBADMSG, "TCP timestamp size was not 10"));
                         }
                         let sender_timestamp = option_rdr.read_u32::<NetworkEndian>()?;
                         let echo_timestamp = option_rdr.read_u32::<NetworkEndian>()?;
@@ -347,16 +326,10 @@ impl TcpHeader {
                             echo_timestamp,
                         }
                     }
-                    _ => {
-                        return Err(Fail::Malformed {
-                            details: "Invalid TCP option",
-                        })
-                    }
+                    _ => return Err(Fail::new(EBADMSG, "invalid TCP option")),
                 };
                 if num_options >= option_list.len() {
-                    return Err(Fail::Malformed {
-                        details: "Too many TCP options provided",
-                    });
+                    return Err(Fail::new(EBADMSG, "too many TCP options provided"));
                 }
                 option_list[num_options] = option;
                 num_options += 1;
