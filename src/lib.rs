@@ -379,16 +379,6 @@ impl<RT: Runtime> Catnip<RT> {
         Ok(self.rt.schedule(future).into_raw().into())
     }
 
-    pub fn pushto3(&mut self, fd: QDesc, buf: RT::Buf, to: Ipv4Endpoint) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::pushto2");
-        if buf.len() == 0 {
-            return Err(Fail::new(EINVAL, "zero-length buffer"));
-        }
-        let future = self.do_pushto(fd, buf, to)?;
-        Ok(self.rt.schedule(future).into_raw().into())
-    }
-
     ///
     /// **Brief**
     ///
