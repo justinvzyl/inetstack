@@ -518,10 +518,6 @@ impl<RT: Runtime> Catnip<RT> {
         }
     }
 
-    pub fn is_qd_valid(&self, _fd: QDesc) -> bool {
-        true
-    }
-
     /// Given a handle representing a task in our scheduler. Return the results of this future
     /// and the file descriptor for this connection.
     ///
