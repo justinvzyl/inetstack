@@ -17,11 +17,12 @@ use crate::protocols::{
 };
 use ::futures::channel::mpsc;
 use ::libc::{
-    EADDRNOTAVAIL, EAGAIN, EBADF, EBADMSG, EINPROGRESS, EINVAL, ENOTCONN, ENOTSUP, EOPNOTSUPP,
+    EADDRNOTAVAIL, EAGAIN, EBADF, EBADMSG, EBUSY, EINPROGRESS, EINVAL, ENOTCONN, ENOTSUP,
+    EOPNOTSUPP,
 };
 use ::runtime::{fail::Fail, memory::Buffer, QDesc, Runtime};
 use ::std::{
-    cell::RefCell,
+    cell::{RefCell, RefMut},
     collections::HashMap,
     rc::Rc,
     task::{Context, Poll},
@@ -78,21 +79,18 @@ impl<RT: Runtime> TcpPeer<RT> {
     }
 
     /// Opens a TCP socket.
-    pub fn do_socket(&self, fd: QDesc) {
+    pub fn do_socket(&self, qd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("tcp::socket");
-
-        let mut inner = self.inner.borrow_mut();
-
-        // Sanity check.
-        assert_eq!(
-            inner.sockets.contains_key(&fd),
-            false,
-            "file descriptor in use"
-        );
-
-        let socket = Socket::Inactive { local: None };
-        inner.sockets.insert(fd, socket);
+        let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
+        match inner.sockets.contains_key(&qd) {
+            false => {
+                let socket: Socket = Socket::Inactive { local: None };
+                inner.sockets.insert(qd, socket);
+                Ok(())
+            }
+            true => return Err(Fail::new(EBUSY, "queue descriptor in use")),
+        }
     }
 
     pub fn bind(&self, fd: QDesc, addr: Ipv4Endpoint) -> Result<(), Fail> {

@@ -70,7 +70,7 @@ impl<RT: Runtime> Engine<RT> {
 
     pub fn udp_socket(&mut self) -> Result<QDesc, Fail> {
         let fd = self.file_table.alloc(QType::UdpSocket.into());
-        self.ipv4.udp.do_socket(fd);
+        self.ipv4.udp.do_socket(fd).unwrap();
         Ok(fd)
     }
 
@@ -84,7 +84,7 @@ impl<RT: Runtime> Engine<RT> {
 
     pub fn tcp_socket(&mut self) -> Result<QDesc, Fail> {
         let fd = self.file_table.alloc(QType::TcpSocket.into());
-        self.ipv4.tcp.do_socket(fd);
+        self.ipv4.tcp.do_socket(fd).unwrap();
         Ok(fd)
     }
 

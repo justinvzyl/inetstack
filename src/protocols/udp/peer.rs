@@ -18,7 +18,7 @@ use crate::{
 };
 use ::catwalk::SchedulerHandle;
 use ::futures::{channel::mpsc, stream::StreamExt, FutureExt};
-use ::libc::{EADDRINUSE, EBADF, ENOTCONN};
+use ::libc::{EADDRINUSE, EBADF, EBUSY, ENOTCONN};
 use ::runtime::{fail::Fail, network::types::MacAddress, QDesc, Runtime};
 use ::std::collections::HashMap;
 
@@ -87,22 +87,19 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     /// Opens a UDP socket.
-    pub fn do_socket(&mut self, fd: QDesc) {
+    pub fn do_socket(&mut self, qd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::socket");
-
-        // Sanity check.
-        // TODO: this should fail instead of panicking.
-        assert_eq!(
-            self.sockets.contains_key(&fd),
-            false,
-            "file descriptor in use"
-        );
-
         // Create a detached socket and place it in our hashmap.
         // This socket will be bound to an address once we call do_bind.
-        let socket: UdpSocket = UdpSocket::default();
-        self.sockets.insert(fd, socket);
+        match self.sockets.contains_key(&qd) {
+            false => {
+                let socket: UdpSocket = UdpSocket::default();
+                self.sockets.insert(qd, socket);
+                Ok(())
+            }
+            true => return Err(Fail::new(EBUSY, "queue descriptor in use")),
+        }
     }
 
     /// Binds a socket to a local endpoint address.

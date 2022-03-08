@@ -130,14 +130,22 @@ impl<RT: Runtime> Catnip<RT> {
         }
         match socket_type {
             libc::SOCK_STREAM => {
-                let qd = self.file_table.alloc(QType::TcpSocket.into());
-                self.ipv4.tcp.do_socket(qd);
-                Ok(qd)
+                let qd: QDesc = self.file_table.alloc(QType::TcpSocket.into());
+                if let Err(e) = self.ipv4.tcp.do_socket(qd) {
+                    self.file_table.free(qd);
+                    Err(e)
+                } else {
+                    Ok(qd)
+                }
             }
             libc::SOCK_DGRAM => {
-                let qd = self.file_table.alloc(QType::UdpSocket.into());
-                self.ipv4.udp.do_socket(qd);
-                Ok(qd)
+                let qd: QDesc = self.file_table.alloc(QType::UdpSocket.into());
+                if let Err(e) = self.ipv4.udp.do_socket(qd) {
+                    self.file_table.free(qd);
+                    Err(e)
+                } else {
+                    Ok(qd)
+                }
             }
             _ => Err(Fail::new(ENOTSUP, "socket type not supported")),
         }
