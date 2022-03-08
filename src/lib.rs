@@ -415,26 +415,6 @@ impl<RT: Runtime> Catnip<RT> {
         Ok(self.rt.schedule(future).into_raw().into())
     }
 
-    // If this returns a result, `qt` is no longer valid.
-    pub fn poll(&mut self, qt: QToken) -> Option<dmtr_qresult_t> {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::poll");
-        trace!("poll(): qt={:?}", qt);
-        self.poll_bg_work();
-        let handle = match self.rt.get_handle(qt.into()) {
-            None => {
-                panic!("Invalid handle {}", qt);
-            }
-            Some(h) => h,
-        };
-        if !handle.has_completed() {
-            handle.into_raw();
-            return None;
-        }
-        let (qd, r) = self.take_operation(handle);
-        Some(pack_result(&self.rt, r, qd, qt.into()))
-    }
-
     /// Block until request represented by `qt` is finished returning the results of this request.
     pub fn wait(&mut self, qt: QToken) -> dmtr_qresult_t {
         #[cfg(feature = "profiler")]
