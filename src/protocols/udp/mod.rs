@@ -1,16 +1,26 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//! # User Datagram Protocol
+//!
+//! # References
+//!
+//! - https://datatracker.ietf.org/doc/html/rfc768.
+
 mod datagram;
 mod futures;
-mod listener;
 mod peer;
-mod socket;
+mod queue;
 
 #[cfg(test)]
 mod tests;
 
-pub use self::datagram::UdpHeader;
-pub use self::datagram::UDP_HEADER_SIZE;
-pub use self::futures::UdpPopFuture;
-pub use self::peer::UdpPeer;
+//==============================================================================
+// Exports
+//==============================================================================
+
+pub use self::{
+    datagram::UdpHeader,
+    futures::{UdpOperation, UdpPopFuture},
+    peer::UdpPeer,
+};

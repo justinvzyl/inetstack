@@ -10,7 +10,7 @@ use ::std::mem;
 
 pub fn pack_result<RT: Runtime>(
     rt: &RT,
-    result: OperationResult<RT>,
+    result: OperationResult<RT::Buf>,
     qd: QDesc,
     qt: u64,
 ) -> dmtr_qresult_t {

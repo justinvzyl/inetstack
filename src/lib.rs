@@ -20,7 +20,7 @@ extern crate log;
 //==============================================================================
 
 use crate::{
-    futures::operation::{FutureOperation, UdpOperation},
+    futures::operation::FutureOperation,
     interop::pack_result,
     operations::OperationResult,
     protocols::{
@@ -40,6 +40,7 @@ use ::runtime::{
     QDesc, QToken, QType, Runtime,
 };
 use ::std::{any::Any, convert::TryFrom, time::Instant};
+use protocols::udp::UdpOperation;
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
@@ -345,7 +346,7 @@ impl<RT: Runtime> Catnip<RT> {
         match self.file_table.get(fd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::UdpSocket) => {
-                    let udp_op = UdpOperation::Push(fd, self.ipv4.udp.do_pushto(fd, buf, to));
+                    let udp_op = UdpOperation::Pushto(fd, self.ipv4.udp.do_pushto(fd, buf, to));
                     Ok(FutureOperation::Udp(udp_op))
                 }
                 _ => Err(Fail::new(EINVAL, "invalid queue type")),
@@ -434,7 +435,7 @@ impl<RT: Runtime> Catnip<RT> {
 
     /// Block until request represented by `qt` is finished returning the file descriptor
     /// representing this request and the results of that operation.
-    pub fn wait2(&mut self, qt: QToken) -> (QDesc, OperationResult<RT>) {
+    pub fn wait2(&mut self, qt: QToken) -> (QDesc, OperationResult<RT::Buf>) {
         #[cfg(feature = "profiler")]
         timer!("catnip::wait2");
         trace!("wait2(): qt={:?}", qt);
@@ -489,7 +490,7 @@ impl<RT: Runtime> Catnip<RT> {
         }
     }
 
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<RT>) {
+    pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<RT::Buf>) {
         #[cfg(feature = "profiler")]
         timer!("catnip::wait_any2");
         trace!("wait_any2(): qts={:?}", qts);
@@ -510,7 +511,7 @@ impl<RT: Runtime> Catnip<RT> {
     /// and the file descriptor for this connection.
     ///
     /// This function will panic if the specified future had not completed or is _background_ future.
-    fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult<RT>) {
+    fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult<RT::Buf>) {
         let boxed_future: Box<dyn Any> = self.rt.take(handle).as_any();
 
         let boxed_concrete_type = *boxed_future
@@ -519,7 +520,7 @@ impl<RT: Runtime> Catnip<RT> {
 
         match boxed_concrete_type {
             FutureOperation::Tcp(f) => f.expect_result(),
-            FutureOperation::Udp(f) => f.expect_result(),
+            FutureOperation::Udp(f) => f.get_result(),
             FutureOperation::Background(..) => {
                 panic!("`take_operation` attempted on background task!")
             }

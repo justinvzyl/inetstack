@@ -1,40 +1,45 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::super::listener::SharedListener;
-use crate::protocols::ipv4::Ipv4Endpoint;
-use runtime::QDesc;
-use runtime::{fail::Fail, memory::MemoryRuntime};
-use std::{
+//==============================================================================
+// Imports
+//==============================================================================
+
+use crate::protocols::{
+    ipv4::Ipv4Endpoint,
+    udp::queue::{SharedQueue, SharedQueueSlot},
+};
+use ::runtime::{fail::Fail, memory::Buffer, QDesc};
+use ::std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{Context, Poll, Waker},
 };
 
 //==============================================================================
-// Constants & Structures
+// Structures
 //==============================================================================
 
-/// Future for Pop Operation
-pub struct UdpPopFuture<RT: MemoryRuntime> {
-    /// File descriptor.
+/// Pop Operation Descriptor
+pub struct UdpPopFuture<T: Buffer> {
+    /// Associated queue descriptor.
     qd: QDesc,
-    /// Listener.
-    listener: Result<SharedListener<RT::Buf>, Fail>,
+    /// Shared receiving queue.
+    recv_queue: SharedQueue<SharedQueueSlot<T>>,
 }
 
 //==============================================================================
 // Associate Functions
 //==============================================================================
 
-/// Associate functions for [PopFuture].
-impl<RT: MemoryRuntime> UdpPopFuture<RT> {
-    /// Creates a future for the pop operation.
-    pub fn new(qd: QDesc, listener: Result<SharedListener<RT::Buf>, Fail>) -> Self {
-        Self { qd, listener }
+/// Associate Functions for Pop Operation Descriptor
+impl<T: Buffer> UdpPopFuture<T> {
+    /// Creates a pop operation descritor.
+    pub fn new(qd: QDesc, recv_queue: SharedQueue<SharedQueueSlot<T>>) -> Self {
+        Self { qd, recv_queue }
     }
 
-    /// Returns the [QDesc] associated to the target [UdpPopFuture].
+    /// Returns the queue descriptor that is associated to the target pop operation descriptor.
     pub fn get_qd(&self) -> QDesc {
         self.qd
     }
@@ -44,22 +49,20 @@ impl<RT: MemoryRuntime> UdpPopFuture<RT> {
 // Trait Implementations
 //==============================================================================
 
-/// Future trait implementation for [PopFuture].
-impl<RT: MemoryRuntime> Future for UdpPopFuture<RT> {
-    type Output = Result<(Option<Ipv4Endpoint>, RT::Buf), Fail>;
+/// Future Trait implementation for Pop Operation Descriptor
+impl<T: Buffer> Future for UdpPopFuture<T> {
+    type Output = Result<(Option<Ipv4Endpoint>, T), Fail>;
 
+    /// Polls the target pop operation descriptor.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
-        let self_ = self.get_mut();
-        match self_.listener.clone() {
-            Err(ref e) => Poll::Ready(Err(e.clone())),
-            Ok(listener) => {
-                if let Some(r) = listener.pop_data() {
-                    return Poll::Ready(Ok(r));
-                }
-                let waker = ctx.waker();
-                listener.put_waker(Some(waker.clone()));
+        match self.get_mut().recv_queue.try_pop() {
+            Ok(Some(msg)) => Poll::Ready(Ok((msg.remote, msg.data))),
+            Ok(None) => {
+                let waker: &Waker = ctx.waker();
+                waker.wake_by_ref();
                 Poll::Pending
             }
+            Err(e) => Poll::Ready(Err(e)),
         }
     }
 }

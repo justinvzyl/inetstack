@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//==============================================================================
+// Imports
+//==============================================================================
+
 use crate::protocols::ipv4::{Ipv4Header, Ipv4Protocol2};
 use ::byteorder::{ByteOrder, NetworkEndian};
 use ::libc::EBADMSG;
@@ -8,38 +12,37 @@ use ::runtime::{fail::Fail, memory::Buffer, network::types::Port16};
 use ::std::convert::{TryFrom, TryInto};
 
 //==============================================================================
-// Constants & Structures
+// Constants
 //==============================================================================
 
 /// Size of a UDP header (in bytes).
 pub const UDP_HEADER_SIZE: usize = 8;
 
-///
-/// Header for UDP Packets
-///
-/// - NOTE: length and checksum are omitted from this structure, because they
-/// are computed on-the-fly when parsing/serializing UDP headers.
-///
-/// - TODO: write unit test for checksum computation
-/// - TODO: write unit test for parsing/serializing
-///
+//==============================================================================
+// Structures
+//==============================================================================
+
+/// UDP Datagram Header
 #[derive(Debug)]
 pub struct UdpHeader {
     /// Port used on sender side (optional).
     src_port: Option<Port16>,
     /// Port used receiver side.
-    dst_port: Port16,
+    dest_port: Port16,
 }
 
 //==============================================================================
 // Associate Functions
 //==============================================================================
 
-/// Associate functions for [UdpHeader].
+/// Associate functions for UDP Datagram Headers
 impl UdpHeader {
     /// Creates a UDP header.
-    pub fn new(src_port: Option<Port16>, dst_port: Port16) -> Self {
-        Self { src_port, dst_port }
+    pub fn new(src_port: Option<Port16>, dest_port: Port16) -> Self {
+        Self {
+            src_port,
+            dest_port,
+        }
     }
 
     /// Returns the source port stored in the target UDP header.
@@ -49,7 +52,7 @@ impl UdpHeader {
 
     /// Returns the destination port stored in the target UDP header.
     pub fn dest_port(&self) -> Port16 {
-        self.dst_port
+        self.dest_port
     }
 
     /// Returns the size of the target UDP header (in bytes).
@@ -57,38 +60,50 @@ impl UdpHeader {
         UDP_HEADER_SIZE
     }
 
-    /// Parses a buffer into an UDP header.
-    pub fn parse<T: Buffer>(
-        ipv4_header: &Ipv4Header,
-        mut buf: T,
-        no_chsecksum: bool,
-    ) -> Result<(Self, T), Fail> {
+    /// Parses a byte slice into a UDP header.
+    pub fn parse_from_slice<'a>(
+        ipv4_hdr: &Ipv4Header,
+        buf: &'a [u8],
+        checksum_offload: bool,
+    ) -> Result<(Self, &'a [u8]), Fail> {
         // Malformed header.
         if buf.len() < UDP_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "UDP segment too small"));
         }
 
         // Deserialize buffer.
-        let hdr_buf = &buf[..UDP_HEADER_SIZE];
-        let src_port = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[0..2])).ok();
-        let dst_port = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
-        let length = NetworkEndian::read_u16(&hdr_buf[4..6]) as usize;
+        let hdr_buf: &[u8] = &buf[..UDP_HEADER_SIZE];
+        let src_port: Option<Port16> =
+            Port16::try_from(NetworkEndian::read_u16(&hdr_buf[0..2])).ok();
+        let dest_port: Port16 = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
+        let length: usize = NetworkEndian::read_u16(&hdr_buf[4..6]) as usize;
         if length != buf.len() {
             return Err(Fail::new(EBADMSG, "UDP length mismatch"));
         }
 
-        // Verify payload.
-        if !no_chsecksum {
-            let payload_buf = &buf[UDP_HEADER_SIZE..];
-            let checksum = NetworkEndian::read_u16(&hdr_buf[6..8]);
-            if checksum != 0 && checksum != Self::checksum(&ipv4_header, hdr_buf, payload_buf) {
+        // Checksum payload.
+        if !checksum_offload {
+            let payload_buf: &[u8] = &buf[UDP_HEADER_SIZE..];
+            let checksum: u16 = NetworkEndian::read_u16(&hdr_buf[6..8]);
+            if checksum != Self::checksum(&ipv4_hdr, hdr_buf, payload_buf) {
                 return Err(Fail::new(EBADMSG, "UDP checksum mismatch"));
             }
         }
 
-        let header = Self::new(src_port, dst_port);
-        buf.adjust(UDP_HEADER_SIZE);
-        Ok((header, buf))
+        let header: UdpHeader = Self::new(src_port, dest_port);
+        Ok((header, &buf[UDP_HEADER_SIZE..]))
+    }
+
+    /// Parses a buffer into a UDP header.
+    pub fn parse<T: Buffer>(
+        ipv4_hdr: &Ipv4Header,
+        buf: T,
+        checksum_offload: bool,
+    ) -> Result<(Self, T), Fail> {
+        match Self::parse_from_slice(ipv4_hdr, &buf[..], checksum_offload) {
+            Ok((udp_hdr, bytes)) => Ok((udp_hdr, T::from_slice(bytes))),
+            Err(e) => Err(e),
+        }
     }
 
     /// Serializes the target UDP header.
@@ -97,25 +112,25 @@ impl UdpHeader {
         buf: &mut [u8],
         ipv4_hdr: &Ipv4Header,
         data: &[u8],
-        no_chsecksum: bool,
+        checksum_offload: bool,
     ) {
         let fixed_buf: &mut [u8; UDP_HEADER_SIZE] =
             (&mut buf[..UDP_HEADER_SIZE]).try_into().unwrap();
 
-        // Source port.
+        // Write source port. If not present, write zeros.
         NetworkEndian::write_u16(
             &mut fixed_buf[0..2],
             self.src_port.map(|p| p.into()).unwrap_or(0),
         );
 
-        // Destination port.
-        NetworkEndian::write_u16(&mut fixed_buf[2..4], self.dst_port.into());
+        // Write destination port.
+        NetworkEndian::write_u16(&mut fixed_buf[2..4], self.dest_port.into());
 
-        // Payload length.
+        // Write payload length.
         NetworkEndian::write_u16(&mut fixed_buf[4..6], (UDP_HEADER_SIZE + data.len()) as u16);
 
-        // Checksum.
-        let checksum = if no_chsecksum {
+        // Write checksum.
+        let checksum: u16 = if checksum_offload {
             0
         } else {
             Self::checksum(ipv4_hdr, &fixed_buf[..], data)
@@ -123,24 +138,24 @@ impl UdpHeader {
         NetworkEndian::write_u16(&mut fixed_buf[6..8], checksum);
     }
 
-    ///
-    /// Computes the checksum of an UDP packet.
+    /// Computes the checksum of a UDP datagram.
     ///
     /// This is the 16-bit one's complement of the one's complement sum of a
     /// pseudo header of information from the IP header, the UDP header, and the
     /// data,  padded  with zero octets at the end (if  necessary)  to  make  a
     /// multiple of two octets.
     ///
-    fn checksum(ipv4_header: &Ipv4Header, header: &[u8], data: &[u8]) -> u16 {
-        let mut state = 0xffffu32;
+    /// TODO: Write a unit test for this function.
+    fn checksum(ipv4_hdr: &Ipv4Header, udp_hdr: &[u8], data: &[u8]) -> u16 {
+        let mut state: u32 = 0xffffu32;
 
         // Source address (4 bytes)
-        let src_octets = ipv4_header.src_addr().octets();
+        let src_octets: [u8; 4] = ipv4_hdr.src_addr().octets();
         state += NetworkEndian::read_u16(&src_octets[0..2]) as u32;
         state += NetworkEndian::read_u16(&src_octets[2..4]) as u32;
 
         // Destination address (4 bytes)
-        let dst_octets = ipv4_header.dst_addr().octets();
+        let dst_octets: [u8; 4] = ipv4_hdr.dst_addr().octets();
         state += NetworkEndian::read_u16(&dst_octets[0..2]) as u32;
         state += NetworkEndian::read_u16(&dst_octets[2..4]) as u32;
 
@@ -148,10 +163,10 @@ impl UdpHeader {
         state += NetworkEndian::read_u16(&[0, Ipv4Protocol2::Udp as u8]) as u32;
 
         // UDP segment length (2 bytes)
-        state += (header.len() + data.len()) as u32;
+        state += (udp_hdr.len() + data.len()) as u32;
 
         // Switch to UDP header.
-        let fixed_header: &[u8; UDP_HEADER_SIZE] = header.try_into().unwrap();
+        let fixed_header: &[u8; UDP_HEADER_SIZE] = udp_hdr.try_into().unwrap();
 
         // Source port (2 bytes)
         state += NetworkEndian::read_u16(&fixed_header[0..2]) as u32;
@@ -184,5 +199,78 @@ impl UdpHeader {
             state -= 0xFFFF;
         }
         !state as u16
+    }
+}
+
+//==============================================================================
+// Unit Tests
+//==============================================================================
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use ::runtime::network::types::Ipv4Addr;
+    use ::std::num::NonZeroU16;
+
+    /// Builds a fake Ipv4 Header.
+    fn ipv4_header() -> Ipv4Header {
+        let src_addr: Ipv4Addr = Ipv4Addr::new(198, 0, 0, 1);
+        let dst_addr: Ipv4Addr = Ipv4Addr::new(198, 0, 0, 2);
+        let protocol: Ipv4Protocol2 = Ipv4Protocol2::Udp;
+        Ipv4Header::new(src_addr, dst_addr, protocol)
+    }
+
+    /// Tets UDP serialization.
+    #[test]
+    fn test_udp_header_serialization() {
+        // Build fake IPv4 header.
+        let ipv4_hdr: Ipv4Header = ipv4_header();
+
+        // Build fake UDP header.
+        let src_port: Port16 = Port16::new(NonZeroU16::new(0x32).unwrap());
+        let dest_port: Port16 = Port16::new(NonZeroU16::new(0x45).unwrap());
+        let checksum_offload: bool = true;
+        let udp_hdr: UdpHeader = UdpHeader::new(Some(src_port), dest_port);
+
+        // Payload.
+        let data: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
+
+        // Output buffer.
+        let mut buf: [u8; 8] = [0; 8];
+
+        // Do it.
+        udp_hdr.serialize(&mut buf, &ipv4_hdr, &data, checksum_offload);
+        assert_eq!(buf, [0x0, 0x32, 0x0, 0x45, 0x0, 0x10, 0x0, 0x0]);
+    }
+
+    /// Tests UDP parsing.
+    #[test]
+    fn test_udp_header_parsing() {
+        // Build fake IPv4 header.
+        let ipv4_hdr: Ipv4Header = ipv4_header();
+
+        // Build fake UDP header.
+        let src_port: Port16 = Port16::new(NonZeroU16::new(0x32).unwrap());
+        let checksum_offload: bool = true;
+        let dest_port: Port16 = Port16::new(NonZeroU16::new(0x45).unwrap());
+        let hdr: [u8; 8] = [0x0, 0x32, 0x0, 0x45, 0x0, 0x10, 0x0, 0x0];
+
+        // Payload.
+        let data: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
+
+        // Input buffer.
+        let buf: Vec<u8> = [hdr, data].concat();
+
+        // Do it.
+        match UdpHeader::parse_from_slice(&ipv4_hdr, &buf, checksum_offload) {
+            Ok((udp_hdr, buf)) => {
+                assert_eq!(udp_hdr.src_port(), Some(src_port));
+                assert_eq!(udp_hdr.dest_port(), dest_port);
+                assert_eq!(buf.len(), 8);
+            }
+            Err(e) => {
+                assert!(false, "{:?}", e);
+            }
+        }
     }
 }

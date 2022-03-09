@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+mod operation;
 mod pop;
 
-pub use self::pop::UdpPopFuture;
+//==============================================================================
+// Exports
+//==============================================================================
+
+pub use self::{operation::UdpOperation, pop::UdpPopFuture};

@@ -64,7 +64,7 @@ impl<RT: Runtime> Engine<RT> {
         self.ipv4.udp.do_pushto(fd, buf, to)
     }
 
-    pub fn udp_pop(&mut self, fd: QDesc) -> UdpPopFuture<RT> {
+    pub fn udp_pop(&mut self, fd: QDesc) -> UdpPopFuture<RT::Buf> {
         self.ipv4.udp.do_pop(fd)
     }
 
