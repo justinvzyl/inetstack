@@ -247,7 +247,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     pub fn send(&self, buf: RT::Buf) -> Result<(), Fail> {
-        // ToDo: There is a bug here.  We can legitimately send while in CloseWait (CLOSE_WAIT).
+        // ToDo: There is a bug here.  We can legitimately send while in CloseWait (CLOSE-WAIT).
         if self.state.get() != State::Established {
             return Err(Fail::new(ENOTCONN, "sender closed"));
         }
@@ -345,6 +345,8 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.pop_one_unsent_byte()
     }
 
+    // This is the main TCP receive routine.
+    //
     pub fn receive(&self, mut header: &mut TcpHeader, mut data: RT::Buf) {
         debug!(
             "{:?} Connection Receiving {} bytes + {:?}",
@@ -376,6 +378,9 @@ impl<RT: Runtime> ControlBlock<RT> {
         //
         //  >0      >0     RCV.NXT =< SEG.SEQ < RCV.NXT+RCV.WND
         //              or RCV.NXT =< SEG.SEQ+SEG.LEN-1 < RCV.NXT+RCV.WND
+
+        // Review: We don't need all of these intermediate variables in the fast path.  It might be more efficient to
+        // rework this to calculate some of them only when needed, even if we need to (re)do it in multiple places.
 
         let mut seg_start: SeqNumber = header.seq_num;
 
@@ -459,22 +464,30 @@ impl<RT: Runtime> ControlBlock<RT> {
 
         // Check the RST bit.
         if header.rst {
-            // Shut the connection down hard.
+            // Our peer has given up.  Shut the connection down hard.
             match self.state.get() {
-                // ToDo: Replace these "return"s with handler functions for each case.
                 // ToDo: Can we be in SynReceived here?  If so, // State::SynReceived => return,
 
                 // Data transfer states.
-                // ToDo: Return all outstanding Receive and Send requests with "reset" responses.
-                // ToDo: Flush all segment queues.
-                // ToDo: Enter Closed state.
-                // ToDo: Delete the ControlBlock.
-                State::Established | State::FinWait1 | State::FinWait2 | State::CloseWait => return,
+                State::Established | State::FinWait1 | State::FinWait2 | State::CloseWait => {
+                    // ToDo: Return all outstanding user Receive and Send requests with "reset" responses.
+                    // ToDo: Flush all segment queues.
+
+                    // Enter Closed state.
+                    self.state.set(State::Closed);
+
+                    // ToDo: Delete the ControlBlock.
+                    return;
+                },
 
                 // Closing states.
-                // ToDo: Enter Closed state.
-                // ToDo: Delete the ControlBlock.
-                State::Closing | State::LastAck | State::TimeWait => return,
+                State::Closing | State::LastAck | State::TimeWait => {
+                    // Enter Closed state.
+                    self.state.set(State::Closed);
+
+                    // ToDo: Delete the ControlBlock.
+                    return;
+                },
 
                 // Should never happen.
                 state => panic!("Bad TCP state {:?}", state),
@@ -492,36 +505,89 @@ impl<RT: Runtime> ControlBlock<RT> {
             // ToDo: Send Reset.
             // ToDo: Return all outstanding Receive and Send requests with "reset" responses.
             // ToDo: Flush all segment queues.
+
             // Enter Closed state.
-            self.set_state(State::Closed);
+            self.state.set(State::Closed);
+
             // ToDo: Delete the ControlBlock.
             return;
         }
 
         // Check the ACK bit.
         if !header.ack {
-            // All segments on established connections should be ACKs.
+            // All segments on established connections should be ACKs.  Drop this segment.
             warn!("Received non-ACK segment on established connection.");
             return;
         }
 
         // Process the ACK.
-        // ToDo: Fix handling of ACK below.  See p. 72 and 73 of RFC 793.
-        match self.state.get() {
-            State::FinWait1 => self.state.set(State::FinWait2),
-            State::Closing2 => self.state.set(State::TimeWait2),
-            State::Established => {
+        // Note: We process valid ACKs while in any synchronized state, even though there shouldn't be anything to do
+        // in some states (e.g. TIME-WAIT) as it is more wasteful to always check that we're not in TIME-WAIT.
+        //
+        // Start by checking that the ACK acknowledges something new.
+        // ToDo: Cleanup send-side variable names and removed Watched types.
+        //
+        let (send_unacknowledged, _) = self.sender.get_base_seq_no();
+        let (send_next, _) = self.sender.get_sent_seq_no();
+
+        if send_unacknowledged < header.ack_num {
+            if header.ack_num <= send_next {
+                // This segment acknowledges new data (possibly and/or FIN).
+                //
+                // ToDo: Fix below function.
                 if let Err(e) = self.sender.remote_ack(header.ack_num, now) {
                     warn!("Ignoring remote ack for {:?}: {:?}", header, e);
                 }
-            },
-            State::LastAck => self.state.set(State::Closed),
-            state => panic!("Bad TCP state {:?}", state),
-        }
-        if self.state.get() == State::Established {
-            if let Err(e) = self.sender.update_remote_window(header.window_size as u16) {
-                warn!("Invalid window size update for {:?}: {:?}", header, e);
+
+                // Some states require additional processing.
+                // ToDo: Review order of checks here for efficiency.
+                //
+                match self.state.get() {
+                    State::Established => (),  // Common case.  Nothing more to do.
+                    State::FinWait1 => {
+                        // If our FIN is now ACK'd, then enter FIN-WAIT-2.
+                        if header.ack_num == send_next {
+                            self.state.set(State::FinWait2);
+                        }
+                    },
+                    State::Closing => {
+                        // If our FIN is now ACK'd, then enter TIME-WAIT.
+                        if header.ack_num == send_next {
+                            self.state.set(State::TimeWait);
+                        }
+                    }
+                    State::LastAck => {
+                        // In LAST-ACK state we're just waiting for all of our sent data (including FIN) to be ACK'd.
+                        // Note we may have to retransmit something, but we've sent it all (incl. FIN) at least once.
+                        // Check if this ACK acknowledges our FIN.  If it does, we're done.
+                        //
+                        if header.ack_num == send_next {
+                            self.state.set(State::Closed);
+
+                            // ToDo: Delete the ControlBlock.
+
+                            return;
+                        }
+                    },
+
+                    _ => (),
+                }
+
+                // See if the send window should be updated.
+                // ToDo: Fix below function.
+                if let Err(e) = self.sender.update_remote_window(header.window_size as u16) {
+                    warn!("Invalid window size update for {:?}: {:?}", header, e);
+                }
+        
+            } else {
+                // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
+                //
+                self.send_ack();
+                return;
             }
+        } else {
+            // Duplicate ACK (doesn't acknowledge anything new).  We can mostly ignore this, except for fast-retransmit.
+            // ToDo: Implement fast-retransmit.  In which case, we'd increment our dup-ack counter here.
         }
 
         // ToDo: Check the URG bit.  If we decide to support this, how should we do it?
@@ -532,7 +598,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         // Process the segment text (if any).
         if !data.is_empty() {
             if self.state.get() != State::Established {
-                // TODO: Review this warning.  TCP connections in FIN_WAIT_1 and FIN_WAIT_2 can still receive data.
+                // TODO: Review this warning.  TCP connections in FIN-WAIT-1 and FIN-WAIT-2 can still receive data.
                 warn!("Receiver closed");
             }
             if let Err(e) = self.receive_data(header.seq_num, data, now) {
@@ -586,17 +652,11 @@ impl<RT: Runtime> ControlBlock<RT> {
         let mut header = TcpHeader::new(self.local.get_port(), self.remote.get_port());
         header.window_size = self.hdr_window_size();
 
-        // Check if we have acknowledged all bytes that we have received. If not, piggy back an ACK
-        // on this message.
-        // ToDo: This is a bug (or two).  Except for an active open SYN where we don't yet have a remote sequence
-        // number to acknowledge, we should *always* ACK.
-        if self.state.get() != State::CloseWait2 {
-            if let Some(ack_seq_no) = self.current_ack() {
-                header.ack_num = ack_seq_no;
-                header.ack = true;
-            }
-        }
+        // Note that once we reach a synchronized state we always include a valid acknowledgement number.
+        header.ack = true;
+        header.ack_num = self.receiver.receive_next.get();
 
+        // Return this header.
         header
     }
 
@@ -708,26 +768,6 @@ impl<RT: Runtime> ControlBlock<RT> {
             self.window_scale
         );
         hdr_window_size
-    }
-
-    /// Returns the ack sequence number to use for the next packet based on all the bytes we have
-    /// received. This ack sequence number will be piggy backed on the next packet send.
-    /// If all received bytes have been acknowledged returns None.
-    /// TODO: Again, we should *always* ACK.  So this should always return the current acknowledgement sequence number.
-    pub fn current_ack(&self) -> Option<SeqNumber> {
-        let ack_seq_no = self.receiver.ack_seq_no.get();
-        let recv_seq_no = self.receiver.receive_next.get();
-
-        // It is okay if ack_seq_no is greater than the seq number. This can happen when we have
-        // ACKed a FIN so our ACK number is +1 greater than our seq number.
-        // TODO: The above comment is confusing, ambiguous, and likely also wrong.  FINs consume sequence number space,
-        // so we should be including them in our record keeping of the sequence number space received from our peer.
-        // Update: There should only be one value involved/returned here, the one equivalent to RCV.NXT.
-        if ack_seq_no == recv_seq_no {
-            None
-        } else {
-            Some(recv_seq_no)
-        }
     }
 
     pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {

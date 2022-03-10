@@ -213,12 +213,22 @@ impl<RT: Runtime> Sender<RT> {
         Ok(())
     }
 
-    pub fn remote_ack(&self, ack_seq_no: SeqNumber, now: Instant) -> Result<(), Fail> {
+    // Process an acknowledgement received from our peer.
+    // ToDo: Rename this to something more meaningful.  Or maybe move this back into mainline receive?
+    pub fn remote_ack(&self, seg_ack: SeqNumber, now: Instant) -> Result<(), Fail> {
+        // ToDo: What we're supposed to do here:
+        // This acknowledges new data, so update SND.UNA = SEG.ACK
+        //  + remove acknowledged data from the retransmission queue,
+        //  + report any fully acknowledged buffers to the user (do we have an API to do this?),
+        //  + manage the retransmission timer,
+        //  + update the send window.
+        //
+
         let base_seq_no = self.base_seq_no.get();
         let sent_seq_no = self.sent_seq_no.get();
 
         let bytes_outstanding: u32 = (sent_seq_no - base_seq_no).into();
-        let bytes_acknowledged: u32 = (ack_seq_no - base_seq_no).into();
+        let bytes_acknowledged: u32 = (seg_ack - base_seq_no).into();
 
         if bytes_acknowledged > bytes_outstanding {
             return Err(Fail::new(EBADMSG, "ACK is outside of send window"));
@@ -226,21 +236,24 @@ impl<RT: Runtime> Sender<RT> {
 
         let rto: Duration = self.current_rto();
         self.congestion_ctrl
-            .on_ack_received(rto, base_seq_no, sent_seq_no, ack_seq_no);
+            .on_ack_received(rto, base_seq_no, sent_seq_no, seg_ack);
         if bytes_acknowledged == 0 {
             return Ok(());
         }
 
-        if ack_seq_no == sent_seq_no {
+        // Manage the retransmit timer.
+        if seg_ack == sent_seq_no {
             // If we've acknowledged all sent data, turn off the retransmit timer.
             self.retransmit_deadline.set(None);
         } else {
             // Otherwise, set it to the current RTO.
+            // ToDo: This looks wrong.  Why extend the deadline here?
             let deadline = now + self.rto.borrow().estimate();
             self.retransmit_deadline.set(Some(deadline));
         }
 
         // TODO: Do acks need to be on segment boundaries? How does this interact with repacketization?
+        // Answer: No, ACKs need not be on segment boundaries.  We need to handle this properly.
         let mut bytes_remaining = bytes_acknowledged as usize;
         while let Some(segment) = self.unacked_queue.borrow_mut().pop_front() {
             if segment.bytes.len() > bytes_remaining {
