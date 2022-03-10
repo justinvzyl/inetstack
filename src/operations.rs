@@ -1,19 +1,23 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//==============================================================================
+// Imports
+//==============================================================================
+
 use crate::protocols::ipv4::Ipv4Endpoint;
-use ::runtime::{fail::Fail, memory::MemoryRuntime, QDesc};
-use std::fmt;
+use ::runtime::{fail::Fail, memory::Buffer, QDesc};
+use ::std::fmt;
 
 //==============================================================================
 // Structures
 //==============================================================================
 
-pub enum OperationResult<RT: MemoryRuntime> {
+pub enum OperationResult<T: Buffer> {
     Connect,
     Accept(QDesc),
     Push,
-    Pop(Option<Ipv4Endpoint>, RT::Buf),
+    Pop(Option<Ipv4Endpoint>, T),
     Failed(Fail),
 }
 
@@ -21,7 +25,7 @@ pub enum OperationResult<RT: MemoryRuntime> {
 // Trait Implementations
 //==============================================================================
 
-impl<RT: MemoryRuntime> fmt::Debug for OperationResult<RT> {
+impl<T: Buffer> fmt::Debug for OperationResult<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             OperationResult::Connect => write!(f, "Connect"),

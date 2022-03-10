@@ -12,6 +12,7 @@ use ::futures::{
     FutureExt,
 };
 use ::libc::{EBADMSG, ETIMEDOUT};
+use ::runtime::network::NetworkRuntime;
 use ::runtime::{fail::Fail, network::config::ArpConfig, network::types::MacAddress, Runtime};
 use ::std::{
     cell::RefCell,
@@ -30,7 +31,7 @@ use ::std::{
 /// Arp Peer
 /// - TODO: Allow multiple waiters for the same address
 #[derive(Clone)]
-pub struct ArpPeer<RT: Runtime> {
+pub struct ArpPeer<RT: NetworkRuntime> {
     rt: RT,
     cache: Rc<RefCell<ArpCache>>,
     background: Rc<SchedulerHandle>,

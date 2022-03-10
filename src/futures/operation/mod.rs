@@ -1,11 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-pub mod udp;
-
-pub use self::udp::UdpOperation;
-
-use crate::protocols::tcp::operations::TcpOperation;
+use crate::protocols::{tcp::operations::TcpOperation, udp::UdpOperation};
 use ::catwalk::SchedulerFuture;
 use ::futures::Future;
 use ::runtime::Runtime;
@@ -31,7 +27,7 @@ use ::std::{
 /// long so we allocate them on the heap.
 pub enum FutureOperation<RT: Runtime> {
     Tcp(TcpOperation<RT>),
-    Udp(UdpOperation<RT>),
+    Udp(UdpOperation<RT::Buf>),
 
     // These are expected to have long lifetimes and be large enough to justify another allocation.
     Background(Pin<Box<dyn Future<Output = ()>>>),

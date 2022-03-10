@@ -59,7 +59,7 @@ impl<RT: Runtime> Future for TcpOperation<RT> {
 }
 
 impl<RT: Runtime> TcpOperation<RT> {
-    pub fn expect_result(self) -> (QDesc, OperationResult<RT>) {
+    pub fn expect_result(self) -> (QDesc, OperationResult<RT::Buf>) {
         use TcpOperation::*;
 
         match self {

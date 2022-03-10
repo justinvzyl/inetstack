@@ -9,7 +9,7 @@ use crate::protocols::{
     udp::UdpPeer,
 };
 use ::libc::ENOTCONN;
-use ::runtime::{fail::Fail, Runtime};
+use ::runtime::{fail::Fail, network::types::MacAddress, Runtime};
 use ::std::{future::Future, net::Ipv4Addr, time::Duration};
 
 #[cfg(test)]
@@ -24,7 +24,16 @@ pub struct Peer<RT: Runtime> {
 
 impl<RT: Runtime> Peer<RT> {
     pub fn new(rt: RT, arp: ArpPeer<RT>) -> Peer<RT> {
-        let udp = UdpPeer::new(rt.clone(), arp.clone());
+        let local_link_addr: MacAddress = rt.local_link_addr();
+        let local_ipv4_addr: Ipv4Addr = rt.local_ipv4_addr();
+        let udp_offload_checksum: bool = rt.udp_options().get_tx_checksum_offload();
+        let udp = UdpPeer::new(
+            rt.clone(),
+            local_link_addr,
+            local_ipv4_addr,
+            udp_offload_checksum,
+            arp.clone(),
+        );
         let icmpv4 = Icmpv4Peer::new(rt.clone(), arp.clone());
         let tcp = TcpPeer::new(rt.clone(), arp);
         Peer {

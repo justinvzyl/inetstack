@@ -1,9 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//==============================================================================
+// Imports
+//==============================================================================
+
 use crate::{operations::OperationResult, protocols::udp::UdpPopFuture};
 use ::catwalk::FutureResult;
-use ::runtime::{fail::Fail, memory::MemoryRuntime, QDesc};
+use ::runtime::{fail::Fail, memory::Buffer, QDesc};
 use ::std::{
     future::Future,
     pin::Pin,
@@ -11,29 +15,30 @@ use ::std::{
 };
 
 //==============================================================================
-// Constants & Structures
+// Enumerations
 //==============================================================================
 
-/// Operations on UDP Layer
-pub enum UdpOperation<RT: MemoryRuntime> {
-    Connect(QDesc, Result<(), Fail>),
-    Push(QDesc, Result<(), Fail>),
-    Pop(FutureResult<UdpPopFuture<RT>>),
+/// UDP Operation Descriptor
+pub enum UdpOperation<T: Buffer> {
+    /// Pushto operation.
+    Pushto(QDesc, Result<(), Fail>),
+    /// Pop operation.
+    Pop(FutureResult<UdpPopFuture<T>>),
 }
 
 //==============================================================================
 // Associate Functions
 //==============================================================================
 
-impl<RT: MemoryRuntime> UdpOperation<RT> {
-    pub fn expect_result(self) -> (QDesc, OperationResult<RT>) {
+/// Associate Functions for UDP Operation Descriptors
+impl<T: Buffer> UdpOperation<T> {
+    pub fn get_result(self) -> (QDesc, OperationResult<T>) {
         match self {
-            UdpOperation::Push(fd, Err(e)) | UdpOperation::Connect(fd, Err(e)) => {
-                (fd, OperationResult::Failed(e))
-            }
-            UdpOperation::Connect(fd, Ok(())) => (fd, OperationResult::Connect),
-            UdpOperation::Push(fd, Ok(())) => (fd, OperationResult::Push),
+            // Pushto operation.
+            UdpOperation::Pushto(fd, Ok(())) => (fd, OperationResult::Push),
+            UdpOperation::Pushto(fd, Err(e)) => (fd, OperationResult::Failed(e)),
 
+            // Pop operation.
             UdpOperation::Pop(FutureResult {
                 future,
                 done: Some(Ok((addr, bytes))),
@@ -43,7 +48,7 @@ impl<RT: MemoryRuntime> UdpOperation<RT> {
                 done: Some(Err(e)),
             }) => (future.get_qd(), OperationResult::Failed(e)),
 
-            _ => panic!("Future not ready"),
+            _ => panic!("UDP Operation not ready"),
         }
     }
 }
@@ -52,14 +57,15 @@ impl<RT: MemoryRuntime> UdpOperation<RT> {
 // Trait Implementations
 //==============================================================================
 
-/// Future trait implementation for [UdpOperation]
-impl<RT: MemoryRuntime> Future for UdpOperation<RT> {
+/// Future trait implementation for UDP Operation Descriptors
+impl<T: Buffer> Future for UdpOperation<T> {
     type Output = ();
 
+    /// Poll the target UDP operation descritor.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {
         match self.get_mut() {
-            UdpOperation::Connect(..) | UdpOperation::Push(..) => Poll::Ready(()),
             UdpOperation::Pop(ref mut f) => Future::poll(Pin::new(f), ctx),
+            UdpOperation::Pushto(..) => Poll::Ready(()),
         }
     }
 }

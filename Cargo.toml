@@ -28,7 +28,6 @@ runtime = { git = "https://github.com/demikernel/runtime", rev = "aa12b1366c7235
 catwalk = { git = "https://github.com/demikernel/catwalk", rev = "05201a072b4d6b3afd7c02de69045f423563228f" }
 
 [features]
-threadunsafe = []
 profiler = []
 
 [profile.release]

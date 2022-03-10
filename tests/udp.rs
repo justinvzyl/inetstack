@@ -129,7 +129,7 @@ fn udp_push_remote() {
 
 /// Tests if data can be successfully pushed/popped in loopback mode.
 #[test]
-fn udp_lookback() {
+fn udp_loopback() {
     let (alice_tx, alice_rx) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx) = crossbeam_channel::unbounded();
 
