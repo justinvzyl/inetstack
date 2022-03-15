@@ -396,8 +396,8 @@ fn check_packet_pure_syn(
     assert_eq!(eth2_header.dst_addr(), eth2_dst_addr);
     assert_eq!(eth2_header.ether_type(), EtherType2::Ipv4);
     let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
-    assert_eq!(ipv4_header.src_addr(), ipv4_src_addr);
-    assert_eq!(ipv4_header.dst_addr(), ipv4_dst_addr);
+    assert_eq!(ipv4_header.get_src_addr(), ipv4_src_addr);
+    assert_eq!(ipv4_header.get_dest_addr(), ipv4_dst_addr);
     let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
     assert_eq!(tcp_header.dst_port, dst_port);
     assert_eq!(tcp_header.seq_num, SeqNumber::from(0));
@@ -419,8 +419,8 @@ fn check_packet_syn_ack(
     assert_eq!(eth2_header.dst_addr(), eth2_dst_addr);
     assert_eq!(eth2_header.ether_type(), EtherType2::Ipv4);
     let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
-    assert_eq!(ipv4_header.src_addr(), ipv4_src_addr);
-    assert_eq!(ipv4_header.dst_addr(), ipv4_dst_addr);
+    assert_eq!(ipv4_header.get_src_addr(), ipv4_src_addr);
+    assert_eq!(ipv4_header.get_dest_addr(), ipv4_dst_addr);
     let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
     assert_eq!(tcp_header.src_port, src_port);
     assert_eq!(tcp_header.ack_num, SeqNumber::from(1));
@@ -445,8 +445,8 @@ fn check_packet_pure_ack_on_syn_ack(
     assert_eq!(eth2_header.dst_addr(), eth2_dst_addr);
     assert_eq!(eth2_header.ether_type(), EtherType2::Ipv4);
     let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
-    assert_eq!(ipv4_header.src_addr(), ipv4_src_addr);
-    assert_eq!(ipv4_header.dst_addr(), ipv4_dst_addr);
+    assert_eq!(ipv4_header.get_src_addr(), ipv4_src_addr);
+    assert_eq!(ipv4_header.get_dest_addr(), ipv4_dst_addr);
     let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
     assert_eq!(tcp_header.dst_port, dst_port);
     assert_eq!(tcp_header.seq_num, SeqNumber::from(1));

@@ -7,7 +7,7 @@ use crate::{
     protocols::{
         arp::ArpPeer,
         ethernet2::{EtherType2, Ethernet2Header},
-        ipv4::{Ipv4Endpoint, Ipv4Header, Ipv4Protocol2},
+        ipv4::{Ipv4Endpoint, Ipv4Header, Ipv4Protocol},
         tcp::{
             established::cc::{self, CongestionControl},
             segment::{TcpHeader, TcpOptions2, TcpSegment},
@@ -118,7 +118,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
     }
 
     pub fn receive(&mut self, ip_header: &Ipv4Header, header: &TcpHeader) -> Result<(), Fail> {
-        let remote = Ipv4Endpoint::new(ip_header.src_addr(), header.src_port);
+        let remote = Ipv4Endpoint::new(ip_header.get_src_addr(), header.src_port);
         if self.ready.borrow().endpoints.contains(&remote) {
             // TODO: What should we do if a packet shows up for a connection that hasn't been `accept`ed yet?
             return Ok(());
@@ -286,7 +286,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                     ipv4_hdr: Ipv4Header::new(
                         local.get_address(),
                         remote.get_address(),
-                        Ipv4Protocol2::Tcp,
+                        Ipv4Protocol::TCP,
                     ),
                     tcp_hdr,
                     data: RT::Buf::empty(),
