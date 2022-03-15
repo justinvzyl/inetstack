@@ -195,6 +195,9 @@ impl Ipv4Header {
 
         // Time to live.
         let time_to_live: u8 = hdr_buf[8];
+        if time_to_live == 0 {
+            return Err(Fail::new(EBADMSG, "ipv4 datagram too old"));
+        }
 
         // Protocol.
         let protocol: Ipv4Protocol = Ipv4Protocol::try_from(hdr_buf[9])?;
