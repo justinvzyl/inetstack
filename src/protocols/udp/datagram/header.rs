@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::protocols::ipv4::{Ipv4Header, Ipv4Protocol2};
+use crate::protocols::ipv4::{Ipv4Header, Ipv4Protocol};
 use ::byteorder::{ByteOrder, NetworkEndian};
 use ::libc::EBADMSG;
 use ::runtime::{fail::Fail, memory::Buffer, network::types::Port16};
@@ -150,17 +150,17 @@ impl UdpHeader {
         let mut state: u32 = 0xffffu32;
 
         // Source address (4 bytes)
-        let src_octets: [u8; 4] = ipv4_hdr.src_addr().octets();
+        let src_octets: [u8; 4] = ipv4_hdr.get_src_addr().octets();
         state += NetworkEndian::read_u16(&src_octets[0..2]) as u32;
         state += NetworkEndian::read_u16(&src_octets[2..4]) as u32;
 
         // Destination address (4 bytes)
-        let dst_octets: [u8; 4] = ipv4_hdr.dst_addr().octets();
+        let dst_octets: [u8; 4] = ipv4_hdr.get_dest_addr().octets();
         state += NetworkEndian::read_u16(&dst_octets[0..2]) as u32;
         state += NetworkEndian::read_u16(&dst_octets[2..4]) as u32;
 
         // Padding zeros (1 byte) and UDP protocol number (1 byte)
-        state += NetworkEndian::read_u16(&[0, Ipv4Protocol2::Udp as u8]) as u32;
+        state += NetworkEndian::read_u16(&[0, Ipv4Protocol::UDP as u8]) as u32;
 
         // UDP segment length (2 bytes)
         state += (udp_hdr.len() + data.len()) as u32;
@@ -216,7 +216,7 @@ mod test {
     fn ipv4_header() -> Ipv4Header {
         let src_addr: Ipv4Addr = Ipv4Addr::new(198, 0, 0, 1);
         let dst_addr: Ipv4Addr = Ipv4Addr::new(198, 0, 0, 2);
-        let protocol: Ipv4Protocol2 = Ipv4Protocol2::Udp;
+        let protocol: Ipv4Protocol = Ipv4Protocol::UDP;
         Ipv4Header::new(src_addr, dst_addr, protocol)
     }
 

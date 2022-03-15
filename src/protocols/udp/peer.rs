@@ -16,7 +16,7 @@ use crate::{
         arp::ArpPeer,
         ethernet2::{EtherType2, Ethernet2Header},
         ipv4::Ipv4Endpoint,
-        ipv4::{Ipv4Header, Ipv4Protocol2},
+        ipv4::{Ipv4Header, Ipv4Protocol},
     },
 };
 use ::catwalk::SchedulerHandle;
@@ -263,10 +263,10 @@ impl<RT: Runtime> UdpPeer<RT> {
             UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
         debug!("UDP received {:?}", hdr);
 
-        let local: Ipv4Endpoint = Ipv4Endpoint::new(ipv4_hdr.dst_addr(), hdr.dest_port());
+        let local: Ipv4Endpoint = Ipv4Endpoint::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
         let remote: Option<Ipv4Endpoint> = hdr
             .src_port()
-            .map(|p| Ipv4Endpoint::new(ipv4_hdr.src_addr(), p));
+            .map(|p| Ipv4Endpoint::new(ipv4_hdr.get_src_addr(), p));
 
         // Lookup associated receiver-side shared queue.
         let recv_queue: &mut SharedQueue<SharedQueueSlot<RT::Buf>> =
@@ -304,7 +304,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         debug!("UDP send {:?}", udp_header);
         let datagram = UdpDatagram::new(
             Ethernet2Header::new(remote_link_addr, local_link_addr, EtherType2::Ipv4),
-            Ipv4Header::new(local_ipv4_addr, remote.get_address(), Ipv4Protocol2::Udp),
+            Ipv4Header::new(local_ipv4_addr, remote.get_address(), Ipv4Protocol::UDP),
             udp_header,
             buf,
             offload_checksum,

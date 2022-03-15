@@ -4,7 +4,7 @@
 use crate::protocols::{
     arp::ArpPeer,
     icmpv4::Icmpv4Peer,
-    ipv4::{Ipv4Header, Ipv4Protocol2},
+    ipv4::{Ipv4Header, Ipv4Protocol},
     tcp::TcpPeer,
     udp::UdpPeer,
 };
@@ -47,13 +47,15 @@ impl<RT: Runtime> Peer<RT> {
     pub fn receive(&mut self, buf: RT::Buf) -> Result<(), Fail> {
         let (header, payload) = Ipv4Header::parse(buf)?;
         debug!("Ipv4 received {:?}", header);
-        if header.dst_addr() != self.rt.local_ipv4_addr() && !header.dst_addr().is_broadcast() {
+        if header.get_dest_addr() != self.rt.local_ipv4_addr()
+            && !header.get_dest_addr().is_broadcast()
+        {
             return Err(Fail::new(ENOTCONN, "invalid destination address"));
         }
-        match header.protocol() {
-            Ipv4Protocol2::Icmpv4 => self.icmpv4.receive(&header, payload),
-            Ipv4Protocol2::Tcp => self.tcp.receive(&header, payload),
-            Ipv4Protocol2::Udp => self.udp.do_receive(&header, payload),
+        match header.get_protocol() {
+            Ipv4Protocol::ICMPv4 => self.icmpv4.receive(&header, payload),
+            Ipv4Protocol::TCP => self.tcp.receive(&header, payload),
+            Ipv4Protocol::UDP => self.udp.do_receive(&header, payload),
         }
     }
 

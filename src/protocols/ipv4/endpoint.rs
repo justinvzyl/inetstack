@@ -11,9 +11,12 @@ use ::runtime::network::types::{Ipv4Addr, Port16};
 // Structures
 //==============================================================================
 
+/// IPv4 Endpoint
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Ipv4Endpoint {
+    /// IPv4 address.
     addr: Ipv4Addr,
+    /// Port number.
     port: Port16,
 }
 

@@ -3,7 +3,7 @@
 
 use crate::protocols::{
     ethernet2::Ethernet2Header,
-    ipv4::{Ipv4Header, Ipv4Protocol2},
+    ipv4::{Ipv4Header, Ipv4Protocol},
     tcp::SeqNumber,
 };
 use ::byteorder::{ByteOrder, NetworkEndian, ReadBytesExt};
@@ -465,17 +465,17 @@ fn tcp_checksum(ipv4_header: &Ipv4Header, header: &[u8], data: &[u8]) -> u16 {
 
     // First, fold in a "pseudo-IP" header of...
     // 1) Source address (4 bytes)
-    let src_octets = ipv4_header.src_addr().octets();
+    let src_octets = ipv4_header.get_src_addr().octets();
     state += NetworkEndian::read_u16(&src_octets[0..2]) as u32;
     state += NetworkEndian::read_u16(&src_octets[2..4]) as u32;
 
     // 2) Destination address (4 bytes)
-    let dst_octets = ipv4_header.dst_addr().octets();
+    let dst_octets = ipv4_header.get_dest_addr().octets();
     state += NetworkEndian::read_u16(&dst_octets[0..2]) as u32;
     state += NetworkEndian::read_u16(&dst_octets[2..4]) as u32;
 
     // 3) 1 byte of zeros and TCP protocol number (1 byte)
-    state += NetworkEndian::read_u16(&[0, Ipv4Protocol2::Tcp as u8]) as u32;
+    state += NetworkEndian::read_u16(&[0, Ipv4Protocol::TCP as u8]) as u32;
 
     // 4) TCP segment length (2 bytes)
     state += (header.len() + data.len()) as u32;

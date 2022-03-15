@@ -10,7 +10,7 @@ use crate::protocols::{
     arp::ArpPeer,
     ethernet2::{EtherType2, Ethernet2Header},
     ipv4::Ipv4Endpoint,
-    ipv4::{Ipv4Header, Ipv4Protocol2},
+    ipv4::{Ipv4Header, Ipv4Protocol},
     tcp::{
         segment::{TcpHeader, TcpSegment},
         SeqNumber,
@@ -467,7 +467,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             ipv4_hdr: Ipv4Header::new(
                 self.local.get_address(),
                 self.remote.get_address(),
-                Ipv4Protocol2::Tcp,
+                Ipv4Protocol::TCP,
             ),
             tcp_hdr: header,
             data,

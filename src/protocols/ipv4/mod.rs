@@ -8,8 +8,12 @@ mod protocol;
 #[cfg(test)]
 mod tests;
 
-pub use datagram::Ipv4Header;
-pub use endpoint::Ipv4Endpoint;
-pub use protocol::Ipv4Protocol2;
+//==============================================================================
+// Exports
+//==============================================================================
 
-pub use datagram::IPV4_HEADER_SIZE;
+pub use self::{
+    datagram::{Ipv4Header, IPV4_HEADER_SIZE},
+    endpoint::Ipv4Endpoint,
+    protocol::Ipv4Protocol,
+};
