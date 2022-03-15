@@ -5,7 +5,8 @@
 // Imports
 //==============================================================================
 
-use crate::protocols::ipv4::{Ipv4Header, Ipv4Protocol};
+use crate::protocols::ip::IpProtocol;
+use crate::protocols::ipv4::Ipv4Header;
 use ::byteorder::{ByteOrder, NetworkEndian};
 use ::libc::EBADMSG;
 use ::runtime::{fail::Fail, memory::Buffer, network::types::Port16};
@@ -160,7 +161,7 @@ impl UdpHeader {
         state += NetworkEndian::read_u16(&dst_octets[2..4]) as u32;
 
         // Padding zeros (1 byte) and UDP protocol number (1 byte)
-        state += NetworkEndian::read_u16(&[0, Ipv4Protocol::UDP as u8]) as u32;
+        state += NetworkEndian::read_u16(&[0, IpProtocol::UDP as u8]) as u32;
 
         // UDP segment length (2 bytes)
         state += (udp_hdr.len() + data.len()) as u32;
@@ -216,7 +217,7 @@ mod test {
     fn ipv4_header() -> Ipv4Header {
         let src_addr: Ipv4Addr = Ipv4Addr::new(198, 0, 0, 1);
         let dst_addr: Ipv4Addr = Ipv4Addr::new(198, 0, 0, 2);
-        let protocol: Ipv4Protocol = Ipv4Protocol::UDP;
+        let protocol: IpProtocol = IpProtocol::UDP;
         Ipv4Header::new(src_addr, dst_addr, protocol)
     }
 

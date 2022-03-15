@@ -9,7 +9,8 @@ use crate::protocols::{
     arp::ArpPeer,
     ethernet2::{EtherType2, Ethernet2Header},
     ip::EphemeralPorts,
-    ipv4::{Ipv4Endpoint, Ipv4Header, Ipv4Protocol},
+    ip::IpProtocol,
+    ipv4::{Ipv4Endpoint, Ipv4Header},
     tcp::{
         operations::{AcceptFuture, ConnectFuture, ConnectFutureState, PopFuture, PushFuture},
         segment::{TcpHeader, TcpSegment},
@@ -404,7 +405,7 @@ impl<RT: Runtime> Inner<RT> {
                 self.rt.local_link_addr(),
                 EtherType2::Ipv4,
             ),
-            ipv4_hdr: Ipv4Header::new(local.get_address(), remote.get_address(), Ipv4Protocol::TCP),
+            ipv4_hdr: Ipv4Header::new(local.get_address(), remote.get_address(), IpProtocol::TCP),
             tcp_hdr,
             data: RT::Buf::empty(),
             tx_checksum_offload: self.rt.tcp_options().get_rx_checksum_offload(),

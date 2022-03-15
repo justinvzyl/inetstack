@@ -2,11 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::protocols::{
-    arp::ArpPeer,
-    icmpv4::Icmpv4Peer,
-    ipv4::{Ipv4Header, Ipv4Protocol},
-    tcp::TcpPeer,
-    udp::UdpPeer,
+    arp::ArpPeer, icmpv4::Icmpv4Peer, ip::IpProtocol, ipv4::Ipv4Header, tcp::TcpPeer, udp::UdpPeer,
 };
 use ::libc::ENOTCONN;
 use ::runtime::{fail::Fail, network::types::MacAddress, Runtime};
@@ -53,9 +49,9 @@ impl<RT: Runtime> Peer<RT> {
             return Err(Fail::new(ENOTCONN, "invalid destination address"));
         }
         match header.get_protocol() {
-            Ipv4Protocol::ICMPv4 => self.icmpv4.receive(&header, payload),
-            Ipv4Protocol::TCP => self.tcp.receive(&header, payload),
-            Ipv4Protocol::UDP => self.udp.do_receive(&header, payload),
+            IpProtocol::ICMPv4 => self.icmpv4.receive(&header, payload),
+            IpProtocol::TCP => self.tcp.receive(&header, payload),
+            IpProtocol::UDP => self.udp.do_receive(&header, payload),
         }
     }
 

@@ -15,8 +15,9 @@ use crate::{
     protocols::{
         arp::ArpPeer,
         ethernet2::{EtherType2, Ethernet2Header},
+        ip::IpProtocol,
         ipv4::Ipv4Endpoint,
-        ipv4::{Ipv4Header, Ipv4Protocol},
+        ipv4::Ipv4Header,
     },
 };
 use ::catwalk::SchedulerHandle;
@@ -304,7 +305,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         debug!("UDP send {:?}", udp_header);
         let datagram = UdpDatagram::new(
             Ethernet2Header::new(remote_link_addr, local_link_addr, EtherType2::Ipv4),
-            Ipv4Header::new(local_ipv4_addr, remote.get_address(), Ipv4Protocol::UDP),
+            Ipv4Header::new(local_ipv4_addr, remote.get_address(), IpProtocol::UDP),
             udp_header,
             buf,
             offload_checksum,
