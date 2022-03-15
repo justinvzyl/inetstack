@@ -127,8 +127,9 @@ impl Ipv4Header {
         if ihl < IPV4_IHL_NO_OPTIONS {
             return Err(Fail::new(EBADMSG, "IPv4 IHL is too small"));
         }
+        // TODO: drop this check once we support IPv4 options.
         if ihl > IPV4_IHL_NO_OPTIONS {
-            return Err(Fail::new(ENOTSUP, "IPv4 options are not supported"));
+            return Err(Fail::new(ENOTSUP, "ipv4 options are not supported"));
         }
 
         // Differentiated services code point.
@@ -205,10 +206,10 @@ impl Ipv4Header {
         // Header checksum.
         let header_checksum: u16 = NetworkEndian::read_u16(&hdr_buf[10..12]);
         if header_checksum == 0xffff {
-            return Err(Fail::new(EBADMSG, "IPv4 checksum is 0xFFFF"));
+            return Err(Fail::new(EBADMSG, "ipv4 checksum invalid"));
         }
         if header_checksum != Self::compute_checksum(hdr_buf) {
-            return Err(Fail::new(EBADMSG, "Invalid IPv4 checksum"));
+            return Err(Fail::new(EBADMSG, "ipv4 checksum mismatch"));
         }
 
         // Source address.
