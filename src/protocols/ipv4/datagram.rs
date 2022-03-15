@@ -301,7 +301,7 @@ impl Ipv4Header {
 
     /// Computes the checksum of the target IPv4 header.
     fn compute_checksum(buf: &[u8]) -> u16 {
-        let buf: &[u8; IPV4_DATAGRAM_MIN_SIZE as usize] =
+        let buf: &[u8; IPV4_HEADER_MIN_SIZE as usize] =
             buf.try_into().expect("Invalid header size");
         let mut state: u32 = 0xffffu32;
         for i in 0..5 {
