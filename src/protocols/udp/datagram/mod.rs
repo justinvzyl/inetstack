@@ -120,7 +120,8 @@ mod test {
     use super::*;
     use crate::protocols::{
         ethernet2::{EtherType2, ETHERNET2_HEADER_SIZE},
-        ipv4::{Ipv4Protocol, IPV4_HEADER_DEFAULT_SIZE},
+        ip::IpProtocol,
+        ipv4::IPV4_HEADER_DEFAULT_SIZE,
     };
     use ::runtime::memory::Bytes;
     use ::runtime::network::types::{Ipv4Addr, MacAddress, Port16};
@@ -141,7 +142,7 @@ mod test {
         // Build fake Ipv4 header.
         let src_addr: Ipv4Addr = Ipv4Addr::new(198, 0, 0, 1);
         let dst_addr: Ipv4Addr = Ipv4Addr::new(198, 0, 0, 2);
-        let protocol: Ipv4Protocol = Ipv4Protocol::UDP;
+        let protocol: IpProtocol = IpProtocol::UDP;
         let ipv4_hdr: Ipv4Header = Ipv4Header::new(src_addr, dst_addr, protocol);
 
         // Build fake UDP header.

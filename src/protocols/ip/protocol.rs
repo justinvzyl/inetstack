@@ -15,10 +15,9 @@ use ::std::convert::TryFrom;
 //==============================================================================
 
 /// Ipv4 Protocol
-/// TODO: Move this to IP layer, because it is common for IPv4 and IPv6.
 #[repr(u8)]
 #[derive(FromPrimitive, Copy, Clone, PartialEq, Eq, Debug)]
-pub enum Ipv4Protocol {
+pub enum IpProtocol {
     /// Internet Control Message Protocol
     ICMPv4 = 0x01,
     /// Transmission Control Protocol
@@ -32,7 +31,7 @@ pub enum Ipv4Protocol {
 //==============================================================================
 
 /// TryFrom trait implementation.
-impl TryFrom<u8> for Ipv4Protocol {
+impl TryFrom<u8> for IpProtocol {
     type Error = Fail;
 
     fn try_from(n: u8) -> Result<Self, Fail> {

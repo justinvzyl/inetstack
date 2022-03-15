@@ -7,7 +7,8 @@ use crate::{
         arp::ArpPeer,
         ethernet2::{EtherType2, Ethernet2Header},
         icmpv4::datagram::{Icmpv4Header, Icmpv4Message, Icmpv4Type2},
-        ipv4::{Ipv4Header, Ipv4Protocol},
+        ip::IpProtocol,
+        ipv4::Ipv4Header,
     },
 };
 use ::byteorder::{ByteOrder, NetworkEndian};
@@ -121,7 +122,7 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
                 // Send reply message.
                 rt.transmit(Icmpv4Message::new(
                     Ethernet2Header::new(dst_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
-                    Ipv4Header::new(rt.local_ipv4_addr(), dst_ipv4_addr, Ipv4Protocol::ICMPv4),
+                    Ipv4Header::new(rt.local_ipv4_addr(), dst_ipv4_addr, IpProtocol::ICMPv4),
                     Icmpv4Header::new(Icmpv4Type2::EchoReply { id, seq_num }, 0),
                 ));
             };
@@ -208,7 +209,7 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
 
             let msg = Icmpv4Message::new(
                 Ethernet2Header::new(dst_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
-                Ipv4Header::new(rt.local_ipv4_addr(), dst_ipv4_addr, Ipv4Protocol::ICMPv4),
+                Ipv4Header::new(rt.local_ipv4_addr(), dst_ipv4_addr, IpProtocol::ICMPv4),
                 Icmpv4Header::new(echo_request, 0),
             );
             rt.transmit(msg);

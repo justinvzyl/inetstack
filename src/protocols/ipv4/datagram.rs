@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::protocols::ipv4::Ipv4Protocol;
+use crate::protocols::ip::IpProtocol;
 use ::byteorder::{ByteOrder, NetworkEndian};
 use ::libc::{EBADMSG, ENOTSUP};
 use ::runtime::{fail::Fail, memory::Buffer};
@@ -68,7 +68,7 @@ pub struct Ipv4Header {
     /// Time to Live indicates the maximum remaining time the datagram is allowed to be in the network (8 bits).
     ttl: u8,
     /// Protocol used in the data portion of the datagram (8 bits).
-    protocol: Ipv4Protocol,
+    protocol: IpProtocol,
     /// Header-only checksum for error detection (16 bits).
     header_checksum: u16,
     // Source IP address (32 bits).
@@ -84,7 +84,7 @@ pub struct Ipv4Header {
 /// Associated Functions for IPv4 Headers
 impl Ipv4Header {
     /// Instantiates an empty IPv4 header.
-    pub fn new(src_addr: Ipv4Addr, dst_addr: Ipv4Addr, protocol: Ipv4Protocol) -> Self {
+    pub fn new(src_addr: Ipv4Addr, dst_addr: Ipv4Addr, protocol: IpProtocol) -> Self {
         Self {
             version: IPV4_VERSION,
             ihl: IPV4_IHL_NO_OPTIONS,
@@ -201,7 +201,7 @@ impl Ipv4Header {
         }
 
         // Protocol.
-        let protocol: Ipv4Protocol = Ipv4Protocol::try_from(hdr_buf[9])?;
+        let protocol: IpProtocol = IpProtocol::try_from(hdr_buf[9])?;
 
         // Header checksum.
         let header_checksum: u16 = NetworkEndian::read_u16(&hdr_buf[10..12]);
@@ -295,7 +295,7 @@ impl Ipv4Header {
     }
 
     /// Returns the protocol field stored in the target IPv4 header.
-    pub fn get_protocol(&self) -> Ipv4Protocol {
+    pub fn get_protocol(&self) -> IpProtocol {
         self.protocol
     }
 

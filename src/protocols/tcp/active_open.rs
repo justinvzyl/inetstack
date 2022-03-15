@@ -7,7 +7,8 @@ use crate::{
     protocols::{
         arp::ArpPeer,
         ethernet2::{EtherType2, Ethernet2Header},
-        ipv4::{Ipv4Endpoint, Ipv4Header, Ipv4Protocol},
+        ip::IpProtocol,
+        ipv4::{Ipv4Endpoint, Ipv4Header},
         tcp::{
             established::cc::{self, CongestionControl},
             segment::{TcpHeader, TcpOptions2, TcpSegment},
@@ -148,7 +149,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             ipv4_hdr: Ipv4Header::new(
                 self.local.get_address(),
                 self.remote.get_address(),
-                Ipv4Protocol::TCP,
+                IpProtocol::TCP,
             ),
             tcp_hdr,
             data: RT::Buf::empty(),
@@ -267,7 +268,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                     ipv4_hdr: Ipv4Header::new(
                         local.get_address(),
                         remote.get_address(),
-                        Ipv4Protocol::TCP,
+                        IpProtocol::TCP,
                     ),
                     tcp_hdr,
                     data: RT::Buf::empty(),
