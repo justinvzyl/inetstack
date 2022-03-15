@@ -36,6 +36,12 @@ const DEFAULT_IPV4_TTL: u8 = 255;
 /// Version number for IPv4.
 const IPV4_VERSION: u8 = 4;
 
+/// IPv4 Control Flag: Don't Fragment.
+const IPV4_CTRL_FLAG_DF: u8 = 0x2;
+
+/// IPv4 Control Flag: More Fragments.
+const _IPV4_CTRL_FLAG_MF: u8 = 0x1;
+
 //==============================================================================
 // Structures
 //==============================================================================
@@ -57,7 +63,7 @@ pub struct Ipv4Header {
     identification: u16,
     /// Version control flags (3 bits).
     flags: u8,
-    /// Fragment offset indicates where in the datagram this fragment belongs to (16 bits).
+    /// Fragment offset indicates where in the datagram this fragment belongs to (13 bits).
     fragment_offset: u16,
     /// Time to Live indicates the maximum remaining time the datagram is allowed to be in the network (8 bits).
     ttl: u8,
@@ -86,7 +92,7 @@ impl Ipv4Header {
             ecn: 0,
             total_length: IPV4_HEADER_MIN_SIZE,
             identification: 0,
-            flags: 0,
+            flags: IPV4_CTRL_FLAG_DF,
             fragment_offset: 0,
             ttl: DEFAULT_IPV4_TTL,
             protocol,
@@ -121,15 +127,32 @@ impl Ipv4Header {
         if ihl < IPV4_IHL_NO_OPTIONS {
             return Err(Fail::new(EBADMSG, "IPv4 IHL is too small"));
         }
+        // TODO: drop this check once we support IPv4 options.
         if ihl > IPV4_IHL_NO_OPTIONS {
-            return Err(Fail::new(ENOTSUP, "IPv4 options are not supported"));
+            return Err(Fail::new(ENOTSUP, "ipv4 options are not supported"));
         }
 
         // Differentiated services code point.
         let dscp: u8 = hdr_buf[1] >> 2;
+        // TODO: drop this check once we support DSCP.
+        if dscp != 0 {
+            warn!(
+                "differentiated services code point are not supported dscp={:?}",
+                dscp
+            );
+            return Err(Fail::new(ENOTSUP, "ipv4 dscp is not supported"));
+        }
 
         // Explicit congestion notification.
         let ecn: u8 = hdr_buf[1] & 3;
+        // TODO: drop this check once we support ECN.
+        if ecn != 0 {
+            warn!(
+                "explicit congestion notification is not supported ecn={:?}",
+                ecn
+            );
+            return Err(Fail::new(ENOTSUP, "ipv4 ecn is not supported"));
+        }
 
         // Total length.
         let total_length: u16 = NetworkEndian::read_u16(&hdr_buf[2..4]);
@@ -143,18 +166,39 @@ impl Ipv4Header {
 
         // Fragment identification.
         let identification: u16 = NetworkEndian::read_u16(&hdr_buf[4..6]);
+        // TODO: drop this check once we support fragmentation.
+        if identification != 0 {
+            warn!(
+                "fragmentation is not supported identification={:?}",
+                identification
+            );
+            return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
+        }
 
         // Control flags.
         let flags: u8 = (NetworkEndian::read_u16(&hdr_buf[6..8]) >> 13) as u8;
+        // TODO: drop this check once we support fragmentation.
+        if flags != IPV4_CTRL_FLAG_DF {
+            warn!("fragmentation is not supported flags={:?}", flags);
+            return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
+        }
 
         // Fragment offset.
         let fragment_offset: u16 = NetworkEndian::read_u16(&hdr_buf[6..8]) & 0x1fff;
+        // TODO: drop this check once we support fragmentation.
         if fragment_offset != 0 {
-            return Err(Fail::new(ENOTSUP, "IPv4 fragmentation is unsupported"));
+            warn!(
+                "fragmentation is not supported offset={:?}",
+                fragment_offset
+            );
+            return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
         }
 
         // Time to live.
         let time_to_live: u8 = hdr_buf[8];
+        if time_to_live == 0 {
+            return Err(Fail::new(EBADMSG, "ipv4 datagram too old"));
+        }
 
         // Protocol.
         let protocol: Ipv4Protocol = Ipv4Protocol::try_from(hdr_buf[9])?;
@@ -162,10 +206,10 @@ impl Ipv4Header {
         // Header checksum.
         let header_checksum: u16 = NetworkEndian::read_u16(&hdr_buf[10..12]);
         if header_checksum == 0xffff {
-            return Err(Fail::new(EBADMSG, "IPv4 checksum is 0xFFFF"));
+            return Err(Fail::new(EBADMSG, "ipv4 checksum invalid"));
         }
         if header_checksum != Self::compute_checksum(hdr_buf) {
-            return Err(Fail::new(EBADMSG, "Invalid IPv4 checksum"));
+            return Err(Fail::new(EBADMSG, "ipv4 checksum mismatch"));
         }
 
         // Source address.
@@ -257,7 +301,7 @@ impl Ipv4Header {
 
     /// Computes the checksum of the target IPv4 header.
     fn compute_checksum(buf: &[u8]) -> u16 {
-        let buf: &[u8; IPV4_DATAGRAM_MIN_SIZE as usize] =
+        let buf: &[u8; IPV4_HEADER_MIN_SIZE as usize] =
             buf.try_into().expect("Invalid header size");
         let mut state: u32 = 0xffffu32;
         for i in 0..5 {
