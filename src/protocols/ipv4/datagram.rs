@@ -18,17 +18,20 @@ use ::std::{
 // Constants
 //==============================================================================
 
-/// Size of IPv4 Headers (in bytes)
-pub const IPV4_HEADER_SIZE: usize = 20;
+/// Default size of IPv4 Headers (in bytes).
+pub const IPV4_HEADER_DEFAULT_SIZE: usize = IPV4_DATAGRAM_MIN_SIZE as usize;
+
+/// Minimum size for an IPv4 datagram (in bytes).
+const IPV4_DATAGRAM_MIN_SIZE: u16 = 20;
+
+/// Minimum size for an IPv4 datagram (in bytes).
+const IPV4_HEADER_MIN_SIZE: u16 = IPV4_DATAGRAM_MIN_SIZE;
+
+/// IPv4 header length when no options are present (in 32-bit words).
+const IPV4_IHL_NO_OPTIONS: u8 = (IPV4_HEADER_MIN_SIZE as u8) / 4;
 
 /// Default time to live value.
 const DEFAULT_IPV4_TTL: u8 = 255;
-
-/// IPv4 header length when no options are used (in 32-bit words).
-const IPV4_IHL_NO_OPTIONS: u8 = 5;
-
-/// Minimum size for an IPv4 datagram (in bytes).
-const IPV4_MIN_SIZE: u16 = 20;
 
 /// Version number for IPv4.
 const IPV4_VERSION: u8 = 4;
@@ -81,7 +84,7 @@ impl Ipv4Header {
             ihl: IPV4_IHL_NO_OPTIONS,
             dscp: 0,
             ecn: 0,
-            total_length: IPV4_MIN_SIZE,
+            total_length: IPV4_HEADER_MIN_SIZE,
             identification: 0,
             flags: 0,
             fragment_offset: 0,
@@ -95,22 +98,25 @@ impl Ipv4Header {
 
     /// Computes the size of the target IPv4 header.
     pub fn compute_size(&self) -> usize {
-        // We don't support IPv4 options, so this is always 20.
-        IPV4_HEADER_SIZE
+        IPV4_HEADER_MIN_SIZE as usize
     }
 
     /// Parses a buffer into an IPv4 header and payload.
     pub fn parse<T: Buffer>(mut buf: T) -> Result<(Self, T), Fail> {
-        if buf.len() < IPV4_HEADER_SIZE {
-            return Err(Fail::new(EBADMSG, "datagram too small"));
+        // The datagram should be as big as the header.
+        if buf.len() < (IPV4_DATAGRAM_MIN_SIZE as usize) {
+            return Err(Fail::new(EBADMSG, "ipv4 datagram too small"));
         }
-        let hdr_buf: &[u8] = &buf[..IPV4_HEADER_SIZE];
 
+        let hdr_buf: &[u8] = &buf[..(IPV4_HEADER_MIN_SIZE as usize)];
+
+        // IP version number.
         let version: u8 = hdr_buf[0] >> 4;
         if version != IPV4_VERSION {
             return Err(Fail::new(ENOTSUP, "unsupported IP version"));
         }
 
+        // Internet header length.
         let ihl: u8 = hdr_buf[0] & 0xF;
         if ihl < IPV4_IHL_NO_OPTIONS {
             return Err(Fail::new(EBADMSG, "IPv4 IHL is too small"));
@@ -119,33 +125,41 @@ impl Ipv4Header {
             return Err(Fail::new(ENOTSUP, "IPv4 options are not supported"));
         }
 
+        // Differentiated services code point.
         let dscp: u8 = hdr_buf[1] >> 2;
+
+        // Explicit congestion notification.
         let ecn: u8 = hdr_buf[1] & 3;
 
+        // Total length.
         let total_length: u16 = NetworkEndian::read_u16(&hdr_buf[2..4]);
-
-        // The TOTALLEN is definitely malformed if it doesn't have room for our header.
-        if (total_length as usize) < IPV4_HEADER_SIZE {
-            return Err(Fail::new(EBADMSG, "IPv4 TOTALLEN smaller than header"));
+        if total_length < IPV4_HEADER_MIN_SIZE {
+            return Err(Fail::new(EBADMSG, "ipv4 datagram too small"));
         }
+        // NOTE: there may be padding bytes in the buffer.
         if (total_length as usize) > buf.len() {
-            return Err(Fail::new(
-                EBADMSG,
-                "IPv4 TOTALLEN greater than header + payload",
-            ));
+            return Err(Fail::new(EBADMSG, "ipv4 datagram size mismatch"));
         }
 
+        // Fragment identification.
         let identification: u16 = NetworkEndian::read_u16(&hdr_buf[4..6]);
+
+        // Control flags.
         let flags: u8 = (NetworkEndian::read_u16(&hdr_buf[6..8]) >> 13) as u8;
 
+        // Fragment offset.
         let fragment_offset: u16 = NetworkEndian::read_u16(&hdr_buf[6..8]) & 0x1fff;
         if fragment_offset != 0 {
             return Err(Fail::new(ENOTSUP, "IPv4 fragmentation is unsupported"));
         }
 
+        // Time to live.
         let time_to_live: u8 = hdr_buf[8];
+
+        // Protocol.
         let protocol: Ipv4Protocol = Ipv4Protocol::try_from(hdr_buf[9])?;
 
+        // Header checksum.
         let header_checksum: u16 = NetworkEndian::read_u16(&hdr_buf[10..12]);
         if header_checksum == 0xffff {
             return Err(Fail::new(EBADMSG, "IPv4 checksum is 0xFFFF"));
@@ -154,18 +168,18 @@ impl Ipv4Header {
             return Err(Fail::new(EBADMSG, "Invalid IPv4 checksum"));
         }
 
+        // Source address.
         let src_addr: Ipv4Addr = Ipv4Addr::from(NetworkEndian::read_u32(&hdr_buf[12..16]));
+
+        // Destination address.
         let dst_addr: Ipv4Addr = Ipv4Addr::from(NetworkEndian::read_u32(&hdr_buf[16..20]));
 
-        // NB (sujayakar, 11/6/2020): I've noticed that Ethernet transmission is liable to add
-        // padding zeros for small payloads, so we can't assert that the Ethernet payload we
-        // receives exactly matches the header's TOTALLEN. Therefore, we may need to truncate off
-        // padding bytes when they don't line up.
-        let padding_bytes = buf.len() - (total_length as usize);
-        buf.adjust(IPV4_HEADER_SIZE);
+        // Truncate payload.
+        let padding_bytes: usize = buf.len() - (total_length as usize);
+        buf.adjust(IPV4_HEADER_MIN_SIZE as usize);
         buf.trim(padding_bytes);
 
-        let header = Self {
+        let header: Ipv4Header = Self {
             version,
             ihl,
             dscp,
@@ -180,27 +194,48 @@ impl Ipv4Header {
             src_addr,
             dst_addr,
         };
+
         Ok((header, buf))
     }
 
     /// Serializes the target IPv4 header.
     pub fn serialize(&self, buf: &mut [u8], payload_len: usize) {
-        let buf: &mut [u8; IPV4_HEADER_SIZE] = buf.try_into().unwrap();
+        let buf: &mut [u8; (IPV4_HEADER_MIN_SIZE as usize)] =
+            buf.try_into().expect("buffer to small");
+
+        // Version + IHL.
         buf[0] = (IPV4_VERSION << 4) | IPV4_IHL_NO_OPTIONS;
+
+        // DSCP + ECN.
         buf[1] = (self.dscp << 2) | (self.ecn & 3);
-        NetworkEndian::write_u16(&mut buf[2..4], (IPV4_HEADER_SIZE + payload_len) as u16);
+
+        // Total length.
+        NetworkEndian::write_u16(&mut buf[2..4], IPV4_HEADER_MIN_SIZE + (payload_len as u16));
+
+        // Fragment identification.
         NetworkEndian::write_u16(&mut buf[4..6], self.identification);
+
+        // Fragment flags and offset.
         NetworkEndian::write_u16(
             &mut buf[6..8],
             (self.flags as u16) << 13 | self.fragment_offset & 0x1fff,
         );
+
+        // Time to live.
         buf[8] = self.ttl;
+
+        // Protocol.
         buf[9] = self.protocol as u8;
 
         // Skip the checksum (bytes 10..12) until we finish writing the header.
+
+        // Source address.
         buf[12..16].copy_from_slice(&self.src_addr.octets());
+
+        // Destination address.
         buf[16..20].copy_from_slice(&self.dst_addr.octets());
 
+        // Header checksum.
         let checksum: u16 = Self::compute_checksum(buf);
         NetworkEndian::write_u16(&mut buf[10..12], checksum);
     }
@@ -222,7 +257,8 @@ impl Ipv4Header {
 
     /// Computes the checksum of the target IPv4 header.
     fn compute_checksum(buf: &[u8]) -> u16 {
-        let buf: &[u8; IPV4_HEADER_SIZE] = buf.try_into().expect("Invalid header size");
+        let buf: &[u8; IPV4_DATAGRAM_MIN_SIZE as usize] =
+            buf.try_into().expect("Invalid header size");
         let mut state: u32 = 0xffffu32;
         for i in 0..5 {
             state += NetworkEndian::read_u16(&buf[(2 * i)..(2 * i + 2)]) as u32;

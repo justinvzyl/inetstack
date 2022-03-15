@@ -120,7 +120,7 @@ mod test {
     use super::*;
     use crate::protocols::{
         ethernet2::{EtherType2, ETHERNET2_HEADER_SIZE},
-        ipv4::{Ipv4Protocol, IPV4_HEADER_SIZE},
+        ipv4::{Ipv4Protocol, IPV4_HEADER_DEFAULT_SIZE},
     };
     use ::runtime::memory::Bytes;
     use ::runtime::network::types::{Ipv4Addr, MacAddress, Port16};
@@ -129,7 +129,8 @@ mod test {
     #[test]
     fn test_udp_datagram_header_serialization() {
         // Total header size.
-        const HEADER_SIZE: usize = ETHERNET2_HEADER_SIZE + IPV4_HEADER_SIZE + UDP_HEADER_SIZE;
+        const HEADER_SIZE: usize =
+            ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE + UDP_HEADER_SIZE;
 
         // Build fake Ethernet2 header.
         let dst_addr: MacAddress = MacAddress::new([0xd, 0xe, 0xa, 0xd, 0x0, 0x0]);
@@ -157,11 +158,11 @@ mod test {
         let mut hdr: [u8; HEADER_SIZE] = [0; HEADER_SIZE];
         ethernet2_hdr.serialize(&mut hdr[0..ETHERNET2_HEADER_SIZE]);
         ipv4_hdr.serialize(
-            &mut hdr[ETHERNET2_HEADER_SIZE..(ETHERNET2_HEADER_SIZE + IPV4_HEADER_SIZE)],
+            &mut hdr[ETHERNET2_HEADER_SIZE..(ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE)],
             UDP_HEADER_SIZE + data.len(),
         );
         udp_hdr.serialize(
-            &mut hdr[(ETHERNET2_HEADER_SIZE + IPV4_HEADER_SIZE)..],
+            &mut hdr[(ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE)..],
             &ipv4_hdr,
             &data,
             checksum_offload,
