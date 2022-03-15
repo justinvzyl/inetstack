@@ -36,6 +36,12 @@ const DEFAULT_IPV4_TTL: u8 = 255;
 /// Version number for IPv4.
 const IPV4_VERSION: u8 = 4;
 
+/// IPv4 Control Flag: Don't Fragment.
+const IPV4_CTRL_FLAG_DF: u8 = 0x2;
+
+/// IPv4 Control Flag: More Fragments.
+const _IPV4_CTRL_FLAG_MF: u8 = 0x1;
+
 //==============================================================================
 // Structures
 //==============================================================================
@@ -57,7 +63,7 @@ pub struct Ipv4Header {
     identification: u16,
     /// Version control flags (3 bits).
     flags: u8,
-    /// Fragment offset indicates where in the datagram this fragment belongs to (16 bits).
+    /// Fragment offset indicates where in the datagram this fragment belongs to (13 bits).
     fragment_offset: u16,
     /// Time to Live indicates the maximum remaining time the datagram is allowed to be in the network (8 bits).
     ttl: u8,
@@ -86,7 +92,7 @@ impl Ipv4Header {
             ecn: 0,
             total_length: IPV4_HEADER_MIN_SIZE,
             identification: 0,
-            flags: 0,
+            flags: IPV4_CTRL_FLAG_DF,
             fragment_offset: 0,
             ttl: DEFAULT_IPV4_TTL,
             protocol,
@@ -159,14 +165,32 @@ impl Ipv4Header {
 
         // Fragment identification.
         let identification: u16 = NetworkEndian::read_u16(&hdr_buf[4..6]);
+        // TODO: drop this check once we support fragmentation.
+        if identification != 0 {
+            warn!(
+                "fragmentation is not supported identification={:?}",
+                identification
+            );
+            return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
+        }
 
         // Control flags.
         let flags: u8 = (NetworkEndian::read_u16(&hdr_buf[6..8]) >> 13) as u8;
+        // TODO: drop this check once we support fragmentation.
+        if flags != IPV4_CTRL_FLAG_DF {
+            warn!("fragmentation is not supported flags={:?}", flags);
+            return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
+        }
 
         // Fragment offset.
         let fragment_offset: u16 = NetworkEndian::read_u16(&hdr_buf[6..8]) & 0x1fff;
+        // TODO: drop this check once we support fragmentation.
         if fragment_offset != 0 {
-            return Err(Fail::new(ENOTSUP, "IPv4 fragmentation is unsupported"));
+            warn!(
+                "fragmentation is not supported offset={:?}",
+                fragment_offset
+            );
+            return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
         }
 
         // Time to live.
