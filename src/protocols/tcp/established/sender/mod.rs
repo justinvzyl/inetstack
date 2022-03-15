@@ -33,7 +33,7 @@ pub struct UnackedSegment<RT: Runtime> {
 const UNSENT_QUEUE_CUTOFF: usize = 1024;
 
 pub struct Sender<RT: Runtime> {
-    // TODO: Just use Figure 5 from RFC 793 here.
+    // ToDo: Just use Figure 4 from RFC 793 here.
     //
     //                    |------------window_size------------|
     //
@@ -151,10 +151,9 @@ impl<RT: Runtime> Sender<RT> {
     }
 
     pub fn send(&self, buf: RT::Buf, cb: &ControlBlock<RT>) -> Result<(), Fail> {
-        let buf_len: u32 = buf
-            .len()
-            .try_into()
-            .map_err(|_| Fail::new(EINVAL, "buffer too large"))?;
+        // Our API supports send buffers up to usize (variable, depends upon architecture) in size.
+        //
+        let buf_len: u32 = buf.len().try_into().map_err(|_| Fail::new(EINVAL, "buffer too large"))?;
 
         let win_sz = self.window_size.get();
         let base_seq = self.base_seq_no.get();
@@ -213,7 +212,7 @@ impl<RT: Runtime> Sender<RT> {
         Ok(())
     }
 
-    // Process an acknowledgement received from our peer.
+    // Process an "acceptable" acknowledgement received from our peer.
     // ToDo: Rename this to something more meaningful.  Or maybe move this back into mainline receive?
     pub fn remote_ack(&self, seg_ack: SeqNumber, now: Instant) -> Result<(), Fail> {
         // ToDo: What we're supposed to do here:
@@ -276,7 +275,7 @@ impl<RT: Runtime> Sender<RT> {
         let new_base_seq_no = self.base_seq_no.get();
         if new_base_seq_no < base_seq_no {
             // We've wrapped around, and so we need to do some bookkeeping
-            // TODO: Figure out what this is doing -- it's probably wrong.
+            // ToDo: Figure out what this is doing -- it's probably wrong.
             self.congestion_ctrl.on_base_seq_no_wraparound();
         }
 
