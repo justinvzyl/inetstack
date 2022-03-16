@@ -363,6 +363,7 @@ impl<RT: Runtime> Catnip<RT> {
     ) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto");
+        trace!("pushto2(): qd={:?}", qd);
         let buf = self.rt.clone_sgarray(sga);
         if buf.len() == 0 {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
@@ -379,6 +380,7 @@ impl<RT: Runtime> Catnip<RT> {
     ) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto2");
+        trace!("pushto2(): qd={:?}", qd);
         let buf = RT::Buf::from_slice(data);
         if buf.len() == 0 {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
