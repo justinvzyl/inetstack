@@ -1,0 +1,673 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+//==============================================================================
+// Imports
+//==============================================================================
+
+use crate::{
+    protocols::{ip::IpProtocol, ipv4::Ipv4Header},
+    test_helpers::{ALICE_IPV4, BOB_IPV4},
+};
+use ::byteorder::{ByteOrder, NetworkEndian};
+use ::runtime::memory::{Buffer, Bytes};
+
+//==============================================================================
+// Helper Functions
+//==============================================================================
+
+/// Builds an IPv4 header.
+/// NOTE: that we can use this function to create invalid IPv4 headers
+fn build_ipv4_header(
+    buf: &mut [u8],
+    version: u8,
+    ihl: u8,
+    dscp: u8,
+    ecn: u8,
+    total_length: u16,
+    fragment_id: u16,
+    fragment_flags: u8,
+    fragment_offset: u16,
+    ttl: u8,
+    protocol: u8,
+    src_addr: &[u8],
+    dest_addr: &[u8],
+    mut checksum: Option<u16>,
+) {
+    // Version + IHL.
+    buf[0] = ((version & 0xf) << 4) | (ihl & 0xf);
+
+    // DSCP + ECN.
+    buf[1] = ((dscp & 0x3f) << 2) | (ecn & 0x3);
+
+    // Total Length.
+    NetworkEndian::write_u16(&mut buf[2..4], total_length);
+
+    // Fragment ID.
+    NetworkEndian::write_u16(&mut buf[4..6], fragment_id);
+
+    // Fragment Flags + Offset.
+    NetworkEndian::write_u16(
+        &mut buf[6..8],
+        ((fragment_flags as u16 & 7) << 13) | (fragment_offset & 0x1fff),
+    );
+
+    // Time to live.
+    buf[8] = ttl;
+
+    // Protocol.
+    buf[9] = protocol;
+
+    // Source address.
+    buf[12..16].copy_from_slice(src_addr);
+
+    // Destination address.
+    buf[16..20].copy_from_slice(dest_addr);
+
+    // Header checksum.
+    if checksum.is_none() {
+        checksum = Some(Ipv4Header::compute_checksum(&buf[..20]));
+    }
+    NetworkEndian::write_u16(&mut buf[10..12], checksum.unwrap());
+}
+
+//==============================================================================
+// Unit-Tests for Happy Path
+//==============================================================================
+
+/// Parses a well-formed IPv4 header.
+#[test]
+fn test_ipv4_header_parse_good() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 8;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+    let data: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+    let data_bytes: Bytes = Bytes::from_slice(&data);
+
+    build_ipv4_header(
+        &mut buf,
+        4,
+        5,
+        0,
+        0,
+        DATAGRAM_SIZE as u16,
+        0,
+        0x2,
+        0,
+        1,
+        IpProtocol::UDP as u8,
+        &ALICE_IPV4.octets(),
+        &BOB_IPV4.octets(),
+        None,
+    );
+
+    // Payload
+    buf[20..28].copy_from_slice(&data);
+
+    // Do it.
+    let buf_bytes: Bytes = Bytes::from_slice(&buf);
+    match Ipv4Header::parse(buf_bytes) {
+        Ok((ipv4_hdr, datagram)) => {
+            assert_eq!(ipv4_hdr.get_src_addr(), ALICE_IPV4);
+            assert_eq!(ipv4_hdr.get_dest_addr(), BOB_IPV4);
+            assert_eq!(ipv4_hdr.get_protocol(), IpProtocol::UDP);
+            assert_eq!(datagram.len(), PAYLOAD_SIZE);
+            assert_eq!(datagram, data_bytes);
+        }
+        Err(e) => assert!(false, "{:?}", e),
+    }
+}
+
+//==============================================================================
+// Unit-Tests for Invalid Path
+//==============================================================================
+
+/// Parses a malformed IPv4 header with invalid version number.
+#[test]
+fn test_ipv4_header_parse_invalid_version() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Iterate over all invalid version numbers.
+    for version in [0, 1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15] {
+        build_ipv4_header(
+            &mut buf,
+            version,
+            5,
+            0,
+            0,
+            DATAGRAM_SIZE as u16,
+            0,
+            0x2,
+            0,
+            1,
+            IpProtocol::UDP as u8,
+            &ALICE_IPV4.octets(),
+            &BOB_IPV4.octets(),
+            None,
+        );
+
+        // Do it.
+        let buf_bytes: Bytes = Bytes::from_slice(&buf);
+        match Ipv4Header::parse(buf_bytes) {
+            Ok(_) => assert!(
+                false,
+                "parsed ipv4_header with invalid version={:?}",
+                version
+            ),
+            Err(_) => {}
+        };
+    }
+}
+
+/// Parses a malformed IPv4 header with invalid internet header length.
+#[test]
+fn test_ipv4_header_parse_invalid_ihl() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Iterate over invalid values for IHL.
+    for ihl in [0, 1, 2, 3, 4] {
+        build_ipv4_header(
+            &mut buf,
+            4,
+            ihl,
+            0,
+            0,
+            DATAGRAM_SIZE as u16,
+            0,
+            0x2,
+            0,
+            1,
+            IpProtocol::UDP as u8,
+            &ALICE_IPV4.octets(),
+            &BOB_IPV4.octets(),
+            None,
+        );
+
+        // Do it.
+        let buf_bytes: Bytes = Bytes::from_slice(&buf);
+        match Ipv4Header::parse(buf_bytes) {
+            Ok(_) => assert!(false, "parsed ipv4 header with invalid ihl={:?}", ihl),
+            Err(_) => {}
+        };
+    }
+}
+
+/// Parses a malformed IPv4 header with invalid total length field.
+#[test]
+fn test_ipv4_header_parse_invalid_total_length() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Iterate over invalid values for IHL.
+    for total_length in 0..20 {
+        build_ipv4_header(
+            &mut buf,
+            4,
+            5,
+            0,
+            0,
+            total_length,
+            0,
+            0x2,
+            0,
+            1,
+            IpProtocol::UDP as u8,
+            &ALICE_IPV4.octets(),
+            &BOB_IPV4.octets(),
+            None,
+        );
+
+        // Do it.
+        let buf_bytes: Bytes = Bytes::from_slice(&buf);
+        match Ipv4Header::parse(buf_bytes) {
+            Ok(_) => assert!(
+                false,
+                "parsed ipv4 header with invalid total_length={:?}",
+                total_length
+            ),
+            Err(_) => {}
+        };
+    }
+}
+
+/// Parses a malformed IPv4 header with invalid fragmentation fields.
+#[test]
+fn test_ipv4_header_parse_invalid_fragmentation() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Fragment offset must have bit 3 zeroed.
+    let fragment_flags: u8 = 0x4;
+    build_ipv4_header(
+        &mut buf,
+        4,
+        5,
+        0,
+        0,
+        DATAGRAM_SIZE as u16,
+        0,
+        fragment_flags,
+        0,
+        1,
+        IpProtocol::UDP as u8,
+        &ALICE_IPV4.octets(),
+        &BOB_IPV4.octets(),
+        None,
+    );
+
+    // Do it.
+    let buf_bytes: Bytes = Bytes::from_slice(&buf);
+    match Ipv4Header::parse(buf_bytes) {
+        Ok(_) => assert!(
+            false,
+            "parsed ipv4 header with invalid fragment_flags={:?}",
+            fragment_flags
+        ),
+        Err(_) => {}
+    };
+}
+
+/// Parses a malformed IPv4 header with invalid time to live field.
+#[test]
+fn test_ipv4_header_parse_invalid_ttl() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Datagrams with zeroed TTL values must me dropped.
+    let ttl: u8 = 0x0;
+    build_ipv4_header(
+        &mut buf,
+        4,
+        5,
+        0,
+        0,
+        DATAGRAM_SIZE as u16,
+        0,
+        0x2,
+        0,
+        ttl,
+        IpProtocol::UDP as u8,
+        &ALICE_IPV4.octets(),
+        &BOB_IPV4.octets(),
+        None,
+    );
+
+    // Do it.
+    let buf_bytes: Bytes = Bytes::from_slice(&buf);
+    match Ipv4Header::parse(buf_bytes) {
+        Ok(_) => assert!(false, "parsed ipv4 header with invalid ttl={:?}", ttl),
+        Err(_) => {}
+    };
+}
+
+/// Parses a malformed IPv4 header with invalid protocol field.
+#[test]
+fn test_ipv4_header_parse_invalid_protocol() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Iterate over invalid values for protocol.
+    for protocol in 144..252 {
+        build_ipv4_header(
+            &mut buf,
+            4,
+            5,
+            0,
+            0,
+            DATAGRAM_SIZE as u16,
+            0,
+            0x2,
+            0,
+            1,
+            protocol,
+            &ALICE_IPV4.octets(),
+            &BOB_IPV4.octets(),
+            None,
+        );
+
+        // Do it.
+        let buf_bytes: Bytes = Bytes::from_slice(&buf);
+        match Ipv4Header::parse(buf_bytes) {
+            Ok(_) => assert!(
+                false,
+                "parsed ipv4 header with invalid protocol={:?}",
+                protocol
+            ),
+            Err(_) => {}
+        };
+    }
+}
+
+/// Parses a malformed IPv4 header with invalid checksum.
+#[test]
+fn test_ipv4_header_parse_invalid_header_checksum() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Datagrams with invalid header checksum must me dropped.
+    let hdr_checksum: u16 = 0x1;
+    build_ipv4_header(
+        &mut buf,
+        4,
+        5,
+        0,
+        0,
+        DATAGRAM_SIZE as u16,
+        0,
+        0x2,
+        0,
+        1,
+        IpProtocol::UDP as u8,
+        &ALICE_IPV4.octets(),
+        &BOB_IPV4.octets(),
+        Some(hdr_checksum),
+    );
+
+    // Do it.
+    let buf_bytes: Bytes = Bytes::from_slice(&buf);
+    match Ipv4Header::parse(buf_bytes) {
+        Ok(_) => assert!(
+            false,
+            "parsed ipv4 header with invalid header checksum={:?}",
+            hdr_checksum
+        ),
+        Err(_) => {}
+    };
+}
+
+//==============================================================================
+// Unit-Tests for Unsupported Paths
+//==============================================================================
+
+/// Parses a malformed IPv4 header with unsupported internet header length.
+///
+/// TODO: Drop this test once we support IP options.
+#[test]
+fn test_ipv4_header_parse_unsupported_ihl() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Iterate over unsupported values for IHL.
+    for ihl in 6..15 {
+        build_ipv4_header(
+            &mut buf,
+            4,
+            ihl,
+            0,
+            0,
+            DATAGRAM_SIZE as u16,
+            0,
+            0x2,
+            0,
+            1,
+            IpProtocol::UDP as u8,
+            &ALICE_IPV4.octets(),
+            &BOB_IPV4.octets(),
+            None,
+        );
+
+        // Do it.
+        let buf_bytes: Bytes = Bytes::from_slice(&buf);
+        match Ipv4Header::parse(buf_bytes) {
+            Ok(_) => assert!(
+                false,
+                "parsed ipv4 header with ihl={:?}. Do we support it now?",
+                ihl
+            ),
+            Err(_) => {}
+        };
+    }
+}
+
+/// Parses a malformed IPv4 header with unsupported DSCP field.
+///
+/// TODO: Drop this test once we support DSCP.
+#[test]
+fn test_ipv4_header_parse_unsupported_dscp() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Iterate over unsupported values for DSCP.
+    for dscp in 1..63 {
+        build_ipv4_header(
+            &mut buf,
+            4,
+            5,
+            dscp,
+            0,
+            DATAGRAM_SIZE as u16,
+            0,
+            0x2,
+            0,
+            1,
+            IpProtocol::UDP as u8,
+            &ALICE_IPV4.octets(),
+            &BOB_IPV4.octets(),
+            None,
+        );
+
+        // Do it.
+        let buf_bytes: Bytes = Bytes::from_slice(&buf);
+        match Ipv4Header::parse(buf_bytes) {
+            Ok(_) => assert!(
+                false,
+                "parsed ipv4 header with dscp={:?}. Do we support it now?",
+                dscp
+            ),
+            Err(_) => {}
+        };
+    }
+}
+
+/// Parses a malformed IPv4 header with unsupported ECN field.
+///
+/// TODO: Drop this test once we support ECN.
+#[test]
+fn test_ipv4_header_parse_unsupported_ecn() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Iterate over unsupported values for ECN.
+    for ecn in 1..3 {
+        build_ipv4_header(
+            &mut buf,
+            4,
+            5,
+            0,
+            ecn,
+            DATAGRAM_SIZE as u16,
+            0,
+            0x2,
+            0,
+            1,
+            IpProtocol::UDP as u8,
+            &ALICE_IPV4.octets(),
+            &BOB_IPV4.octets(),
+            None,
+        );
+
+        // Do it.
+        let buf_bytes: Bytes = Bytes::from_slice(&buf);
+        match Ipv4Header::parse(buf_bytes) {
+            Ok(_) => assert!(
+                false,
+                "parsed ipv4 header with ecn={:?}. Do we support it now?",
+                ecn
+            ),
+            Err(_) => {}
+        };
+    }
+}
+
+/// Parses a malformed IPv4 header with unsupported fragmentation fields.
+///
+/// TODO: Drop this test once we support fragmentation.
+#[test]
+fn test_ipv4_header_parse_unsupported_fragmentation() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Fragmented packets are unsupported.
+    let fragment_id: u16 = 1;
+    build_ipv4_header(
+        &mut buf,
+        4,
+        5,
+        0,
+        0,
+        DATAGRAM_SIZE as u16,
+        fragment_id,
+        0x2,
+        0,
+        1,
+        IpProtocol::UDP as u8,
+        &ALICE_IPV4.octets(),
+        &BOB_IPV4.octets(),
+        None,
+    );
+
+    // Do it.
+    let buf_bytes: Bytes = Bytes::from_slice(&buf);
+    match Ipv4Header::parse(buf_bytes) {
+        Ok(_) => assert!(
+            false,
+            "parsed ipv4 header with fragment_id={:?}. Do we support it now?",
+            fragment_id,
+        ),
+        Err(_) => {}
+    };
+
+    // Fragmented packets are unsupported.
+    let fragment_offset: u16 = 1;
+    build_ipv4_header(
+        &mut buf,
+        4,
+        5,
+        0,
+        0,
+        DATAGRAM_SIZE as u16,
+        0,
+        0x2,
+        fragment_offset,
+        1,
+        IpProtocol::UDP as u8,
+        &ALICE_IPV4.octets(),
+        &BOB_IPV4.octets(),
+        None,
+    );
+
+    // Do it.
+    let buf_bytes: Bytes = Bytes::from_slice(&buf);
+    match Ipv4Header::parse(buf_bytes) {
+        Ok(_) => assert!(
+            false,
+            "parsed ipv4 header with fragment_offset={:?}. Do we support it now?",
+            fragment_offset,
+        ),
+        Err(_) => {}
+    };
+
+    // Iterate over unsupported values for fragment flags.
+    for fragment_flags in [1, 3, 5, 6, 7, 8] {
+        build_ipv4_header(
+            &mut buf,
+            4,
+            5,
+            0,
+            0,
+            DATAGRAM_SIZE as u16,
+            0,
+            fragment_flags,
+            0,
+            1,
+            IpProtocol::UDP as u8,
+            &ALICE_IPV4.octets(),
+            &BOB_IPV4.octets(),
+            None,
+        );
+
+        // Do it.
+        let buf_bytes: Bytes = Bytes::from_slice(&buf);
+        match Ipv4Header::parse(buf_bytes) {
+            Ok(_) => assert!(
+                false,
+                "parsed ipv4 header with fragment_flags={:?}. Do we support it now?",
+                fragment_flags
+            ),
+            Err(_) => {}
+        };
+    }
+}
+
+/// Parses a malformed IPv4 header with unsupported protocol field.
+///
+/// TODO: Drop this test once we support them.
+#[test]
+fn test_ipv4_header_parse_unsupported_protocol() {
+    const HEADER_SIZE: usize = 20;
+    const PAYLOAD_SIZE: usize = 0;
+    const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
+    let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
+
+    // Iterate over unsupported values for fragment flags.
+    for protocol in 0..143 {
+        match protocol {
+            // Skip supported protocols.
+            1 | 6 | 17 => continue,
+            _ => {
+                build_ipv4_header(
+                    &mut buf,
+                    4,
+                    5,
+                    0,
+                    0,
+                    DATAGRAM_SIZE as u16,
+                    0,
+                    0x2,
+                    0,
+                    1,
+                    protocol,
+                    &ALICE_IPV4.octets(),
+                    &BOB_IPV4.octets(),
+                    None,
+                );
+
+                // Do it.
+                let buf_bytes: Bytes = Bytes::from_slice(&buf);
+                match Ipv4Header::parse(buf_bytes) {
+                    Ok(_) => assert!(
+                        false,
+                        "parsed ipv4 header with protocol={:?}. Do we support it now?",
+                        protocol,
+                    ),
+                    Err(_) => {}
+                };
+            }
+        };
+    }
+}
