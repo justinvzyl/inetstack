@@ -218,11 +218,6 @@ impl Ipv4Header {
         // Destination address.
         let dst_addr: Ipv4Addr = Ipv4Addr::from(NetworkEndian::read_u32(&hdr_buf[16..20]));
 
-        // Truncate payload.
-        let padding_bytes: usize = buf.len() - (total_length as usize);
-        buf.adjust(IPV4_HEADER_MIN_SIZE as usize);
-        buf.trim(padding_bytes);
-
         let header: Ipv4Header = Self {
             version,
             ihl,
@@ -239,7 +234,12 @@ impl Ipv4Header {
             dst_addr,
         };
 
-        Ok((header, buf))
+        // Truncate payload.
+        Ok((
+            header,
+            &buf[(IPV4_HEADER_MIN_SIZE as usize)..(total_length as usize)],
+        ))
+    }
     }
 
     /// Serializes the target IPv4 header.
