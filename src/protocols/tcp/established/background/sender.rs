@@ -84,7 +84,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let sent_data = (sent_seq - base_seq).into();
         if win_sz <= (sent_data + next_buf_size as u32)
             || effective_cwnd <= sent_data
-            || (effective_cwnd - sent_data) <= cb.get_mss() as u32
+            || (effective_cwnd - sent_data) <= cb.get_sender_mss() as u32
         {
             futures::select_biased! {
                 _ = base_seq_changed => continue 'top,
@@ -103,7 +103,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
 
         // Form an outgoing packet.
         let max_size = cmp::min(
-            cmp::min((win_sz - sent_data) as usize, cb.get_mss()),
+            cmp::min((win_sz - sent_data) as usize, cb.get_sender_mss()),
             (effective_cwnd - sent_data) as usize,
         );
         let segment_data = cb

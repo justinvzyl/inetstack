@@ -59,9 +59,15 @@ pub enum State {
     LastAck,
     Closed,
     Reset,
+    /// This connection has been migrated out. It is no longer able to process segments on this
+    /// catnip instance.
+    // TODO: This might not be the best way to do this, this triggers a "watched value" update. So
+    // the futures related to this connection will be marked as runnable even though we don't
+    // really want them running...
+    MigratedOut
 }
 
-struct ReceiveQueue<RT: Runtime> {
+pub struct ReceiveQueue<RT: Runtime> {
     // Omar: Correct Diagram.
     // Receive Sequence Space
     //
@@ -122,6 +128,15 @@ impl<RT: Runtime> ReceiveQueue<RT> {
         }
     }
 
+    pub fn migrated_in(rcv_nxt: SeqNumber, base_seq_no: SeqNumber, recv_seq_no: SeqNumber, recv_queue: VecDeque<RT::Buf>) -> Self {
+        Self {
+            base_seq_no: WatchedValue::new(base_seq_no),
+            rcv_nxt: WatchedValue::new(rcv_nxt),
+            recv_seq_no: WatchedValue::new(recv_seq_no),
+            recv_queue: RefCell::new(recv_queue)
+        }
+    }
+
     pub fn pop(&self) -> Option<RT::Buf> {
         let buf: RT::Buf = self.recv_queue.borrow_mut().pop_front()?;
         self.base_seq_no
@@ -148,7 +163,7 @@ impl<RT: Runtime> ReceiveQueue<RT> {
             .sum::<usize>()
     }
 
-    pub fn flush_receive_queue(&self) -> VecDeque<RT::Buf> {
+    pub fn take_receive_queue(&self) -> VecDeque<RT::Buf> {
         // We don't expect to use the recv_queue ever again. So we won't every have to grow the
         // capacity.
         let mut temp: VecDeque<RT::Buf> = VecDeque::with_capacity(0);
@@ -175,12 +190,12 @@ pub struct ControlBlock<RT: Runtime> {
     ack_deadline: WatchedValue<Option<Instant>>,
 
     max_window_size: u32,
-    window_scale: u32,
+    receiver_window_scale: u32,
 
     waker: RefCell<Option<Waker>>,
     out_of_order: RefCell<VecDeque<(SeqNumber, RT::Buf)>>,
 
-    receive_queue: ReceiveQueue<RT>,
+    pub receive_queue: ReceiveQueue<RT>,
 }
 
 //==============================================================================
@@ -193,7 +208,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         arp: ArpPeer<RT>,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
-        receiver_window_size: u32,
+        max_window_size: u32,
         receiver_window_scale: u32,
         sender_seq_no: SeqNumber,
         sender_window_size: u32,
@@ -219,12 +234,48 @@ impl<RT: Runtime> ControlBlock<RT> {
             state: WatchedValue::new(State::Established),
             ack_delay_timeout,
             ack_deadline: WatchedValue::new(None),
-            max_window_size: receiver_window_size,
-            window_scale: receiver_window_scale,
+            max_window_size,
+            receiver_window_scale,
             waker: RefCell::new(None),
             out_of_order: RefCell::new(VecDeque::new()),
             receive_queue: ReceiveQueue::new(receiver_seq_no, receiver_seq_no, receiver_seq_no),
         }
+    }
+
+    pub fn imported_connection(
+        local: Ipv4Endpoint,
+        remote: Ipv4Endpoint,
+        rt: RT,
+        arp: ArpPeer<RT>,
+        ack_delay_timeout: Duration,
+        receive_queue: ReceiveQueue<RT>,
+        max_window_size: u32,
+        receiver_window_scale: u32,
+        sender: Sender<RT>,
+    ) -> Self {
+        Self {
+            local,
+            remote,
+            rt: Rc::new(rt),
+            arp: Rc::new(arp),
+            sender,
+            state: WatchedValue::new(State::Established),
+            ack_delay_timeout,
+            ack_deadline: WatchedValue::new(None),
+            max_window_size,
+            receiver_window_scale,
+            waker: RefCell::new(None),
+            out_of_order: RefCell::new(VecDeque::new()),
+            receive_queue,
+        }
+    }
+
+    pub fn get_max_window_scale(&self) -> u32 {
+        self.max_window_size
+    }
+
+    pub fn get_receiver_window_scale(&self) -> u32 {
+        self.receiver_window_scale
     }
 
     pub fn get_state(&self) -> (State, WatchFuture<State>) {
@@ -290,7 +341,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             .congestion_ctrl_watch_limited_transmit_cwnd_increase()
     }
 
-    pub fn get_mss(&self) -> usize {
+    pub fn get_sender_mss(&self) -> usize {
         self.sender.get_mss()
     }
 
@@ -530,14 +581,14 @@ impl<RT: Runtime> ControlBlock<RT> {
         let bytes_outstanding: u32 =
             (self.receive_queue.recv_seq_no.get() - self.receive_queue.base_seq_no.get()).into();
         let window_size = self.max_window_size - bytes_outstanding;
-        let hdr_window_size = (window_size >> self.window_scale)
+        let hdr_window_size = (window_size >> self.receiver_window_scale)
             .try_into()
             .expect("Window size overflow");
         debug!(
             "Sending window size update -> {} (hdr {}, scale {})",
-            (hdr_window_size as u32) << self.window_scale,
+            (hdr_window_size as u32) << self.receiver_window_scale,
             hdr_window_size,
-            self.window_scale
+            self.receiver_window_scale
         );
         hdr_window_size
     }
@@ -706,11 +757,11 @@ impl<RT: Runtime> ControlBlock<RT> {
         Ok(())
     }
 
-    pub fn flush_receive_queue(&self) -> VecDeque<RT::Buf> {
-        self.receive_queue.flush_receive_queue()
+    pub fn take_receive_queue(&self) -> VecDeque<RT::Buf> {
+        self.receive_queue.take_receive_queue()
     }
 
-    pub fn flush_retransmission_queue(&self) -> VecDeque<RT::Buf> {
+    pub fn take_retransmission_queue(&self) -> VecDeque<RT::Buf> {
         self.sender.flush_retransmission_queue()
     }
 }

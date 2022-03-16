@@ -2,8 +2,8 @@
 // Licensed under the MIT license.
 
 mod background;
-mod ctrlblk;
-mod sender;
+pub(crate) mod ctrlblk;
+pub(crate) mod sender;
 
 pub use self::ctrlblk::ControlBlock;
 pub use self::ctrlblk::State;

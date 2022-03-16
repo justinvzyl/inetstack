@@ -25,10 +25,58 @@ use ::std::{
     task::{Context, Poll},
     time::Duration,
 };
+use std::collections::hash_map::Entry;
+use std::collections::VecDeque;
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
+use crate::protocols::tcp::established::State;
 
+use serde::{Serialize, Deserialize};
+use crate::protocols::tcp::cc::CongestionControl;
+use crate::protocols::tcp::established::ControlBlock;
+use crate::protocols::tcp::established::ctrlblk::ReceiveQueue;
+use crate::protocols::tcp::established::sender::{Sender, UnackedSegment};
+use crate::protocols::tcp::{cc, SeqNumber};
+
+/// State needed for TCP Migration
+#[derive(Serialize, Deserialize, Debug)]
+/// TODO: Include out_of_order vec dequeue from control block. Will probably need that.
+pub struct TcpState<RT: Runtime> {
+    pub remote: Ipv4Endpoint,
+    pub local: Ipv4Endpoint,
+    pub receive_queue: VecDeque<RT::Buf>,
+    pub unacked_queue: VecDeque<UnackedSegment<RT>>,
+    pub retransmit_queue: VecDeque<RT::Buf>,
+    // TODO: Do we need `our` and the `peers` mss?
+    /// Maximum Segment Size
+    pub sender_mss: usize,
+    pub receiver_window_scale: u32,
+    pub sender_window_scale: u8,
+    pub max_window_size: u32,
+    // RCV.NXT: Sequence numbers we have received and acknowledged.
+    pub rcv_nxt: SeqNumber,
+    // Current sequence number that peer has acknowledged up to.
+    pub snd_una: SeqNumber,
+    // Next sequence number for us to send.
+    pub snd_nxt: SeqNumber,
+    // SND.WND: Send Window
+    pub snd_wnd: u32,
+
+    // Not really part of the TCP expect but needed by ReceiveQueue
+    pub base_seq_no: SeqNumber,
+    pub recv_seq_no: SeqNumber
+}
+
+impl<RT: Runtime> TcpState<RT> {
+    pub fn new(remote: Ipv4Endpoint, local: Ipv4Endpoint, receive_queue: VecDeque<RT::Buf>, retransmit_queue: VecDeque<RT::Buf>, unacked_queue: VecDeque<UnackedSegment<RT>>, mss: usize, receiver_window_scale: u32, sender_window_scale: u8, rcv_wnd: u32, rcv_nxt: SeqNumber, snd_una: SeqNumber, snd_nxt: SeqNumber, snd_wnd: u32, base_seq_no: SeqNumber,
+               recv_seq_no: SeqNumber) -> Self {
+        TcpState { remote, local, receive_queue, unacked_queue, retransmit_queue, sender_mss: mss, receiver_window_scale, sender_window_scale, max_window_size: rcv_wnd, rcv_nxt, snd_una, snd_nxt, snd_wnd, base_seq_no, recv_seq_no }
+    }
+}
+
+
+#[derive(Debug)]
 pub enum Socket {
     Inactive {
         local: Option<Ipv4Endpoint>,
@@ -44,6 +92,11 @@ pub enum Socket {
         local: Ipv4Endpoint,
         remote: Ipv4Endpoint,
     },
+    // This connection has been migrated out.
+    MigratedOut {
+        local: Ipv4Endpoint,
+        remote: Ipv4Endpoint,
+    }
 }
 
 pub struct Inner<RT: Runtime> {
@@ -61,7 +114,7 @@ pub struct Inner<RT: Runtime> {
     rt: RT,
     arp: ArpPeer<RT>,
 
-    dead_socket_tx: mpsc::UnboundedSender<IoQueueDescriptor>,
+    pub(crate) dead_socket_tx: mpsc::UnboundedSender<IoQueueDescriptor>,
 }
 
 pub struct TcpPeer<RT: Runtime> {
@@ -158,7 +211,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         let inner = &mut *inner_;
 
         let local = match inner.sockets.get(&fd) {
-            Some(Socket::Listening { local }) => local,
+            Some(Socket::Listening { local }) => *local,
             Some(..) => {
                 return Poll::Ready(Err(Fail::Malformed {
                     details: "Socket not listening",
@@ -168,7 +221,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         };
         let passive = inner
             .passive
-            .get_mut(local)
+            .get_mut(&local)
             .expect("sockets/local inconsistency");
         let cb = match passive.poll_accept(ctx) {
             Poll::Pending => return Poll::Pending,
@@ -184,6 +237,8 @@ impl<RT: Runtime> TcpPeer<RT> {
         };
         assert!(inner.sockets.insert(newfd, socket).is_none());
         assert!(inner.established.insert(key, established).is_none());
+        // Should never fail. We just got it above.
+        inner.passive.remove(&local).unwrap();
 
         Poll::Ready(Ok(newfd))
     }
@@ -250,6 +305,11 @@ impl<RT: Runtime> TcpPeer<RT> {
             Some(Socket::Listening { .. }) => {
                 return Poll::Ready(Err(Fail::Malformed {
                     details: "pool_recv(): socket listening",
+                }))
+            }
+            Some(Socket::MigratedOut { .. }) => {
+                return Poll::Ready(Err(Fail::Malformed {
+                    details: "pool_recv(): socket migrated out",
                 }))
             }
             None => return Poll::Ready(Err(Fail::Malformed { details: "Bad FD" })),
@@ -383,6 +443,164 @@ impl<RT: Runtime> TcpPeer<RT> {
                 details: "Socket not established",
             }),
         }
+    }
+
+    pub fn migrate_in_tcp_connection(&mut self, state: TcpState<RT>, qd: IoQueueDescriptor) -> Result<(), Fail> {
+        let mut inner = self.inner.borrow_mut();
+
+        // Check if keys already exist first. This way we don't have to undo changes we make to
+        // the state.
+
+        if inner.established.contains_key(&(state.local, state.remote)) {
+            // TODO: Not sure if there is a better error to use here.
+            return Err(Fail::ResourceBusy { details: "This connection already exists." })
+        }
+        if inner.sockets.contains_key(&qd) {
+            return Err(Fail::BadFileDescriptor {})
+        }
+
+        let socket = Socket::Established { local: state.local, remote: state.remote };
+        // File descriptor is already in use!
+        if let Some(_) = inner.sockets.insert(qd, socket) {
+            // We just checked this condition.
+            unreachable!()
+        }
+
+        let receive_queue = ReceiveQueue::migrated_in(
+            state.rcv_nxt,
+            state.base_seq_no,
+            state.recv_seq_no,
+            state.receive_queue,
+        );
+
+        let sender = Sender::migrated_in(
+            state.snd_una,
+            state.snd_wnd,
+            state.sender_window_scale,
+            state.sender_mss,
+            cc::None::new,
+            None,
+            state.retransmit_queue,
+            state.unacked_queue,
+        );
+
+        let cb = ControlBlock::imported_connection(
+            state.local,
+            state.remote,
+            inner.rt.clone(),
+            inner.arp.clone(),
+            // TODO: Should this be the origin or destination TCP stack value?
+            inner.rt.tcp_options().get_ack_delay_timeout(),
+            receive_queue,
+            state.max_window_size,
+            state.receiver_window_scale,
+            sender,
+        );
+
+        let established = EstablishedSocket::new(cb, qd, inner.dead_socket_tx.clone());
+
+        if let Some(_) = inner.established.insert((state.local, state.remote), established) {
+            // This condition should have been checked for at the beggining of this function.
+            unreachable!();
+        }
+
+        Ok(())
+    }
+
+    pub fn get_tcp_state(&mut self, fd: IoQueueDescriptor) -> Result<TcpState<RT>, Fail> {
+        info!("Migrating out TCP State for {:?}!", fd);
+        let details =  "We can only migrate out established connections.";
+
+        let inner = self.inner.borrow_mut();
+
+        match inner.sockets.get(&fd) {
+            Some(Socket::Established { local, remote }) => {
+                let key = (*local, *remote);
+                match inner.established.get(&key) {
+                    Some(connection) => {
+                        let cb = connection.cb.clone();
+                        let mss = cb.get_sender_mss();
+                        let (snd_wnd, _) = cb.get_snd_wnd();
+                        let (snd_una, _) = cb.get_snd_una();
+
+                        let (snd_nxt, _) = cb.get_snd_nxt();
+                        let (rcv_nxt, _) = cb.get_rcv_nxt();
+                        let receiver_window_scale = cb.get_receiver_window_scale();
+                        let sender_window_scale = cb.sender.get_window_scale();
+                        let max_window_size = cb.get_max_window_scale();
+
+                        let base_seq_no: SeqNumber = cb.receive_queue.base_seq_no.get();
+                        let recv_seq_no: SeqNumber = cb.receive_queue.recv_seq_no.get();
+
+                        let receive_queue: VecDeque<RT::Buf> = cb.take_receive_queue();
+                        let retrans_queue: VecDeque<RT::Buf> = cb.take_retransmission_queue();
+                        let unack_queue: VecDeque<UnackedSegment<RT>> = cb.sender.take_unacked_queue();
+
+                        let state = TcpState::new(*remote, *local, receive_queue, retrans_queue, unack_queue, mss, receiver_window_scale, sender_window_scale, max_window_size, rcv_nxt, snd_una, snd_nxt, snd_wnd, base_seq_no, recv_seq_no);
+
+                        // debug!("TCP State: {:?}", state);
+                        Ok(state)
+                    }
+                    None => {
+                        return Err(Fail::Malformed {
+                            details
+                        })
+                    }
+                }
+            }
+            _ => {
+                return Err(Fail::Malformed { details });
+            },
+        }
+    }
+
+
+    /// 1) Change status of our socket to MigratedOut
+    /// 2) Change status of ControlBlock state to Migrated out.
+    /// 3) Remove socket from Established hashmap.
+    pub fn migrate_out_connection(&self, fd: &IoQueueDescriptor) -> Result<(), Fail> {
+        let mut inner = self.inner.borrow_mut();
+        let socket = inner.sockets.get_mut(fd);
+
+        let (local, remote) = match socket {
+            None => {
+                debug!("No entry in `sockets` for fd: {:?}", fd);
+                return Err(Fail::BadFileDescriptor {});
+            }
+            Some(Socket::Established { local, remote }) => {
+                (*local, *remote)
+            }
+            s => panic!("Unsupported Socket variant: {:?} for migrating out.", s),
+        };
+
+        // 1) Change status of our socket to MigratedOut
+        *socket.unwrap() = Socket::MigratedOut { local, remote };
+
+        // 2) Change status of ControlBlock state to Migrated out.
+        let key = (local, remote);
+        let mut entry = match inner.established.entry(key) {
+            Entry::Occupied(entry) => entry,
+            Entry::Vacant(_) => Err(Fail::Malformed {
+                details: "Socket not established",
+            })?,
+        };
+
+        let established = entry.get_mut();
+        let (state, _) = established.cb.get_state();
+        match state {
+            State::Established => {}
+            s => panic!("We only migrate out established conn. Found:  {:?}", s),
+        }
+        established.cb.set_state(State::MigratedOut);
+
+        // 3) Remove socket from Established hashmap.
+        if let None = inner.established.remove(&key) {
+                // This panic is okay. This should never happen and represents an internal error
+                // in our implementation.
+                panic!("Established socket somehow missing.");
+        }
+
+        Ok(())
     }
 }
 

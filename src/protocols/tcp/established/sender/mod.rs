@@ -20,10 +20,13 @@ use ::std::{
 };
 use congestion_ctrl as cc;
 use rto::RtoCalculator;
+use serde::{Serialize, Deserialize};
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct UnackedSegment<RT: Runtime> {
     pub bytes: RT::Buf,
     // Set to `None` on retransmission to implement Karn's algorithm.
+    #[serde(skip)] // Instant can't be serialized/deserialized
     pub initial_tx: Option<Instant>,
 }
 
@@ -104,6 +107,46 @@ impl<RT: Runtime> Sender<RT> {
 
             congestion_ctrl: cc_constructor(mss, seq_no, congestion_control_options),
         }
+    }
+
+    pub fn take_unacked_queue(&self) -> VecDeque<UnackedSegment<RT>> {
+        // We don't expect to use the recv_queue ever again. So we won't every have to grow the
+        // capacity.
+        let mut temp: VecDeque<UnackedSegment<RT>> = VecDeque::with_capacity(0);
+        std::mem::swap(&mut temp, &mut *self.unacked_queue.borrow_mut());
+        temp
+    }
+
+    pub fn migrated_in(
+        seq_no: SeqNumber,
+        window_size: u32,
+        window_scale: u8,
+        mss: usize,
+        cc_constructor: cc::CongestionControlConstructor<RT>,
+        congestion_control_options: Option<cc::Options>,
+        retransmission_queue: VecDeque<RT::Buf>,
+        unacked_queue: VecDeque<UnackedSegment<RT>>,
+    ) -> Self {
+        Self {
+            snd_una: WatchedValue::new(seq_no),
+            unacked_queue: RefCell::new(unacked_queue),
+            snd_nxt: WatchedValue::new(seq_no),
+            retransmission_queue: RefCell::new(retransmission_queue),
+            unsent_seq_no: WatchedValue::new(seq_no),
+
+            snd_wnd: WatchedValue::new(window_size),
+            window_scale,
+            mss,
+            // TODO: What to do about this?
+            retransmit_deadline: WatchedValue::new(None),
+            rto: RefCell::new(RtoCalculator::new()),
+
+            congestion_ctrl: cc_constructor(mss, seq_no, congestion_control_options),
+        }
+    }
+
+    pub fn get_window_scale(&self) -> u8 {
+        self.window_scale
     }
 
     pub fn get_mss(&self) -> usize {

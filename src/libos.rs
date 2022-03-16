@@ -28,12 +28,14 @@ use ::std::{any::Any, time::Instant};
 use std::collections::VecDeque;
 use std::ops::Deref;
 use catwalk::SchedulerHandle;
-use libc::c_int;
+use libc::{c_int, tolower};
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
-use crate::protocols::tcp::peer::Socket;
-use crate::protocols::tcp::SeqNumber;
+use crate::protocols::tcp::peer::{Socket, TcpState};
+use crate::protocols::tcp::{cc, SeqNumber};
+use crate::protocols::tcp::cc::CongestionControl;
+use crate::protocols::tcp::established::ControlBlock;
 
 const TIMER_RESOLUTION: usize = 64;
 const MAX_RECV_ITERS: usize = 2;
@@ -44,6 +46,9 @@ pub type QToken = u64;
 pub struct LibOS<RT: Runtime> {
     arp: ArpPeer<RT>,
     ipv4: Peer<RT>,
+    /// Data structure used to keep track of allocated file descriptors. Generates new
+    /// IoQueueDescriptors and maps them to the type of connection they correspond to, e.g.
+    /// TCP.
     file_table: IoQueueTable,
     rt: RT,
     ts_iters: usize,
@@ -580,86 +585,49 @@ impl<RT: Runtime> LibOS<RT> {
         self.ts_iters = (self.ts_iters + 1) % TIMER_RESOLUTION;
     }
 
-    pub fn get_tcp_state(&mut self, fd: IoQueueDescriptor) -> Result<TcpState, Fail> {
-        info!("Migrating out TCP State for {:?}!", fd);
-        let details =  "We can only migrate out established connections.";
-
+    /// Retrieves the state of a connection and changes internal state of connection to reflect
+    /// that this connection has been migrated out.
+    pub fn migrate_out_tcp_connection(&mut self, fd: IoQueueDescriptor) -> Result<TcpState<RT>, Fail> {
         match self.file_table.get(fd) {
             Some(IoQueueType::TcpSocket) => {
-                let inner = self.ipv4.tcp.inner.borrow_mut();
-
-                match inner.sockets.get(&fd) {
-                    Some(Socket::Established { local, remote }) => {
-                        let key = (*local, *remote);
-                        match inner.established.get(&key) {
-                            Some(connection) => {
-                                let cb = connection.cb.clone();
-                                let mss = cb.get_mss();
-                                let (snd_wnd, _) = cb.get_snd_wnd();
-                                let (snd_una, _) = cb.get_snd_una();
-
-                                let (snd_nxt, _) = cb.get_snd_nxt();
-                                let (rcv_nxt, _) = cb.get_rcv_nxt();
-
-                                let receive_queue: VecDeque<Vec<u8>> = cb.flush_receive_queue().iter_mut().map(|buf| buf.to_vec()).collect();
-                                let retrans_queue: VecDeque<Vec<u8>> = cb.flush_retransmission_queue().iter_mut().map(|buf| buf.to_vec()).collect();
-                                let state = TcpState::new(*remote, *local, receive_queue, retrans_queue, mss, 0, rcv_nxt, snd_una, snd_nxt, snd_wnd);
-
-                                info!("TCP State: {:?}", state);
-                                Ok(state)
-                            }
-                            None => {
-                                return Err(Fail::Malformed {
-                                    details
-                                })
-                            }
-                        }
-                    }
-                    _ => {
-                        return Err(Fail::Malformed { details });
-                    },
-                }
+                // Do not call `TcpPeer::do_close` on `fd`. This would call `ControlBlock::close`
+                // which would put the control block on one of the closing states, e.g. ActiveClose,
+                // which we do not want!
+                let state = self.get_tcp_state(fd)?;
+                self.ipv4.tcp.migrate_out_connection(&fd)?;
+                self.file_table.free(fd);
+                Ok(state)
+            }
+            Some(IoQueueType::UdpSocket) => {
+                return Err(Fail::BadFileDescriptor {});
             }
             _ => {
-                return Err(Fail::SocketTypeSupport {});
+                return Err(Fail::BadFileDescriptor {});
             }
         }
     }
-}
 
-use serde::{Serialize, Deserialize};
-/// State needed for TCP Migration
+    /// Given the `state` of a TCP connection, add this connection to Catnip.
+    pub fn migrate_in_tcp_connection(&mut self, state: TcpState<RT>) -> Result<IoQueueDescriptor, Fail> {
+        // info!("Migrating in TCP State: {:?}!", state);
 
-#[derive(Serialize, Deserialize, Debug)]
-/// TODO: Include out_of_order vec dequeue from control block. Will probably need that.
-pub struct TcpState {
-    remote: Ipv4Endpoint,
-    local: Ipv4Endpoint,
-    receive_queue: VecDeque<Vec<u8>>,
-    // TODO
-    retransmit_queue: VecDeque<Vec<u8>>,
-    // TODO: Do we need `our` and the `peers` mss?
-    /// Maximum Segment Size
-    mss: usize,
-    // TODO: Do we need window scale?
+        let qd = self.file_table.alloc(IoQueueType::TcpSocket);
+        self.ipv4.tcp.migrate_in_tcp_connection(state, qd)?;
+        Ok(qd)
+    }
 
-    // RCV.WND: Receive Window
-    // Omar: This value is computed dynamically based on the max_window_size - outstanding_bytes
-    // in the buffer.
-    rcv_wnd: u32,
-    // RCV.NXT: Sequence numbers we have received and acknowledged.
-    rcv_nxt: SeqNumber,
-    // Current sequence number that peer has acknowledged up to.
-    snd_una: SeqNumber,
-    // Next sequence number for us to send.
-    snd_nxt: SeqNumber,
-    // SND.WND: Send Window
-    snd_wnd: u32,
-
-}
-
-impl TcpState {
-    pub fn new(remote: Ipv4Endpoint, local: Ipv4Endpoint, receive_queue: VecDeque<Vec<u8>>, retransmit_queue: VecDeque<Vec<u8>>, mss: usize, rcv_wnd: u32, rcv_nxt: SeqNumber, snd_una: SeqNumber, snd_nxt: SeqNumber, snd_wnd: u32) -> Self {
-        TcpState { remote, local, receive_queue, retransmit_queue, mss, rcv_wnd, rcv_nxt, snd_una, snd_nxt, snd_wnd }
+    pub fn get_tcp_state(&mut self, fd: IoQueueDescriptor) -> Result<TcpState<RT>, Fail> {
+        match self.file_table.get(fd) {
+            Some(IoQueueType::TcpSocket) => {
+                self.ipv4.tcp.get_tcp_state(fd)
+            }
+            Some(s) => {
+                info!("Found unsupported socket type: {:?}", s);
+                return Err(Fail::SocketTypeSupport {});
+            }
+            None => {
+                panic!("No such socket found on file table..");
+            }
+        }
     }
 }

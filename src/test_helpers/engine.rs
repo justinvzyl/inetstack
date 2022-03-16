@@ -17,6 +17,8 @@ use ::runtime::{
 };
 
 use std::{collections::HashMap, future::Future, net::Ipv4Addr, time::Duration};
+use crate::protocols::tcp::peer::TcpState;
+
 pub struct Engine<RT: Runtime> {
     rt: RT,
     pub arp: ArpPeer<RT>,
@@ -152,5 +154,22 @@ impl<RT: Runtime> Engine<RT> {
 
     pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
         self.arp.export_cache()
+    }
+
+    pub fn tcp_migrate_in_connection(&mut self, state: TcpState<RT>) -> Result<IoQueueDescriptor, Fail> {
+        let newfd = self.file_table.alloc(IoQueueType::TcpSocket);
+        self.ipv4.tcp.migrate_in_tcp_connection(state, newfd)?;
+        Ok(newfd)
+    }
+
+    pub fn tcp_migrate_out_connection(&mut self, fd: IoQueueDescriptor) -> Result<TcpState<RT>, Fail> {
+        let state = self.tcp_get_state(fd)?;
+        self.ipv4.tcp.migrate_out_connection(&fd)?;
+        self.file_table.free(fd);
+        Ok(state)
+    }
+
+    pub fn tcp_get_state(&mut self, fd: IoQueueDescriptor) -> Result<TcpState<RT>, Fail> {
+        self.ipv4.tcp.get_tcp_state(fd)
     }
 }
