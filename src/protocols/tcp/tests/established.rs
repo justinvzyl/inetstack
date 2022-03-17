@@ -36,7 +36,7 @@ use ::std::{
 //=============================================================================
 
 /// Cooks a buffer.
-fn cook_buffer(size: usize, stamp: Option<u8>) -> Bytes {
+pub fn cook_buffer(size: usize, stamp: Option<u8>) -> Bytes {
     let mut buf: BytesMut = BytesMut::zeroed(size).unwrap();
     for i in 0..size {
         buf[i] = stamp.unwrap_or(i as u8);
@@ -46,7 +46,7 @@ fn cook_buffer(size: usize, stamp: Option<u8>) -> Bytes {
 
 //=============================================================================
 
-fn send_data(
+pub fn send_data(
     ctx: &mut Context,
     now: &mut Instant,
     receiver: &mut Engine<TestRuntime>,
@@ -64,7 +64,7 @@ fn send_data(
     );
 
     // Push data.
-    let mut push_future: PushFuture<TestRuntime> = sender.tcp_push(sender_fd, bytes.clone());
+    let mut push_future: PushFuture<TestRuntime> = sender.tcp_push(sender_fd, bytes);
 
     let bytes: Bytes = sender.rt().pop_frame();
     let bufsize: usize = check_packet_data(
@@ -157,7 +157,7 @@ fn recv_pure_ack(
 
 //=============================================================================
 
-fn send_recv(
+pub fn send_recv(
     ctx: &mut Context,
     now: &mut Instant,
     server: &mut Engine<TestRuntime>,

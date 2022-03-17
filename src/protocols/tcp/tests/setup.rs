@@ -32,6 +32,7 @@ use ::std::{
     time::{Duration, Instant},
 };
 use futures::task::noop_waker_ref;
+use crate::protocols::tcp::tests::{check_eth_and_ip_headers, extract_headers};
 
 //=============================================================================
 
@@ -108,8 +109,8 @@ fn test_refuse_connection_early_rst() {
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Temper packet.
-    let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
-        extract_headers(bytes.clone());
+    let (eth2_header, ipv4_header, tcp_header, _) =
+        extract_headers(bytes);
     let segment: TcpSegment<<TestRuntime as MemoryRuntime>::Buf> = TcpSegment {
         ethernet2_hdr: eth2_header,
         ipv4_hdr: ipv4_header,
@@ -179,8 +180,8 @@ fn test_refuse_connection_early_ack() {
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Temper packet.
-    let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
-        extract_headers(bytes.clone());
+    let (eth2_header, ipv4_header, tcp_header, _)=
+        extract_headers(bytes);
     let segment: TcpSegment<<TestRuntime as MemoryRuntime>::Buf> = TcpSegment {
         ethernet2_hdr: eth2_header,
         ipv4_hdr: ipv4_header,
@@ -260,8 +261,7 @@ fn test_refuse_connection_missing_syn() {
     );
 
     // Temper packet.
-    let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
-        extract_headers(bytes.clone());
+    let (eth2_header, ipv4_header, tcp_header, _) = extract_headers(bytes);
     let segment: TcpSegment<<TestRuntime as MemoryRuntime>::Buf> = TcpSegment {
         ethernet2_hdr: eth2_header,
         ipv4_hdr: ipv4_header,
@@ -302,17 +302,6 @@ fn test_refuse_connection_missing_syn() {
         _ => Err(()),
     }
     .unwrap();
-}
-
-//=============================================================================
-
-/// Extracts headers of a TCP packet.
-fn extract_headers(bytes: Bytes) -> (Ethernet2Header, Ipv4Header, TcpHeader) {
-    let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
-    let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
-    let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
-
-    return (eth2_header, ipv4_header, tcp_header);
 }
 
 //=============================================================================
@@ -395,14 +384,15 @@ fn check_packet_pure_syn(
     ipv4_dst_addr: Ipv4Addr,
     dst_port: Port,
 ) {
-    let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
-    assert_eq!(eth2_header.src_addr(), eth2_src_addr);
-    assert_eq!(eth2_header.dst_addr(), eth2_dst_addr);
-    assert_eq!(eth2_header.ether_type(), EtherType2::Ipv4);
-    let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
-    assert_eq!(ipv4_header.src_addr(), ipv4_src_addr);
-    assert_eq!(ipv4_header.dst_addr(), ipv4_dst_addr);
-    let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
+    let (eth2_header, ipv4_header, tcp_header, _) = extract_headers(bytes);
+    check_eth_and_ip_headers(
+        (eth2_src_addr, eth2_dst_addr),
+        (ipv4_src_addr, ipv4_dst_addr),
+        eth2_header,
+        ipv4_header,
+    );
+
+
     assert_eq!(tcp_header.dst_port, dst_port);
     assert_eq!(tcp_header.seq_num, SeqNumber::from(0));
     assert_eq!(tcp_header.syn, true);
@@ -418,14 +408,14 @@ fn check_packet_syn_ack(
     ipv4_dst_addr: Ipv4Addr,
     src_port: Port,
 ) {
-    let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
-    assert_eq!(eth2_header.src_addr(), eth2_src_addr);
-    assert_eq!(eth2_header.dst_addr(), eth2_dst_addr);
-    assert_eq!(eth2_header.ether_type(), EtherType2::Ipv4);
-    let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
-    assert_eq!(ipv4_header.src_addr(), ipv4_src_addr);
-    assert_eq!(ipv4_header.dst_addr(), ipv4_dst_addr);
-    let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
+    let (eth2_header, ipv4_header, tcp_header, _) = extract_headers(bytes);
+    check_eth_and_ip_headers(
+        (eth2_src_addr, eth2_dst_addr),
+        (ipv4_src_addr, ipv4_dst_addr),
+        eth2_header,
+        ipv4_header,
+    );
+
     assert_eq!(tcp_header.src_port, src_port);
     assert_eq!(tcp_header.ack_num, SeqNumber::from(1));
     assert_eq!(tcp_header.seq_num, SeqNumber::from(0));
@@ -444,14 +434,15 @@ fn check_packet_pure_ack_on_syn_ack(
     ipv4_dst_addr: Ipv4Addr,
     dst_port: Port,
 ) {
-    let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
-    assert_eq!(eth2_header.src_addr(), eth2_src_addr);
-    assert_eq!(eth2_header.dst_addr(), eth2_dst_addr);
-    assert_eq!(eth2_header.ether_type(), EtherType2::Ipv4);
-    let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
-    assert_eq!(ipv4_header.src_addr(), ipv4_src_addr);
-    assert_eq!(ipv4_header.dst_addr(), ipv4_dst_addr);
-    let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
+    let (eth2_header, ipv4_header, tcp_header, _) = extract_headers(bytes);
+
+    check_eth_and_ip_headers(
+        (eth2_src_addr, eth2_dst_addr),
+        (ipv4_src_addr, ipv4_dst_addr),
+        eth2_header,
+        ipv4_header,
+    );
+
     assert_eq!(tcp_header.dst_port, dst_port);
     assert_eq!(tcp_header.seq_num, SeqNumber::from(1));
     assert_eq!(tcp_header.ack_num, SeqNumber::from(1));
