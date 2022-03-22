@@ -316,12 +316,16 @@ impl<RT: Runtime> Catnip<RT> {
         #[cfg(feature = "profiler")]
         timer!("catnip::push");
         trace!("push(): qd={:?}", qd);
-        let buf = self.rt.clone_sgarray(sga);
-        if buf.len() == 0 {
-            return Err(Fail::new(EINVAL, "zero-length buffer"));
+        match self.rt.clone_sgarray(sga) {
+            Ok(buf) => {
+                if buf.len() == 0 {
+                    return Err(Fail::new(EINVAL, "zero-length buffer"));
+                }
+                let future = self.do_push(qd, buf)?;
+                Ok(self.rt.schedule(future).into_raw().into())
+            }
+            Err(e) => Err(e),
         }
-        let future = self.do_push(qd, buf)?;
-        Ok(self.rt.schedule(future).into_raw().into())
     }
 
     /// Similar to [push](Self::push) but uses a [Runtime]-specific buffer instead of the
@@ -364,12 +368,16 @@ impl<RT: Runtime> Catnip<RT> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto");
         trace!("pushto2(): qd={:?}", qd);
-        let buf = self.rt.clone_sgarray(sga);
-        if buf.len() == 0 {
-            return Err(Fail::new(EINVAL, "zero-length buffer"));
+        match self.rt.clone_sgarray(sga) {
+            Ok(buf) => {
+                if buf.len() == 0 {
+                    return Err(Fail::new(EINVAL, "zero-length buffer"));
+                }
+                let future = self.do_pushto(qd, buf, to)?;
+                Ok(self.rt.schedule(future).into_raw().into())
+            }
+            Err(e) => Err(e),
         }
-        let future = self.do_pushto(qd, buf, to)?;
-        Ok(self.rt.schedule(future).into_raw().into())
     }
 
     pub fn pushto2(

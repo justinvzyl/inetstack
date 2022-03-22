@@ -42,20 +42,30 @@ pub fn pack_result<RT: Runtime>(
             qr_qt: qt,
             qr_value: unsafe { mem::zeroed() },
         },
-        OperationResult::Pop(addr, bytes) => {
-            let mut sga = rt.into_sgarray(bytes);
-            if let Some(addr) = addr {
-                sga.sga_addr.sin_port = addr.get_port().into();
-                sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(addr.get_address().octets());
+        OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
+            Ok(mut sga) => {
+                if let Some(addr) = addr {
+                    sga.sga_addr.sin_port = addr.get_port().into();
+                    sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(addr.get_address().octets());
+                }
+                let qr_value = dmtr_qr_value_t { sga };
+                dmtr_qresult_t {
+                    qr_opcode: dmtr_opcode_t::DMTR_OPC_POP,
+                    qr_qd: qd.into(),
+                    qr_qt: qt,
+                    qr_value,
+                }
             }
-            let qr_value = dmtr_qr_value_t { sga };
-            dmtr_qresult_t {
-                qr_opcode: dmtr_opcode_t::DMTR_OPC_POP,
-                qr_qd: qd.into(),
-                qr_qt: qt,
-                qr_value,
+            Err(e) => {
+                warn!("Operation Failed: {:?}", e);
+                dmtr_qresult_t {
+                    qr_opcode: dmtr_opcode_t::DMTR_OPC_FAILED,
+                    qr_qd: qd.into(),
+                    qr_qt: qt,
+                    qr_value: unsafe { mem::zeroed() },
+                }
             }
-        }
+        },
         OperationResult::Failed(e) => {
             warn!("Operation Failed: {:?}", e);
             dmtr_qresult_t {
