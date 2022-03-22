@@ -126,7 +126,7 @@ fn do_tcp_push_remote(port: u16) {
         // Sanity check data.
         let sga = unsafe { qr.qr_value.sga };
         DummyLibOS::check_data(sga);
-        libos.rt().free_sgarray(sga);
+        assert!(libos.rt().free_sgarray(sga).is_ok());
 
         // Close connection.
         libos.close(qd).unwrap();
@@ -150,7 +150,7 @@ fn do_tcp_push_remote(port: u16) {
         // Push data.
         let qt = libos.push(sockfd, &body_sga).unwrap();
         assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_PUSH);
-        libos.rt().free_sgarray(body_sga);
+        assert!(libos.rt().free_sgarray(body_sga).is_ok());
 
         // Close connection.
         libos.close(sockfd).unwrap();
