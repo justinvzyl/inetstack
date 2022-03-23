@@ -26,7 +26,7 @@ async fn active_send_fin<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fai
     loop {
         let (st, st_changed) = cb.get_state();
 
-        // Wait until we receive a FIN.
+        // Wait until the user calls close.
         if st != State::ActiveClose {
             st_changed.await;
             continue;
