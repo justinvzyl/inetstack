@@ -24,7 +24,7 @@ num-traits = "0.2.14"
 rand = { version = "0.8.4", features = ["small_rng"] }
 
 perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a" }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "aa12b1366c723537334cc924df8ecbb8e29c5453" }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "96b0f942af74417a96063794884af6450a5b6675" }
 catwalk = { git = "https://github.com/demikernel/catwalk", rev = "05201a072b4d6b3afd7c02de69045f423563228f" }
 
 [features]

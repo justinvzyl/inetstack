@@ -41,7 +41,10 @@ impl DummyLibOS {
         for a in &mut buf[..] {
             *a = fill_char;
         }
-        libos.rt().into_sgarray(buf.freeze())
+        match libos.rt().into_sgarray(buf.freeze()) {
+            Ok(sga) => sga,
+            Err(e) => panic!("{:?}", e),
+        }
     }
 
     /// Verifies the integrity of a buffer.

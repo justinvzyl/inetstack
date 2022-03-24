@@ -89,9 +89,9 @@ fn udp_push_remote() {
         // Sanity check data.
         let sga = unsafe { qr.qr_value.sga };
         DummyLibOS::check_data(sga);
-        libos.rt().free_sgarray(sga);
+        assert!(libos.rt().free_sgarray(sga).is_ok());
 
-        libos.rt().free_sgarray(body_sga);
+        assert!(libos.rt().free_sgarray(body_sga).is_ok());
 
         // Close connection.
         libos.close(sockfd).unwrap();
@@ -117,7 +117,7 @@ fn udp_push_remote() {
         let qt = libos.pushto(sockfd, &sga, alice_addr).unwrap();
         assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_PUSH);
 
-        libos.rt().free_sgarray(sga);
+        assert!(libos.rt().free_sgarray(sga).is_ok());
 
         // Close connection.
         libos.close(sockfd).unwrap();
@@ -160,9 +160,9 @@ fn udp_loopback() {
         // Sanity check data.
         let sga = unsafe { qr.qr_value.sga };
         DummyLibOS::check_data(sga);
-        libos.rt().free_sgarray(sga);
+        assert!(libos.rt().free_sgarray(sga).is_ok());
 
-        libos.rt().free_sgarray(body_sga);
+        assert!(libos.rt().free_sgarray(body_sga).is_ok());
 
         // Close connection.
         libos.close(sockfd).unwrap();
@@ -188,7 +188,7 @@ fn udp_loopback() {
         let qt = libos.pushto(sockfd, &sga, alice_addr).unwrap();
         assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_PUSH);
 
-        libos.rt().free_sgarray(sga);
+        assert!(libos.rt().free_sgarray(sga).is_ok());
 
         // Close connection.
         libos.close(sockfd).unwrap();
