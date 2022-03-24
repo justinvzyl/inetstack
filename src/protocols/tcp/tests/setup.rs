@@ -3,9 +3,8 @@
 
 use crate::{
     protocols::{
-        ethernet2::{EtherType2, Ethernet2Header},
         ip::{self, Port},
-        ipv4::{Ipv4Endpoint, Ipv4Header},
+        ipv4::{Ipv4Endpoint},
         tcp::{
             operations::{AcceptFuture, ConnectFuture},
             segment::{TcpHeader, TcpSegment},

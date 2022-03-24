@@ -17,6 +17,7 @@ use ::runtime::{
 };
 
 use std::{collections::HashMap, future::Future, net::Ipv4Addr, time::Duration};
+use crate::operations::OperationResult::Failed;
 use crate::protocols::tcp::peer::TcpState;
 
 pub struct Engine<RT: Runtime> {
@@ -163,13 +164,19 @@ impl<RT: Runtime> Engine<RT> {
     }
 
     pub fn tcp_migrate_out_connection(&mut self, fd: IoQueueDescriptor) -> Result<TcpState<RT>, Fail> {
+        // Clean up file_table
+        if let None = self.file_table.free(fd.clone()) {
+            // Connection not in file table.
+            return Err(Fail::BadFileDescriptor {});
+        }
+
         let state = self.tcp_get_state(fd)?;
         self.ipv4.tcp.migrate_out_connection(&fd)?;
-        self.file_table.free(fd);
+
         Ok(state)
     }
 
     pub fn tcp_get_state(&mut self, fd: IoQueueDescriptor) -> Result<TcpState<RT>, Fail> {
-        self.ipv4.tcp.get_tcp_state(fd)
+        self.ipv4.tcp.get_tcp_state(fd, false)
     }
 }

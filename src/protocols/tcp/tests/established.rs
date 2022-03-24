@@ -32,6 +32,7 @@ use ::std::{
     task::{Context, Poll},
     time::Instant,
 };
+use runtime::fail::Fail;
 
 //=============================================================================
 
@@ -43,8 +44,6 @@ pub fn cook_buffer(size: usize, stamp: Option<u8>) -> Bytes {
     }
     buf.freeze()
 }
-
-//=============================================================================
 
 pub fn send_data(
     ctx: &mut Context,
@@ -94,13 +93,13 @@ pub fn send_data(
 
 //=============================================================================
 
-fn recv_data(
+pub fn recv_data(
     ctx: &mut Context,
     receiver: &mut Engine<TestRuntime>,
     sender: &mut Engine<TestRuntime>,
     receiver_fd: IoQueueDescriptor,
     bytes: Bytes,
-) {
+) -> Result<Bytes, Fail>{
     trace!(
         "====> pop: {:?} -> {:?}",
         sender.rt().local_ipv4_addr(),
@@ -112,13 +111,14 @@ fn recv_data(
     receiver.receive(bytes).unwrap();
 
     // Pop completes
-    match Future::poll(Pin::new(&mut pop_future), ctx) {
-        Poll::Ready(Ok(_)) => Ok(()),
-        _ => Err(()),
-    }
-    .unwrap();
+    let ret = match Future::poll(Pin::new(&mut pop_future), ctx) {
+        Poll::Ready(Ok(bytes)) => Ok(bytes),
+        Poll::Ready(Err(e)) => Err(e),
+        Poll::Pending => panic!("Data somehow not ready."),
+    };
 
     trace!("====> pop completed");
+    ret
 }
 
 //=============================================================================
@@ -184,7 +184,7 @@ pub fn send_recv(
     );
 
     // Pop data.
-    recv_data(ctx, server, client, server_fd, bytes.clone());
+    recv_data(ctx, server, client, server_fd, bytes).unwrap();
 
     // Pop pure ACK
     recv_pure_ack(
@@ -198,7 +198,7 @@ pub fn send_recv(
 
 //=============================================================================
 
-fn send_recv_round(
+pub fn send_recv_round(
     ctx: &mut Context,
     now: &mut Instant,
     server: &mut Engine<TestRuntime>,
@@ -222,8 +222,8 @@ fn send_recv_round(
         bytes.clone(),
     );
 
-    // Pop data.
-    recv_data(ctx, server, client, server_fd, bytes.clone());
+    // Server receives data.
+    recv_data(ctx, server, client, server_fd, bytes).unwrap();
 
     // Push Data: Server -> Client
     let bytes = cook_buffer(bufsize, None);
@@ -239,13 +239,13 @@ fn send_recv_round(
         bytes.clone(),
     );
 
-    // Pop data.
-    recv_data(ctx, client, server, client_fd, bytes.clone());
+    // Client receives data.
+    recv_data(ctx, client, server, client_fd, bytes).unwrap();
 }
 
 //=============================================================================
 
-fn connection_hangup(
+pub fn connection_hangup(
     _ctx: &mut Context,
     now: &mut Instant,
     server: &mut Engine<TestRuntime>,
@@ -442,7 +442,7 @@ pub fn test_send_recv_with_delay() {
         // Pop data oftentimes.
         if rand::random() {
             if let Some(bytes) = inflight.pop_front() {
-                recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone());
+                recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes).unwrap();
                 recv_seq_no = recv_seq_no + SeqNumber::from(bufsize as u32);
             }
         }
@@ -460,7 +460,7 @@ pub fn test_send_recv_with_delay() {
     // Pop inflight packets.
     while let Some(bytes) = inflight.pop_front() {
         // Pop data.
-        recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone());
+        recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes).unwrap();
         recv_seq_no = recv_seq_no + SeqNumber::from(bufsize as u32);
 
         // Send pure ack.

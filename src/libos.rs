@@ -25,16 +25,13 @@ use ::runtime::{
     Runtime,
 };
 use ::std::{any::Any, time::Instant};
-use std::collections::VecDeque;
-use std::ops::Deref;
 use catwalk::SchedulerHandle;
-use libc::{c_int, tolower};
+use libc::{c_int};
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
-use crate::protocols::tcp::peer::{Socket, TcpState};
-use crate::protocols::tcp::{cc, SeqNumber};
-use crate::protocols::tcp::cc::CongestionControl;
+use crate::protocols::tcp::peer::{TcpState};
+
 use crate::protocols::tcp::established::ControlBlock;
 
 const TIMER_RESOLUTION: usize = 64;
@@ -619,7 +616,7 @@ impl<RT: Runtime> LibOS<RT> {
     pub fn get_tcp_state(&mut self, fd: IoQueueDescriptor) -> Result<TcpState<RT>, Fail> {
         match self.file_table.get(fd) {
             Some(IoQueueType::TcpSocket) => {
-                self.ipv4.tcp.get_tcp_state(fd)
+                self.ipv4.tcp.get_tcp_state(fd, false)
             }
             Some(s) => {
                 info!("Found unsupported socket type: {:?}", s);

@@ -27,6 +27,7 @@ use ::std::{
 };
 use std::collections::hash_map::Entry;
 use std::collections::VecDeque;
+use std::fmt::{Debug, Formatter};
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
@@ -40,7 +41,7 @@ use crate::protocols::tcp::established::sender::{Sender, UnackedSegment};
 use crate::protocols::tcp::{cc, SeqNumber};
 
 /// State needed for TCP Migration
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 /// TODO: Include out_of_order vec dequeue from control block. Will probably need that.
 pub struct TcpState<RT: Runtime> {
     pub remote: Ipv4Endpoint,
@@ -66,6 +67,54 @@ pub struct TcpState<RT: Runtime> {
     // Not really part of the TCP expect but needed by ReceiveQueue
     pub base_seq_no: SeqNumber,
     pub recv_seq_no: SeqNumber
+}
+
+// We manually derive Debug to avoid requirement that RT also implement Debug.
+impl<RT: Runtime> Debug for TcpState<RT> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TcpState").
+            field("remote", &self.remote).
+            field("local", &self.local).
+            field("receive_queue", &self.receive_queue).
+            field("unacked_queue", &self.unacked_queue).
+            field("retransmit_queue", &self.retransmit_queue).
+            field("sender_mss", &self.sender_mss).
+            field("receiver_window_scale", &self.receiver_window_scale).
+            field("sender_window_scale", &self.sender_window_scale).
+            field("max_window_size", &self.max_window_size).
+            field("rcv_nxt", &self.rcv_nxt).
+            field("snd_una", &self.snd_una).
+            field("snd_nxt", &self.snd_nxt).
+            field("snd_wnd", &self.snd_wnd).
+            field("base_seq_no", &self.base_seq_no).
+            field("recv_seq_no", &self.recv_seq_no).
+
+            finish()
+    }
+}
+
+impl<RT: Runtime> PartialEq<Self> for TcpState<RT> {
+    fn eq(&self, other: &Self) -> bool {
+        (self.remote == other.remote) &&
+            (self.local == other.local) &&
+            (self.receive_queue == other.receive_queue) &&
+            (self.unacked_queue == other.unacked_queue) &&
+            (self.retransmit_queue == other.retransmit_queue) &&
+            (self.sender_mss == other.sender_mss) &&
+            (self.receiver_window_scale == other.receiver_window_scale) &&
+            (self.sender_window_scale == other.sender_window_scale) &&
+            (self.max_window_size == other.max_window_size) &&
+            (self.rcv_nxt == other.rcv_nxt) &&
+            (self.snd_una == other.snd_una) &&
+            (self.snd_nxt == other.snd_nxt) &&
+            (self.snd_wnd == other.snd_wnd) &&
+            (self.base_seq_no == other.base_seq_no) &&
+            (self.recv_seq_no == other.recv_seq_no)
+    }
+}
+
+impl<RT: Runtime> Eq for TcpState<RT> {
+
 }
 
 impl<RT: Runtime> TcpState<RT> {
@@ -237,8 +286,6 @@ impl<RT: Runtime> TcpPeer<RT> {
         };
         assert!(inner.sockets.insert(newfd, socket).is_none());
         assert!(inner.established.insert(key, established).is_none());
-        // Should never fail. We just got it above.
-        inner.passive.remove(&local).unwrap();
 
         Poll::Ready(Ok(newfd))
     }
@@ -294,23 +341,21 @@ impl<RT: Runtime> TcpPeer<RT> {
             Some(Socket::Established { local, remote }) => (*local, *remote),
             Some(Socket::Connecting { .. }) => {
                 return Poll::Ready(Err(Fail::Malformed {
-                    details: "pool_recv(): socket connecting",
+                    details: "poll_recv(): socket connecting",
                 }))
             }
             Some(Socket::Inactive { .. }) => {
                 return Poll::Ready(Err(Fail::Malformed {
-                    details: "pool_recv(): socket inactive",
+                    details: "poll_recv(): socket inactive",
                 }))
             }
             Some(Socket::Listening { .. }) => {
                 return Poll::Ready(Err(Fail::Malformed {
-                    details: "pool_recv(): socket listening",
+                    details: "poll_recv(): socket listening",
                 }))
             }
             Some(Socket::MigratedOut { .. }) => {
-                return Poll::Ready(Err(Fail::Malformed {
-                    details: "pool_recv(): socket migrated out",
-                }))
+                return Poll::Ready(Err(Fail::ConnectionMigratedOut))
             }
             None => return Poll::Ready(Err(Fail::Malformed { details: "Bad FD" })),
         };
@@ -452,18 +497,27 @@ impl<RT: Runtime> TcpPeer<RT> {
         // the state.
 
         if inner.established.contains_key(&(state.local, state.remote)) {
+            debug!("Key already exists in established hashmap.");
             // TODO: Not sure if there is a better error to use here.
             return Err(Fail::ResourceBusy { details: "This connection already exists." })
         }
-        if inner.sockets.contains_key(&qd) {
-            return Err(Fail::BadFileDescriptor {})
-        }
 
-        let socket = Socket::Established { local: state.local, remote: state.remote };
-        // File descriptor is already in use!
-        if let Some(_) = inner.sockets.insert(qd, socket) {
-            // We just checked this condition.
-            unreachable!()
+        match inner.sockets.entry(qd) {
+            Entry::Occupied(mut e) => {
+                match e.get_mut() {
+                    e@Socket::MigratedOut { .. } => {
+                      *e = Socket::Established { local: state.local, remote: state.remote };
+                    }
+                    _ => {
+                        debug!("Key already exists in sockets hashmap.");
+                        return Err(Fail::BadFileDescriptor {})
+                    }
+                }
+            }
+            Entry::Vacant(v) => {
+                let socket = Socket::Established { local: state.local, remote: state.remote };
+                v.insert(socket);
+            }
         }
 
         let receive_queue = ReceiveQueue::migrated_in(
@@ -475,6 +529,7 @@ impl<RT: Runtime> TcpPeer<RT> {
 
         let sender = Sender::migrated_in(
             state.snd_una,
+            state.snd_nxt,
             state.snd_wnd,
             state.sender_window_scale,
             state.sender_mss,
@@ -507,7 +562,9 @@ impl<RT: Runtime> TcpPeer<RT> {
         Ok(())
     }
 
-    pub fn get_tcp_state(&mut self, fd: IoQueueDescriptor) -> Result<TcpState<RT>, Fail> {
+    /// `zero_copy` if true, this will take the values of the queue instead of copying them. This
+    /// should be faster, but it is no longer a side-effect free computation.
+    pub fn get_tcp_state(&mut self, fd: IoQueueDescriptor, zero_copy: bool) -> Result<TcpState<RT>, Fail> {
         info!("Migrating out TCP State for {:?}!", fd);
         let details =  "We can only migrate out established connections.";
 

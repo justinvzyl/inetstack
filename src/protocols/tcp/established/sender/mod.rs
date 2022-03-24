@@ -18,17 +18,35 @@ use ::std::{
     fmt,
     time::{Duration, Instant},
 };
+use std::fmt::{Debug, Formatter};
 use congestion_ctrl as cc;
 use rto::RtoCalculator;
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct UnackedSegment<RT: Runtime> {
     pub bytes: RT::Buf,
     // Set to `None` on retransmission to implement Karn's algorithm.
-    #[serde(skip)] // Instant can't be serialized/deserialized
+    #[serde(skip)] // [Instant]s can't be serialized/deserialized
     pub initial_tx: Option<Instant>,
 }
+
+impl<RT: Runtime> Debug for UnackedSegment<RT> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UnackedSegment").
+            field("bytes", &self.bytes).
+            finish()
+    }
+}
+
+// Manually implement to avoid RT having to implement PartialEq
+impl<RT: Runtime> PartialEq for UnackedSegment<RT> {
+    fn eq(&self, other: &Self) -> bool {
+        self.bytes == other.bytes
+    }
+}
+
+impl<RT: Runtime> Eq for UnackedSegment<RT> {}
 
 /// Hard limit for unsent queue.
 const UNSENT_QUEUE_CUTOFF: usize = 1024;
@@ -119,6 +137,7 @@ impl<RT: Runtime> Sender<RT> {
 
     pub fn migrated_in(
         seq_no: SeqNumber,
+        snd_nxt: SeqNumber,
         window_size: u32,
         window_scale: u8,
         mss: usize,
@@ -130,7 +149,7 @@ impl<RT: Runtime> Sender<RT> {
         Self {
             snd_una: WatchedValue::new(seq_no),
             unacked_queue: RefCell::new(unacked_queue),
-            snd_nxt: WatchedValue::new(seq_no),
+            snd_nxt: WatchedValue::new(snd_nxt),
             retransmission_queue: RefCell::new(retransmission_queue),
             unsent_seq_no: WatchedValue::new(seq_no),
 
@@ -262,11 +281,11 @@ impl<RT: Runtime> Sender<RT> {
     }
 
     pub fn remote_ack(&self, ack_seq_no: SeqNumber, now: Instant) -> Result<(), Fail> {
-        let base_seq_no = self.snd_una.get();
-        let sent_seq_no = self.snd_nxt.get();
+        let snd_una = self.snd_una.get();
+        let snd_nxt = self.snd_nxt.get();
 
-        let bytes_outstanding: u32 = (sent_seq_no - base_seq_no).into();
-        let bytes_acknowledged: u32 = (ack_seq_no - base_seq_no).into();
+        let bytes_outstanding: u32 = (snd_nxt - snd_una).into();
+        let bytes_acknowledged: u32 = (ack_seq_no - snd_una).into();
 
         if bytes_acknowledged > bytes_outstanding {
             return Err(Fail::Ignored {
@@ -276,12 +295,12 @@ impl<RT: Runtime> Sender<RT> {
 
         let rto: Duration = self.current_rto();
         self.congestion_ctrl
-            .on_ack_received(rto, base_seq_no, sent_seq_no, ack_seq_no);
+            .on_ack_received(rto, snd_una, snd_nxt, ack_seq_no);
         if bytes_acknowledged == 0 {
             return Ok(());
         }
 
-        if ack_seq_no == sent_seq_no {
+        if ack_seq_no == snd_nxt {
             // If we've acknowledged all sent data, turn off the retransmit timer.
             self.retransmit_deadline.set(None);
         } else {
@@ -313,7 +332,7 @@ impl<RT: Runtime> Sender<RT> {
         self.snd_una
             .modify(|b| b + SeqNumber::from(bytes_acknowledged));
         let new_base_seq_no = self.snd_una.get();
-        if new_base_seq_no < base_seq_no {
+        if new_base_seq_no < snd_una {
             // We've wrapped around, and so we need to do some bookkeeping
             // TODO: Figure out what this is doing -- it's probably wrong.
             self.congestion_ctrl.on_base_seq_no_wraparound();
@@ -412,9 +431,13 @@ impl<RT: Runtime> Sender<RT> {
         self.congestion_ctrl.watch_limited_transmit_cwnd_increase()
     }
 
-    pub fn flush_retransmission_queue(&self) -> VecDeque<RT::Buf> {
+    pub fn take_retransmission_queue(&self) -> VecDeque<RT::Buf> {
         let mut temp: VecDeque<RT::Buf> = VecDeque::with_capacity(0);
         std::mem::swap(&mut temp, &mut *self.retransmission_queue.borrow_mut());
         temp
+    }
+
+    pub fn clone_retransmission_queue(&self) -> VecDeque<RT::Buf> {
+        self.retransmission_queue.borrow_mut().clone()
     }
 }

@@ -170,6 +170,10 @@ impl<RT: Runtime> ReceiveQueue<RT> {
         std::mem::swap(&mut temp, &mut *self.recv_queue.borrow_mut());
         temp
     }
+
+    pub fn clone_receive_queue(&self) -> VecDeque<RT::Buf> {
+        self.recv_queue.borrow_mut().clone()
+    }
 }
 
 /// Transmission control block for representing our TCP connection.
@@ -423,6 +427,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         if header.rst {
             self.state.set(State::Reset);
         }
+
         if header.fin && header.ack {
             match self.state.get() {
                 State::FinWait1 => self.state.set(State::TimeWait1),
@@ -762,6 +767,14 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     pub fn take_retransmission_queue(&self) -> VecDeque<RT::Buf> {
-        self.sender.flush_retransmission_queue()
+        self.sender.take_retransmission_queue()
+    }
+
+    pub fn clone_receive_queue(&self) -> VecDeque<RT::Buf> {
+        self.receive_queue.clone_receive_queue()
+    }
+
+    pub fn clone_retransmission_queue(&self) -> VecDeque<RT::Buf> {
+        self.sender.clone_retransmission_queue()
     }
 }
