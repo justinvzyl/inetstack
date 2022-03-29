@@ -181,10 +181,10 @@ impl<RT: Runtime> Sender<RT> {
             return Err(Fail::new(EINVAL, "Connection is closing"));
         }
 
-        // ToDo: Review below comment for accuracy.
         // Our API supports send buffers up to usize (variable, depends upon architecture) in size.  While we could
-        // allow for larger send buffers, it is simpler and more practical to limit a single send to 2 GiB, which is
+        // allow for larger send buffers, it is simpler and more practical to limit a single send to 1 GiB, which is
         // also the maximum value a TCP can advertise as its receive window (with maximum window scaling).
+        // ToDo: the below check just limits a single send to 4 GiB, not 1 GiB.  Check this doesn't break anything.
         //
         // Review: Move this check up the stack (i.e. closer to the user)?
         //
