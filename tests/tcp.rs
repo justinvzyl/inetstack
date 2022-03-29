@@ -184,7 +184,7 @@ fn do_tcp_push_remote(port: u16) {
         let bytes: Bytes = DummyLibOS::cook_data(32);
 
         // Push data.
-        let qt: QToken = libos.push2(sockfd, bytes).unwrap();
+        let qt: QToken = libos.push2(sockfd, &bytes).unwrap();
         let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
         match qr {
             OperationResult::Push => (),

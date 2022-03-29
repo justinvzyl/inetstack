@@ -301,15 +301,23 @@ impl<RT: Runtime> Catnip<RT> {
         }
     }
 
-    pub fn push2(&mut self, qd: QDesc, buf: RT::Buf) -> Result<QToken, Fail> {
+    /// Pushes raw data to a TCP socket.
+    pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::push2");
         trace!("push2(): qd={:?}", qd);
-        if buf.len() == 0 {
+
+        // Convert raw data to a buffer representation.
+        let buf: RT::Buf = RT::Buf::from_slice(data);
+        if buf.is_empty() {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
-        let future = self.do_push(qd, buf)?;
-        Ok(self.rt.schedule(future).into_raw().into())
+
+        // Issue operation.
+        let future: FutureOperation<RT> = self.do_push(qd, buf)?;
+        let qt: QToken = self.rt.schedule(future).into_raw().into();
+
+        Ok(qt)
     }
 
     pub fn do_pushto(
