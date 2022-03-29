@@ -178,9 +178,7 @@ impl<RT: Runtime> Sender<RT> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
         //
         if cb.user_is_done_sending.get() {
-            return Err(Fail::Invalid {
-                details: "Connection is closing",
-            });
+            return Err(Fail::new(EINVAL, "Connection is closing"));
         }
 
         // ToDo: Review below comment for accuracy.
