@@ -127,7 +127,6 @@ fn recv_pure_ack(
     now: &mut Instant,
     sender: &mut Engine<TestRuntime>,
     receiver: &mut Engine<TestRuntime>,
-    window_size: u16,
     ack_num: SeqNumber,
 ) {
     trace!(
@@ -147,7 +146,6 @@ fn recv_pure_ack(
             receiver.rt().local_link_addr(),
             sender.rt().local_ipv4_addr(),
             receiver.rt().local_ipv4_addr(),
-            window_size,
             ack_num,
         );
         receiver.receive(bytes).unwrap();
@@ -191,7 +189,6 @@ fn send_recv(
         now,
         server,
         client,
-        window_size,
         seq_no + SeqNumber::from(bufsize as u32),
     );
 }
@@ -254,29 +251,29 @@ fn connection_hangup(
     client_fd: QDesc,
 ) {
     // Send FIN: Client -> Server
-    client.tcp_close(client_fd).unwrap();
+    client.tcp_close(client_fd).expect("client tcp_close returned error");
     client.rt().poll_scheduler();
     let bytes: Bytes = client.rt().pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Server -> Client
-    server.receive(bytes).unwrap();
+    server.receive(bytes).expect("server receive returned error");
     server.rt().poll_scheduler();
     let bytes: Bytes = server.rt().pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // Receive ACK FIN
-    client.receive(bytes).unwrap();
+    client.receive(bytes).expect("client receive (of ACK) returned error");
     advance_clock(Some(server), Some(client), now);
 
     // Send FIN: Server -> Client
-    server.tcp_close(server_fd).unwrap();
+    server.tcp_close(server_fd).expect("server tcp_close returned error");
     server.rt().poll_scheduler();
     let bytes: Bytes = server.rt().pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Client -> Server
-    client.receive(bytes).unwrap();
+    client.receive(bytes).expect("client receive (of FIN) returned error");
     client.rt().poll_scheduler();
     let bytes: Bytes = client.rt().pop_frame();
     advance_clock(Some(server), Some(client), now);
@@ -452,7 +449,6 @@ pub fn test_send_recv_with_delay() {
             &mut now,
             &mut server,
             &mut client,
-            max_window_size as u16,
             recv_seq_no,
         );
     }
@@ -468,7 +464,6 @@ pub fn test_send_recv_with_delay() {
             &mut now,
             &mut server,
             &mut client,
-            max_window_size as u16,
             recv_seq_no,
         );
     }

@@ -14,6 +14,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         futures::pin_mut!(unsent_seq_changed);
 
         // TODO: We don't need to watch this value since we're the only mutator.
+        // ToDo: Above comment looks wrong, the main send routine modifies it.
         let (sent_seq, sent_seq_changed) = cb.get_sent_seq_no();
         futures::pin_mut!(sent_seq_changed);
 
@@ -115,15 +116,21 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let segment_data = cb
             .pop_unsent_segment(max_size)
             .expect("No unsent data with sequence number gap?");
-        let segment_data_len = segment_data.len() as u32;
-        assert!(segment_data_len > 0);
+        let mut segment_data_len = segment_data.len() as u32;
 
         let rto: Duration = cb.rto_current();
         cb.congestion_ctrl_on_send(rto, sent_data);
 
-        // Send the segment.
+        // Prepare the segment and send it.
         let mut header = cb.tcp_header();
         header.seq_num = sent_seq;
+        if segment_data_len == 0 {
+            // This buffer is the end-of-send marker.
+            debug_assert_eq!(cb.user_is_done_sending.get(), true);
+            // Set FIN and adjust sequence number consumption accordingly.
+            header.fin = true;
+            segment_data_len = 1;
+        }
         cb.emit(header, segment_data.clone(), remote_link_addr);
 
         // Update SND.NXT.

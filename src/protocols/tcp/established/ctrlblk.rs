@@ -34,18 +34,18 @@ use ::std::{
     time::{Duration, Instant},
 };
 
-// TODO: Review this value (and its purpose).  It (2048 segments) of 8 KB jumbo packets would limit the unread data to
+// ToDo: Review this value (and its purpose).  It (2048 segments) of 8 KB jumbo packets would limit the unread data to
 // just 16 MB.  If we don't want to lie, that is also about the max window size we should ever advertise.  Whereas TCP
 // with the window scale option allows for window sizes of up to 1 GB.  This value appears to exist more because of the
 // mechanism used to manage the receive queue (a VecDeque) than anything else.
 const RECV_QUEUE_SZ: usize = 2048;
 
-// TODO: Review this value (and its purpose).  It (16 segments) seems awfully small (would make fast retransmit less
+// ToDo: Review this value (and its purpose).  It (16 segments) seems awfully small (would make fast retransmit less
 // useful), and this mechanism isn't the best way to protect ourselves against deliberate out-of-order segment attacks.
 // Ideally, we'd limit out-of-order data to that which (along with the unread data) will fit in the receive window.
 const MAX_OUT_OF_ORDER: usize = 16;
 
-// TODO: Review this.  The TCP Specification doesn't have states called ActiveClose, FinWait3, Closing2, TimeWait2,
+// ToDo: Review this.  The TCP Specification doesn't have states called ActiveClose, FinWait3, Closing2, TimeWait2,
 // PassiveClose, CloseWait2 or Reset.  And it has states Listen, SynReceived, and SynSent, which aren't listed here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum State {
@@ -85,7 +85,7 @@ struct Receiver<RT: Runtime> {
     pub reader_next: Cell<SeqNumber>,
 
     // Running counter of ack sequence number we have sent to our peer.
-    // TODO: This tracks the most recently sent ack sequence number (i.e. whenever we send an ACK, we set this to
+    // ToDo: This tracks the most recently sent ack sequence number (i.e. whenever we send an ACK, we set this to
     // receive_next).  Not clear that we need to track this (at least after we remove the closer closures).
     // Even if we keep this (or its equivalent), it need not be a WatchedValue.
     pub ack_seq_no: WatchedValue<SeqNumber>,
@@ -120,7 +120,7 @@ impl<RT: Runtime> Receiver<RT> {
         self.receive_next.set(self.receive_next.get() + SeqNumber::from(buf_len as u32));
     }
 
-    // TODO: This appears to add up all the bytes ready for reading in the recv_queue, and is called each time we get a
+    // ToDo: This appears to add up all the bytes ready for reading in the recv_queue, and is called each time we get a
     // new segment.  Seems like it would be more efficient to keep a running count of the bytes in the queue that we
     // add/subtract from as we add/remove segments from the queue.
     pub fn size(&self) -> usize {
@@ -174,6 +174,9 @@ pub struct ControlBlock<RT: Runtime> {
 
     // Receive-side state information.  ToDo: Consider incorporating this directly into ControlBlock.
     receiver: Receiver<RT>,
+
+    // Whether the user has called close.
+    pub user_is_done_sending: Cell<bool>,
 }
 
 //==============================================================================
@@ -217,6 +220,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             waker: RefCell::new(None),
             out_of_order: RefCell::new(VecDeque::new()),
             receiver: Receiver::new(receiver_seq_no, receiver_seq_no, receiver_seq_no),
+            user_is_done_sending: Cell::new(false),
         }
     }
 
@@ -247,11 +251,6 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     pub fn send(&self, buf: RT::Buf) -> Result<(), Fail> {
-        // ToDo: There is a bug here.  We can legitimately send while in CloseWait (CLOSE-WAIT).
-        if self.state.get() != State::Established {
-            return Err(Fail::new(ENOTCONN, "sender closed"));
-        }
-
         self.sender.send(buf, self)
     }
 
@@ -288,7 +287,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.get_mss()
     }
 
-    // ToDo: Rename this?  There is both a send window size and a receive window size.
+    // ToDo: Rename this for clarity?  There is both a send window size and a receive window size.
     pub fn get_window_size(&self) -> (u32, WatchFuture<u32>) {
         self.sender.get_window_size()
     }
@@ -411,7 +410,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                 // See if it is a complete duplicate, or if some of the data is new.
                 //
                 if seg_end < receive_next {
-                    // This is an entirely duplicate segment.  ACK (if not RST) and drop.
+                    // This is an entirely duplicate (i.e. old) segment.  ACK (if not RST) and drop.
                     //
                     if !header.rst {
                         self.send_ack();
@@ -582,6 +581,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
                 //
+                warn!("Received segment acknowledging data we have yet to send!");
                 self.send_ack();
                 return;
             }
@@ -598,7 +598,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         // Process the segment text (if any).
         if !data.is_empty() {
             if self.state.get() != State::Established {
-                // TODO: Review this warning.  TCP connections in FIN-WAIT-1 and FIN-WAIT-2 can still receive data.
+                // ToDo: Review this warning.  TCP connections in FIN-WAIT-1 and FIN-WAIT-2 can still receive data.
                 warn!("Receiver closed");
             }
             if let Err(e) = self.receive_data(header.seq_num, data, now) {
@@ -615,33 +615,70 @@ impl<RT: Runtime> ControlBlock<RT> {
         // Check the FIN bit.
         if header.fin {
             // ToDo: Signal the user "connection closing" and return any pending Receive requests.
-            // ToDo: Advance RCV.NXT over the FIN and send ACK (delayed?).
+
+            // Advance RCV.NXT over the FIN and send ACK (delayed?).
             //
+            self.receiver.receive_next.set(self.receiver.receive_next.get() + SeqNumber::from(1));
+            self.send_ack();
+
             match self.state.get() {
                 State::Established => self.state.set(State::CloseWait),
                 State::FinWait1 => {
-                    // ToDo: If our FIN has now been ACK'd, enter TIME-WAIT, start the time-wait timer and turn off the
-                    // other timers.  Otherwise, enter the CLOSING state.
+                    // RFC 793 has a benign logic flaw.  It says "If our FIN has been ACKed (perhaps in this segment),
+                    // then enter TIME-WAIT, start the time-wait timer, turn off the other timers;".  But if our FIN
+                    // has been ACK'd, we'd be in FIN-WAIT-2 here as a result of processing that ACK (see ACK handling
+                    // above) and will enter TIME-WAIT in the FIN-WAIT-2 case below.  So we can skip that clause and go
+                    // straight to "otherwise enter the CLOSING state".
+                    //
+                    self.state.set(State::Closing);
                 },
                 State::FinWait2 => {
-                    // ToDo: Enter TIME-WAIT, start the time-wait timer and turn off the other timers.
+                    // Enter TIME-WAIT.
+                    self.state.set(State::TimeWait);
+                    // ToDo: Start the time-wait timer and turn off the other timers.
                 },
-                State::CloseWait | State::Closing | State::LastAck => (),  // Do nothing.
+                State::CloseWait | State::Closing | State::LastAck => (),  // Remain in current state.
                 State::TimeWait => {
-
+                    // ToDo: Remain in TIME-WAIT.  Restart the 2 MSL time-wait timeout.
                 },
-                state => panic!("Bad TCP state {:?}", state),
+                state => panic!("Bad TCP state {:?}", state),  // Should never happen.
             }
         }
+
+        // ToDo: Implement delayed ACKs.
+        //
+        //self.send_ack();
     }
 
-    // ToDo: Fix this function.
+    /// Handle the user's close request.
+    ///
+    /// In TCP parlance, a user's close request means "I have no more data to send".  The user may continue to receive
+    /// data on this connection until their peer also closes.
+    ///
+    /// Note this routine will only be called for connections with a ControlBlock (i.e. in state ESTABLISHED or later).
+    ///
     pub fn close(&self) -> Result<(), Fail> {
-        match self.state.get() {
-            State::Established => self.state.set(State::ActiveClose),
-            State::CloseWait => self.state.set(State::CloseWait2),
-            state => panic!("Bad TCP state {:?}", state),
+        // Check to see if close has already been called, as we should only do this once.
+        //
+        if self.user_is_done_sending.get() {
+            // Review: Should we return an error here instead?  RFC 793 recommends a "connection closing" error.
+            return Ok(());
         }
+
+        // In the normal case, we'll be in either ESTABLISHED or CLOSE_WAIT here (depending upon whether we've received
+        // a FIN from our peer yet).  Queue up a FIN to be sent, and attempt to send it immediately (if possible).  We
+        // only change state to FIN-WAIT-1 or LAST_ACK after we've actually been able to send the FIN.
+        //
+        debug_assert!((self.state.get() == State::Established) || (self.state.get() == State::CloseWait));
+
+        // Send a FIN.
+        //
+        let fin_buf: RT::Buf = Buffer::empty();
+        self.send(fin_buf).expect("send failed");
+
+        // Remember that the user has called close.
+        //
+        self.user_is_done_sending.set(true);
 
         Ok(())
     }
@@ -662,16 +699,11 @@ impl<RT: Runtime> ControlBlock<RT> {
 
     /// Send an ACK to our peer, reflecting our current state.
     pub fn send_ack(&self) {
-        let mut header: TcpHeader = self.tcp_header();
-        // ToDo: remove the following once tcp_header() is fixed to always set the ACK info.
-        header.ack = true;
-        header.ack_num = self.receiver.receive_next.get();
+        let mut header = self.tcp_header();
 
         // ToDo: Think about moving this to tcp_header() as well.
         let (seq_num, _): (SeqNumber, _) = self.get_sent_seq_no();
         header.seq_num = seq_num;
-
-        // ToDo: If our user has called close and we've sent all our data (nothing left unsent), then set the FIN flag.
 
         // ToDo: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
         // left to the ARP layer and not exposed to TCP).
@@ -681,6 +713,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     /// Transmit this message to our connected peer.
+    ///
     pub fn emit(&self, header: TcpHeader, data: RT::Buf, remote_link_addr: MacAddress) {
         // ToDo: At this point, all segments should have the ACK bit set, so it is wasteful to check in mainline builds.
         if header.ack {
@@ -771,7 +804,13 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {
-        if self.receiver.reader_next.get() == self.receiver.receive_next.get() {
+        // ToDo: Need to add a way to indicate that the other side closed (i.e. that we've received a FIN).
+        // This code was checking for an empty receive queue by comparing sequence numbers, as in:
+        //  if self.receiver.reader_next.get() == self.receiver.receive_next.get() {
+        // But that will think data is available to be read once we've received a FIN, because FINs consume sequence
+        // number space.
+        //
+        if self.receiver.recv_queue.borrow().is_empty() {
             *self.waker.borrow_mut() = Some(ctx.waker().clone());
             return Poll::Pending;
         }
@@ -779,12 +818,12 @@ impl<RT: Runtime> ControlBlock<RT> {
         let segment = self
             .receiver
             .pop()
-            .expect("recv_seq > base_seq without data in queue?");
+            .expect("poll_recv failed to pop data from receive queue");
 
         Poll::Ready(Ok(segment))
     }
 
-    // TODO: Improve following comment:
+    // ToDo: Improve following comment:
     // This routine appears to take an incoming TCP segment and either add it to the receiver's queue of data that is
     // ready to be read by the user (if the segment contains in-order data) or add it to the proper position in the
     // receiver's store of out-of-order data.  Also, in the in-order case, it updates our receiver's sequence number
@@ -798,11 +837,11 @@ impl<RT: Runtime> ControlBlock<RT> {
             let mut out_of_order = self.out_of_order.borrow_mut();
 
             // Check if the new data segment's starting sequence number is already in the out-of-order store.
-            // TODO: We should check if any part of the new segment contains new data, and not just the start.
+            // ToDo: We should check if any part of the new segment contains new data, and not just the start.
             for stored_segment in out_of_order.iter() {
                 if stored_segment.0 == seq_no {
                     // Drop this segment as a duplicate.
-                    // TODO: We should ACK when we drop a segment.
+                    // ToDo: We should ACK when we drop a segment.
                     return Err(Fail::new(EBADMSG, "out of order segment (duplicate)"));
                 }
             }
@@ -826,30 +865,30 @@ impl<RT: Runtime> ControlBlock<RT> {
                 out_of_order.push_back((seq_no, buf));
             }
 
-            // TODO: There is a bug here.  We should send an ACK when we drop a segment.
+            // ToDo: There is a bug here.  We should send an ACK when we drop a segment.
             return Err(Fail::new(EBADMSG, "out of order segment (reordered)"));
         }
 
         // Check if we've already received this data (i.e. new segment contains duplicate data).
-        // TODO: There is a bug here.  The new segment could contain both old *and* new data.  Current code throws it
+        // ToDo: There is a bug here.  The new segment could contain both old *and* new data.  Current code throws it
         // all away.  We need to check if any part of the new segment falls within our receive window.
         if seq_no < recv_seq_no {
-            // TODO: There is a bug here.  We should send an ACK if we drop the segment.
+            // ToDo: There is a bug here.  We should send an ACK if we drop the segment.
             return Err(Fail::new(EBADMSG, "out of order segment (duplicate)"));
         }
 
         // If we get here, the new segment begins with the sequence number we're expecting.
-        // TODO: Since this is the "good" case, we should have a fast-path check for it first above, instead of falling
+        // ToDo: Since this is the "good" case, we should have a fast-path check for it first above, instead of falling
         // through to it (performance improvement).
 
         let unread_bytes: usize = self.receiver.size();
 
         // This appears to drop segments if their total contents would exceed the receive window.
-        // TODO: There is a bug here.  The segment could also contain some data that fits within the window.  We should
+        // ToDo: There is a bug here.  The segment could also contain some data that fits within the window.  We should
         // still accept the data that fits within the window.
-        // TODO: We should restructure this to convert usize things to known (fixed) sizes, not the other way around.
+        // ToDo: We should restructure this to convert usize things to known (fixed) sizes, not the other way around.
         if unread_bytes + buf.len() > self.receive_buffer_size as usize {
-            // TODO: There is a bug here.  We should send an ACK if we drop the segment.
+            // ToDo: There is a bug here.  We should send an ACK if we drop the segment.
             return Err(Fail::new(ENOMEM, "full receive window"));
         }
 
@@ -877,7 +916,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             }
         }
 
-        // TODO: Review recent change to update control block copy of recv_seq_no upon each push to the receiver.
+        // ToDo: Review recent change to update control block copy of recv_seq_no upon each push to the receiver.
         // When receiving a retransmitted segment that fills a "hole" in the receive space, thus allowing a number
         // (potentially large number) of out-of-order segments to be added, we'll be modifying the TCB copy of the
         // recv_seq_no many times.  Since this potentially wakes a waker, we might want to wait until we've added all
@@ -887,18 +926,18 @@ impl<RT: Runtime> ControlBlock<RT> {
         // self.recv_seq_no.set(recv_seq_no);
 
         // This appears to be checking if something is waiting on this Receiver, and if so, wakes that thing up.
-        // TODO: Verify that this is the right place and time to do this.
+        // ToDo: Verify that this is the right place and time to do this.
         if let Some(w) = self.waker.borrow_mut().take() {
             w.wake()
         }
 
-        // TODO: How do we handle when the other side is in PERSIST state here?
-        // TODO: Fix above comment - there is no such thing as a PERSIST state in TCP.  Presumably, this comment means
+        // ToDo: How do we handle when the other side is in PERSIST state here?
+        // ToDo: Fix above comment - there is no such thing as a PERSIST state in TCP.  Presumably, this comment means
         // to ask "how do we handle the situation where the other side is sending us zero window probes because it has
         // data to send and no open window to send into?".  The answer is: we should ACK zero-window probes.
 
         // Schedule an ACK for this receive (if one isn't already).
-        // TODO: Another bug.  If the delayed ACK timer is already running, we should cancel it and ACK immediately.
+        // ToDo: Another bug.  If the delayed ACK timer is already running, we should cancel it and ACK immediately.
         if self.ack_deadline.get().is_none() {
             self.ack_deadline.set(Some(now + self.ack_delay_timeout));
         }
