@@ -17,7 +17,7 @@ use crate::protocols::{
         SeqNumber,
     },
 };
-use ::libc::{EBADMSG, ENOMEM, ENOTCONN};
+use ::libc::{EBADMSG, ENOMEM};
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
@@ -356,7 +356,7 @@ impl<RT: Runtime> ControlBlock<RT> {
 
         // ToDo: We're probably getting "now" here in order to get a timestamp as close as possible to when we received
         // the packet.  However, this is wasteful if we don't take a path below that actually uses it.  Review this.
-        let now = self.rt.now();
+        let now: Instant = self.rt.now();
 
         // Check to see if the segment is acceptable sequence-wise (i.e. contains some data that fits within the receive
         // window, or is a non-data segment with a sequence number that falls within the window).  Unacceptable segments
@@ -395,9 +395,9 @@ impl<RT: Runtime> ControlBlock<RT> {
             seg_end = seg_start + SeqNumber::from(seg_len - 1);
         }
 
-        let receive_next = self.receiver.receive_next.get();
+        let receive_next: SeqNumber = self.receiver.receive_next.get();
 
-        let after_receive_window = receive_next + SeqNumber::from(self.get_receive_window_size());
+        let after_receive_window: SeqNumber = receive_next + SeqNumber::from(self.get_receive_window_size());
 
         // Check if this segment fits in our receive window.
         // In the optimal case it starts at RCV.NXT, so we check for that first.
@@ -450,8 +450,10 @@ impl<RT: Runtime> ControlBlock<RT> {
         // Check that the end of the segment is in the window, and trim it down if it is not.
         //
         if seg_len > 0 && seg_end >= after_receive_window {
-            let mut excess = u32::from(seg_end - after_receive_window);
+            let mut excess: u32 = u32::from(seg_end - after_receive_window);
             excess += 1;
+            // ToDo: If we end up (after receive handling rewrite is complete) not needing seg_end and seg_len after
+            // this, remove these two lines adjusting them as they're being computed needlessly.
             seg_end = seg_end - SeqNumber::from(excess);
             seg_len -= excess;
             if header.fin {
@@ -526,8 +528,8 @@ impl<RT: Runtime> ControlBlock<RT> {
         // Start by checking that the ACK acknowledges something new.
         // ToDo: Cleanup send-side variable names and removed Watched types.
         //
-        let (send_unacknowledged, _) = self.sender.get_base_seq_no();
-        let (send_next, _) = self.sender.get_sent_seq_no();
+        let (send_unacknowledged, _): (SeqNumber, _) = self.sender.get_base_seq_no();
+        let (send_next, _): (SeqNumber, _) = self.sender.get_sent_seq_no();
 
         if send_unacknowledged < header.ack_num {
             if header.ack_num <= send_next {
@@ -573,11 +575,10 @@ impl<RT: Runtime> ControlBlock<RT> {
                 }
 
                 // See if the send window should be updated.
-                // ToDo: Fix below function.
+                // ToDo: Fix below function.  Note that SEG.WND is an offset from SEG.ACK.
                 if let Err(e) = self.sender.update_remote_window(header.window_size as u16) {
                     warn!("Invalid window size update for {:?}: {:?}", header, e);
                 }
-        
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
                 //
@@ -601,7 +602,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                 // ToDo: Review this warning.  TCP connections in FIN-WAIT-1 and FIN-WAIT-2 can still receive data.
                 warn!("Receiver closed");
             }
-            if let Err(e) = self.receive_data(header.seq_num, data, now) {
+            if let Err(e) = self.receive_data(seg_start, data, now) {
                 warn!("Ignoring remote data for {:?}: {:?}", header, e);
             }
 
@@ -699,7 +700,7 @@ impl<RT: Runtime> ControlBlock<RT> {
 
     /// Send an ACK to our peer, reflecting our current state.
     pub fn send_ack(&self) {
-        let mut header = self.tcp_header();
+        let mut header: TcpHeader = self.tcp_header();
 
         // ToDo: Think about moving this to tcp_header() as well.
         let (seq_num, _): (SeqNumber, _) = self.get_sent_seq_no();
@@ -830,7 +831,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     // corresponding to the minumum number allowed for new reception (RCV.NXT in RFC 793 terms).
     //
     pub fn receive_data(&self, seq_no: SeqNumber, buf: RT::Buf, now: Instant) -> Result<(), Fail> {
-        let recv_seq_no = self.receiver.receive_next.get();
+        let recv_seq_no: SeqNumber = self.receiver.receive_next.get();
 
         if seq_no > recv_seq_no {
             // This new segment comes after what we're expecting (i.e. the new segment arrived out-of-order).
@@ -852,7 +853,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             }
 
             // Add the new segment to the out-of-order store (the store is sorted by starting sequence number).
-            let mut insert_index = out_of_order.len();
+            let mut insert_index: usize = out_of_order.len();
             for index in 0..out_of_order.len() {
                 if seq_no > out_of_order[index].0 {
                     insert_index = index;
@@ -893,7 +894,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         }
 
         // Push the new segment data onto the end of the receive queue.
-        let mut recv_seq_no = recv_seq_no + SeqNumber::from(buf.len() as u32);
+        let mut recv_seq_no: SeqNumber = recv_seq_no + SeqNumber::from(buf.len() as u32);
         self.receiver.push(buf);
 
         // Okay, we've successfully received some new data.  Check if any of the formerly out-of-order data waiting in
