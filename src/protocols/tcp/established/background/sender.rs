@@ -13,7 +13,6 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let (unsent_seq, unsent_seq_changed) = cb.get_unsent_seq_no();
         futures::pin_mut!(unsent_seq_changed);
 
-        // TODO: We don't need to watch this value since we're the only mutator.
         let (sent_seq, sent_seq_changed) = cb.get_sent_seq_no();
         futures::pin_mut!(sent_seq_changed);
 
@@ -29,15 +28,19 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let (win_sz, win_sz_changed) = cb.get_window_size();
         futures::pin_mut!(win_sz_changed);
 
-        // If we don't have any window size at all, we need to transition to PERSIST state and
+        // If we don't have any window size at all, we need to transition to PERSIST mode and
         // repeatedly send window probes until window opens up.
         if win_sz == 0 {
+            // Send a window probe (this is a one-byte packet designed to elicit a window update from our peer).
             let remote_link_addr = cb.arp().query(cb.get_remote().get_address()).await?;
             let buf = cb
                 .pop_one_unsent_byte()
                 .unwrap_or_else(|| panic!("No unsent data? {}, {}", sent_seq, unsent_seq));
 
+            // Update SND.NXT.
             cb.modify_sent_seq_no(|s| s + SeqNumber::from(1));
+
+            // Add the probe byte (as a new separate buffer) to our unacknowledged queue.
             let unacked_segment = UnackedSegment {
                 bytes: buf.clone(),
                 initial_tx: Some(cb.rt().now()),
@@ -49,7 +52,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
             cb.emit(header, buf.clone(), remote_link_addr);
 
             // Note that we loop here *forever*, exponentially backing off.
-            // TODO: Use the correct PERSIST state timer here.
+            // TODO: Use the correct PERSIST mode timer here.
             let mut timeout = Duration::from_secs(1);
             loop {
                 futures::select_biased! {
@@ -69,12 +72,12 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let (base_seq, base_seq_changed) = cb.get_base_seq_no();
         futures::pin_mut!(base_seq_changed);
 
-        // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle
+        // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
         cb.congestion_ctrl_on_cwnd_check_before_send();
         let (cwnd, cwnd_changed) = cb.congestion_ctrl_watch_cwnd();
         futures::pin_mut!(cwnd_changed);
 
-        // The limited transmit algorithm may increase the effective size of cwnd by up to 2 * mss
+        // The limited transmit algorithm may increase the effective size of cwnd by up to 2 * mss.
         let (ltci, ltci_changed) = cb.congestion_ctrl_watch_limited_transmit_cwnd_increase();
         futures::pin_mut!(ltci_changed);
 
@@ -97,8 +100,10 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
 
         // Past this point we have data to send and it's valid to send it!
 
-        // TODO: Nagle's algorithm
-        // TODO: Silly window syndrome
+        // TODO: Nagle's algorithm - We need to coalese small buffers together to send MSS sized packets.
+        // TODO: Silly window syndrome - See RFC 1122's discussion of the SWS avoidance algorithm.
+
+        // ToDo: Link-level concerns don't belong here, we should call an IP-level send routine below.
         let remote_link_addr = cb.arp().query(cb.get_remote().get_address()).await?;
 
         // Form an outgoing packet.
@@ -109,23 +114,35 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let segment_data = cb
             .pop_unsent_segment(max_size)
             .expect("No unsent data with sequence number gap?");
-        let segment_data_len = segment_data.len() as u32;
-        assert!(segment_data_len > 0);
+        let mut segment_data_len = segment_data.len() as u32;
 
         let rto: Duration = cb.rto_current();
         cb.congestion_ctrl_on_send(rto, sent_data);
 
+        // Prepare the segment and send it.
         let mut header = cb.tcp_header();
         header.seq_num = sent_seq;
+        if segment_data_len == 0 {
+            // This buffer is the end-of-send marker.
+            debug_assert_eq!(cb.user_is_done_sending.get(), true);
+            // Set FIN and adjust sequence number consumption accordingly.
+            header.fin = true;
+            segment_data_len = 1;
+        }
         cb.emit(header, segment_data.clone(), remote_link_addr);
 
+        // Update SND.NXT.
         cb.modify_sent_seq_no(|s| s + SeqNumber::from(segment_data_len));
+
+        // Put this segment on the unacknowledged list.
         let unacked_segment = UnackedSegment {
             bytes: segment_data,
             initial_tx: Some(cb.rt().now()),
         };
         cb.push_unacked_segment(unacked_segment);
 
+        // Set the retransmit timer.
+        // ToDo: Fix how the retransmit timer works.
         let (retransmit_deadline, _) = cb.get_retransmit_deadline();
         if retransmit_deadline.is_none() {
             let rto = cb.rto_estimate();

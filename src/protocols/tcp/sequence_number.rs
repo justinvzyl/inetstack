@@ -104,6 +104,8 @@ impl std::cmp::PartialOrd for SeqNumber {
 
 // Note that we specifically don't define std::cmp:Ord for sequence numbers, as there is no total order for them.
 // There is no max or min value, and if you have more than two of them, they can't be sorted into an unique order.
+
+// Unit tests for SeqNumber type.
 #[cfg(test)]
 mod tests {
     use super::SeqNumber;

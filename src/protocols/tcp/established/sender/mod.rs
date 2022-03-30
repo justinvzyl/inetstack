@@ -23,6 +23,10 @@ use ::std::{
     time::{Duration, Instant},
 };
 
+// Structure of entries on our unacknowledged queue.
+// ToDo: We currently allocate these on the fly when we add a buffer to the queue.  Would be more efficient to have a
+// buffer structure that held everything we need directly, thus avoiding this extra wrapper.
+//
 pub struct UnackedSegment<RT: Runtime> {
     pub bytes: RT::Buf,
     // Set to `None` on retransmission to implement Karn's algorithm.
@@ -30,10 +34,12 @@ pub struct UnackedSegment<RT: Runtime> {
 }
 
 /// Hard limit for unsent queue.
+/// ToDo: Remove this.  We should limit the unsent queue by either having a (configurable) send buffer size (in bytes,
+/// not segments) and rejecting send requests that exceed that, or by limiting the user's send buffer allocations.
 const UNSENT_QUEUE_CUTOFF: usize = 1024;
 
 pub struct Sender<RT: Runtime> {
-    // TODO: Just use Figure 5 from RFC 793 here.
+    // ToDo: Just use Figure 4 from RFC 793 here.
     //
     //                    |------------window_size------------|
     //
@@ -42,19 +48,35 @@ pub struct Sender<RT: Runtime> {
     // ... ---------------|-------------------------|----------------------| (unavailable)
     //       acknowledged        unacknowledged     ^        unsent
     //
+
+    // ToDo: Rename this.  It appears to be SND.UNA.
     base_seq_no: WatchedValue<SeqNumber>,
+
+    // RFC 793 calls this the "retransmission queue".
     unacked_queue: RefCell<VecDeque<UnackedSegment<RT>>>,
+
+    // ToDo: Rename this.  It appears to be SND.NXT.
     sent_seq_no: WatchedValue<SeqNumber>,
+
+    // This is the send buffer (user data we do not yet have window to send).
     unsent_queue: RefCell<VecDeque<RT::Buf>>,
+
+    // ToDo: Remove this.
     unsent_seq_no: WatchedValue<SeqNumber>,
 
+    // ToDo: Rename this.  It appears to be SND.WND.
     window_size: WatchedValue<u32>,
+
     // RFC 1323: Number of bits to shift advertised window, defaults to zero.
     window_scale: u8,
 
+    // Maximum Segment Size currently in use for this connection.
+    // ToDo: Revisit this once we support path MTU discovery.
     mss: usize,
 
     retransmit_deadline: WatchedValue<Option<Instant>>,
+
+    // Retransmission Timeout (RTO) calculator.
     rto: RefCell<RtoCalculator>,
 
     congestion_ctrl: Box<dyn cc::CongestionControl<RT>>,
@@ -150,58 +172,112 @@ impl<RT: Runtime> Sender<RT> {
         self.rto.borrow_mut().record_failure()
     }
 
+    // This is the main TCP send routine.
+    //
     pub fn send(&self, buf: RT::Buf, cb: &ControlBlock<RT>) -> Result<(), Fail> {
-        let buf_len: u32 = buf
-            .len()
-            .try_into()
-            .map_err(|_| Fail::new(EINVAL, "buffer too large"))?;
+        // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
+        //
+        if cb.user_is_done_sending.get() {
+            return Err(Fail::new(EINVAL, "Connection is closing"));
+        }
 
-        let win_sz = self.window_size.get();
-        let base_seq = self.base_seq_no.get();
-        let sent_seq = self.sent_seq_no.get();
-        let sent_data: u32 = (sent_seq - base_seq).into();
+        // Our API supports send buffers up to usize (variable, depends upon architecture) in size.  While we could
+        // allow for larger send buffers, it is simpler and more practical to limit a single send to 1 GiB, which is
+        // also the maximum value a TCP can advertise as its receive window (with maximum window scaling).
+        // ToDo: the below check just limits a single send to 4 GiB, not 1 GiB.  Check this doesn't break anything.
+        //
+        // Review: Move this check up the stack (i.e. closer to the user)?
+        //
+        let mut buf_len: u32 = buf.len().try_into().map_err(|_| Fail::new(EINVAL, "buffer too large"))?;
 
-        // Fast path: Try to send the data immediately.
-        let in_flight_after_send = sent_data + buf_len;
+        // ToDo: What we should do here:
+        //
+        // Conceptually, we should take the provided buffer and add it to the unsent queue.  Then calculate the amount
+        // of data we're currently allowed to send (based off of the receiver's advertised window, our congestion
+        // control algorithm, silly window syndrome avoidance algorithm, etc).  Finally, enter a loop where we compose
+        // maximum sized segments from the data on the unsent queue and send them, saving a (conceptual) copy of the
+        // sent data on the unacknowledged queue, until we run out of either window space or unsent data.
+        //
+        // Note that there are several shortcuts we can make to this conceptual approach to speed the common case.
+        // Note also that this conceptual send code is almost identical to what our "background send" algorithm should
+        // be doing, so we should just have a single function that we call from both places.
+        //
+        // The current code below just tries to send the provided buffer immediately (if allowed), otherwise it places
+        // it on the unsent queue and that's it.
+        //
 
-        // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle
-        self.congestion_ctrl.on_cwnd_check_before_send();
-        let cwnd = self.congestion_ctrl.get_cwnd();
-        // The limited transmit algorithm can increase the effective size of cwnd by up to 2MSS
-        let effective_cwnd = cwnd + self.congestion_ctrl.get_limited_transmit_cwnd_increase();
+        // Check for unsent data.
+        if self.unsent_queue.borrow().is_empty() {
 
-        if self.unsent_queue.borrow().len() == 0 {
+            // No unsent data queued up, so we can try to send this new buffer immediately.
+
+            // Calculate amount of data in flight (SND.NXT - SND.UNA).
+            let base_seq = self.base_seq_no.get();
+            let sent_seq = self.sent_seq_no.get();
+            let sent_data: u32 = (sent_seq - base_seq).into();
+
+            // ToDo: What limits buffer len to MSS?
+            let in_flight_after_send = sent_data + buf_len;
+
+            // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
+            self.congestion_ctrl.on_cwnd_check_before_send();
+            let cwnd = self.congestion_ctrl.get_cwnd();
+
+            // The limited transmit algorithm can increase the effective size of cwnd by up to 2MSS.
+            let effective_cwnd = cwnd + self.congestion_ctrl.get_limited_transmit_cwnd_increase();
+
+            let win_sz = self.window_size.get();
+
             if win_sz > 0
                 && win_sz >= in_flight_after_send
                 && effective_cwnd >= in_flight_after_send
             {
                 if let Some(remote_link_addr) = cb.arp().try_query(cb.get_remote().get_address()) {
-                    // This hook is primarily intended to record the last time we sent data, so we can later tell if the connection has been idle
-
+                    // This hook is primarily intended to record the last time we sent data, so we can later tell if
+                    // the connection has been idle.
                     let rto: Duration = self.current_rto();
                     self.congestion_ctrl.on_send(rto, sent_data);
 
+                    // Prepare the segment and send it.
                     let mut header = cb.tcp_header();
                     header.seq_num = sent_seq;
+                    if buf_len == 0 {
+                        // This buffer is the end-of-send marker.
+                        debug_assert_eq!(cb.user_is_done_sending.get(), true);
+                        // Set FIN and adjust sequence number consumption accordingly.
+                        header.fin = true;
+                        buf_len = 1;
+                    }
                     cb.emit(header, buf.clone(), remote_link_addr);
 
-                    self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
+                    // Update SND.NXT.
                     self.sent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
+
+                    // ToDo: We don't need to track this.
+                    self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
+
+                    // Put the segment we just sent on the retransmission queue.
                     let unacked_segment = UnackedSegment {
                         bytes: buf,
                         initial_tx: Some(cb.rt().now()),
                     };
                     self.unacked_queue.borrow_mut().push_back(unacked_segment);
+
+                    // Start the retransmission timer if it isn't already running.
                     if self.retransmit_deadline.get().is_none() {
                         let rto = self.rto.borrow().estimate();
                         self.retransmit_deadline.set(Some(cb.rt().now() + rto));
                     }
+
                     return Ok(());
+                } else {
+                    warn!("no ARP cache entry for send");
                 }
             }
         }
 
         // Too fast.
+        // ToDo: We need to fix this the correct way: limit our send buffer size to the amount we're willing to buffer.
         if self.unsent_queue.borrow().len() > UNSENT_QUEUE_CUTOFF {
             return Err(Fail::new(EBUSY, "too many packets to send"));
         }
@@ -213,34 +289,49 @@ impl<RT: Runtime> Sender<RT> {
         Ok(())
     }
 
-    pub fn remote_ack(&self, ack_seq_no: SeqNumber, now: Instant) -> Result<(), Fail> {
+    // Process an "acceptable" acknowledgement received from our peer.
+    // ToDo: Rename this to something more meaningful.  Or maybe move this back into mainline receive?
+    pub fn remote_ack(&self, seg_ack: SeqNumber, now: Instant) -> Result<(), Fail> {
+        // ToDo: What we're supposed to do here:
+        // This acknowledges new data, so update SND.UNA = SEG.ACK
+        //  + remove acknowledged data from the retransmission queue,
+        //  + report any fully acknowledged buffers to the user (do we have an API to do this?),
+        //  + manage the retransmission timer,
+        //  + update the send window.
+        //
+
         let base_seq_no = self.base_seq_no.get();
         let sent_seq_no = self.sent_seq_no.get();
 
         let bytes_outstanding: u32 = (sent_seq_no - base_seq_no).into();
-        let bytes_acknowledged: u32 = (ack_seq_no - base_seq_no).into();
+        let bytes_acknowledged: u32 = (seg_ack - base_seq_no).into();
 
         if bytes_acknowledged > bytes_outstanding {
             return Err(Fail::new(EBADMSG, "ACK is outside of send window"));
         }
 
+        // Inform congestion control about this ACK.
         let rto: Duration = self.current_rto();
         self.congestion_ctrl
-            .on_ack_received(rto, base_seq_no, sent_seq_no, ack_seq_no);
+            .on_ack_received(rto, base_seq_no, sent_seq_no, seg_ack);
         if bytes_acknowledged == 0 {
             return Ok(());
         }
 
-        if ack_seq_no == sent_seq_no {
+        // Manage the retransmit timer.
+        if seg_ack == sent_seq_no {
             // If we've acknowledged all sent data, turn off the retransmit timer.
             self.retransmit_deadline.set(None);
         } else {
             // Otherwise, set it to the current RTO.
+            // ToDo: This looks wrong.  Why extend the deadline here?
             let deadline = now + self.rto.borrow().estimate();
             self.retransmit_deadline.set(Some(deadline));
         }
 
+        // Remove now acknowledged data from the unacked queue and advance SND.UNA.
         // TODO: Do acks need to be on segment boundaries? How does this interact with repacketization?
+        // Answer: No, ACKs need not be on segment boundaries.  We need to handle this properly.
         let mut bytes_remaining = bytes_acknowledged as usize;
         while let Some(segment) = self.unacked_queue.borrow_mut().pop_front() {
             if segment.bytes.len() > bytes_remaining {
@@ -263,7 +354,7 @@ impl<RT: Runtime> Sender<RT> {
         let new_base_seq_no = self.base_seq_no.get();
         if new_base_seq_no < base_seq_no {
             // We've wrapped around, and so we need to do some bookkeeping
-            // TODO: Figure out what this is doing -- it's probably wrong.
+            // ToDo: Figure out what this is doing -- it's probably wrong.
             self.congestion_ctrl.on_base_seq_no_wraparound();
         }
 

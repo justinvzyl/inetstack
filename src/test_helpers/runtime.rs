@@ -105,7 +105,7 @@ impl TestRuntime {
     }
 
     pub fn pop_frame(&self) -> Bytes {
-        self.inner.borrow_mut().outgoing.pop_front().unwrap()
+        self.inner.borrow_mut().outgoing.pop_front().expect("pop_front didn't return an outgoing frame")
     }
 
     pub fn pop_frame_unchecked(&self) -> Option<Bytes> {

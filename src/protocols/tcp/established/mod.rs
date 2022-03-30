@@ -45,7 +45,7 @@ impl<RT: Runtime> EstablishedSocket<RT> {
         }
     }
 
-    pub fn receive(&self, header: &TcpHeader, data: RT::Buf) {
+    pub fn receive(&self, header: &mut TcpHeader, data: RT::Buf) {
         self.cb.receive(header, data)
     }
 

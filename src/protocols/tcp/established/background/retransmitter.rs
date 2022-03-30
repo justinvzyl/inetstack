@@ -18,6 +18,8 @@ async fn retransmit<RT: Runtime>(
     cause: RetransmitCause,
     cb: &Rc<ControlBlock<RT>>,
 ) -> Result<(), Fail> {
+    // ToDo: Handle retransmission of FIN.
+
     // Pop unack'ed segment.
     let mut segment = match cb.pop_unacked_segment() {
         Some(s) => s,
@@ -27,7 +29,7 @@ async fn retransmit<RT: Runtime>(
         }
     };
 
-    // TODO: Repacketization
+    // TODO: Repacketization - we should send a full MSS.
 
     // NOTE: Congestion Control Don't think we record a failure on Fast Retransmit, but can't find a definitive source.
     match cause {
@@ -41,15 +43,18 @@ async fn retransmit<RT: Runtime>(
     // Unset the initial timestamp so we don't use this for RTT estimation.
     segment.initial_tx.take();
 
+    // Prepare and send the segment.
     let (seq_no, _) = cb.get_base_seq_no();
     let mut header = cb.tcp_header();
     header.seq_num = seq_no;
     cb.emit(header, segment.bytes.clone(), remote_link_addr);
 
-    // Set new retransmit deadline
+    // Set new retransmit deadline.
+    // ToDo: Review this.  Shouldn't we only do this for RetransmitCause::Timeout?
     let rto: Duration = cb.rto_estimate();
     let deadline = cb.rt().now() + rto;
     cb.set_retransmit_deadline(Some(deadline));
+
     Ok(())
 }
 
