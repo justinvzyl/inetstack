@@ -13,8 +13,6 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let (unsent_seq, unsent_seq_changed) = cb.get_unsent_seq_no();
         futures::pin_mut!(unsent_seq_changed);
 
-        // TODO: We don't need to watch this value since we're the only mutator.
-        // ToDo: Above comment looks wrong, the main send routine modifies it.
         let (sent_seq, sent_seq_changed) = cb.get_sent_seq_no();
         futures::pin_mut!(sent_seq_changed);
 
