@@ -2,19 +2,23 @@
 // Licensed under the MIT license.
 
 #![feature(new_uninit)]
-#![feature(const_panic, const_alloc_layout)]
-#![feature(const_mut_refs, const_type_name)]
-#![feature(maybe_uninit_uninit_array, maybe_uninit_extra, maybe_uninit_ref)]
 
 mod common;
 
-use crate::common::{arp, libos::*, ALICE_IPV4, ALICE_MAC, BOB_IPV4, BOB_MAC, PORT_BASE};
-use ::catnip::protocols::ipv4::Ipv4Endpoint;
-use ::crossbeam_channel::{self};
-use ::libc;
-use ::runtime::{memory::MemoryRuntime, types::dmtr_opcode_t};
-use runtime::network::types::Port16;
-use std::{convert::TryFrom, thread};
+//==============================================================================
+// Imports
+//==============================================================================
+
+use crate::common::{
+    arp, libos::*, runtime::DummyRuntime, ALICE_IPV4, ALICE_MAC, BOB_IPV4, BOB_MAC, PORT_BASE,
+};
+use ::catnip::{operations::OperationResult, protocols::ipv4::Ipv4Endpoint, Catnip};
+use ::crossbeam_channel::{self, Receiver, Sender};
+use ::runtime::{memory::Bytes, network::types::Port16, QDesc, QToken};
+use ::std::{
+    convert::TryFrom,
+    thread::{self, JoinHandle},
+};
 
 //==============================================================================
 // Connect
@@ -24,14 +28,14 @@ use std::{convert::TryFrom, thread};
 /// endpoint.
 #[test]
 fn udp_connect_remote() {
-    let (tx, rx) = crossbeam_channel::unbounded();
-    let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let mut libos: Catnip<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port = Port16::try_from(PORT_BASE).unwrap();
-    let local = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Open and close a connection.
-    let sockfd = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     libos.close(sockfd).unwrap();
 }
@@ -39,14 +43,14 @@ fn udp_connect_remote() {
 /// Tests if a connection can be successfully established in loopback mode.
 #[test]
 fn udp_connect_loopback() {
-    let (tx, rx) = crossbeam_channel::unbounded();
-    let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let mut libos: Catnip<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port = Port16::try_from(PORT_BASE).unwrap();
-    let local = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Open and close a connection.
-    let sockfd = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     libos.close(sockfd).unwrap();
 }
@@ -59,65 +63,68 @@ fn udp_connect_loopback() {
 /// itself.
 #[test]
 fn udp_push_remote() {
-    let (alice_tx, alice_rx) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
 
-    let bob_port = Port16::try_from(PORT_BASE).unwrap();
-    let bob_addr = Ipv4Endpoint::new(BOB_IPV4, bob_port);
-    let alice_port = Port16::try_from(PORT_BASE).unwrap();
-    let alice_addr = Ipv4Endpoint::new(ALICE_IPV4, alice_port);
+    let bob_port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let bob_addr: Ipv4Endpoint = Ipv4Endpoint::new(BOB_IPV4, bob_port);
+    let alice_port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let alice_addr: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, alice_port);
 
-    let alice = thread::spawn(move || {
-        let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: Catnip<DummyRuntime> =
+            DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         // Open connection.
-        let sockfd = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
         libos.bind(sockfd, alice_addr).unwrap();
 
         // Cook some data.
-        let body_sga = DummyLibOS::cook_data(&mut libos, 32);
+        let bytes: Bytes = DummyLibOS::cook_data(32);
 
         // Push data.
-        let qt = libos.pushto(sockfd, &body_sga, bob_addr).unwrap();
-        assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_PUSH);
+        let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Push => (),
+            _ => panic!("push() failed"),
+        }
 
         // Pop data.
-        let qt = libos.pop(sockfd).unwrap();
-        let qr = libos.wait(qt);
-        assert_eq!(qr.qr_opcode, dmtr_opcode_t::DMTR_OPC_POP);
-
-        // Sanity check data.
-        let sga = unsafe { qr.qr_value.sga };
-        DummyLibOS::check_data(sga);
-        assert!(libos.rt().free_sgarray(sga).is_ok());
-
-        assert!(libos.rt().free_sgarray(body_sga).is_ok());
+        let qt: QToken = libos.pop(sockfd).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Pop(_, _) => (),
+            _ => panic!("pop() failed"),
+        }
 
         // Close connection.
         libos.close(sockfd).unwrap();
     });
 
-    let bob = thread::spawn(move || {
-        let mut libos = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: Catnip<DummyRuntime> =
+            DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         // Open connection.
-        let sockfd = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
         libos.bind(sockfd, bob_addr).unwrap();
 
         // Pop data.
-        let qt = libos.pop(sockfd).unwrap();
-        let qr = libos.wait(qt);
-        assert_eq!(qr.qr_opcode, dmtr_opcode_t::DMTR_OPC_POP);
-
-        // Sanity check data.
-        let sga = unsafe { qr.qr_value.sga };
-        DummyLibOS::check_data(sga);
+        let qt: QToken = libos.pop(sockfd).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let bytes: Bytes = match qr {
+            OperationResult::Pop(_, bytes) => bytes,
+            _ => panic!("pop() failed"),
+        };
 
         // Push data.
-        let qt = libos.pushto(sockfd, &sga, alice_addr).unwrap();
-        assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_PUSH);
-
-        assert!(libos.rt().free_sgarray(sga).is_ok());
+        let qt: QToken = libos.pushto2(sockfd, &bytes, alice_addr).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Push => (),
+            _ => panic!("push() failed"),
+        }
 
         // Close connection.
         libos.close(sockfd).unwrap();
@@ -130,65 +137,68 @@ fn udp_push_remote() {
 /// Tests if data can be successfully pushed/popped in loopback mode.
 #[test]
 fn udp_loopback() {
-    let (alice_tx, alice_rx) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
 
-    let bob_port = Port16::try_from(PORT_BASE).unwrap();
-    let bob_addr = Ipv4Endpoint::new(ALICE_IPV4, bob_port);
-    let alice_port = Port16::try_from(PORT_BASE).unwrap();
-    let alice_addr = Ipv4Endpoint::new(ALICE_IPV4, alice_port);
+    let bob_port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let bob_addr: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, bob_port);
+    let alice_port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let alice_addr: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, alice_port);
 
-    let alice = thread::spawn(move || {
-        let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: Catnip<DummyRuntime> =
+            DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         // Open connection.
-        let sockfd = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
         libos.bind(sockfd, alice_addr).unwrap();
 
         // Cook some data.
-        let body_sga = DummyLibOS::cook_data(&mut libos, 32);
+        let bytes: Bytes = DummyLibOS::cook_data(32);
 
         // Push data.
-        let qt = libos.pushto(sockfd, &body_sga, bob_addr).unwrap();
-        assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_PUSH);
+        let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Push => (),
+            _ => panic!("push() failed"),
+        }
 
         // Pop data.
-        let qt = libos.pop(sockfd).unwrap();
-        let qr = libos.wait(qt);
-        assert_eq!(qr.qr_opcode, dmtr_opcode_t::DMTR_OPC_POP);
-
-        // Sanity check data.
-        let sga = unsafe { qr.qr_value.sga };
-        DummyLibOS::check_data(sga);
-        assert!(libos.rt().free_sgarray(sga).is_ok());
-
-        assert!(libos.rt().free_sgarray(body_sga).is_ok());
+        let qt: QToken = libos.pop(sockfd).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Pop(_, _) => (),
+            _ => panic!("pop() failed"),
+        }
 
         // Close connection.
         libos.close(sockfd).unwrap();
     });
 
     let bob = thread::spawn(move || {
-        let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: Catnip<DummyRuntime> =
+            DummyLibOS::new(ALICE_MAC, ALICE_IPV4, bob_tx, alice_rx, arp());
 
         // Open connection.
-        let sockfd = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
         libos.bind(sockfd, bob_addr).unwrap();
 
         // Pop data.
-        let qt = libos.pop(sockfd).unwrap();
-        let qr = libos.wait(qt);
-        assert_eq!(qr.qr_opcode, dmtr_opcode_t::DMTR_OPC_POP);
-
-        // Sanity check data.
-        let sga = unsafe { qr.qr_value.sga };
-        DummyLibOS::check_data(sga);
+        let qt: QToken = libos.pop(sockfd).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let bytes: Bytes = match qr {
+            OperationResult::Pop(_, bytes) => bytes,
+            _ => panic!("pop() failed"),
+        };
 
         // Push data.
-        let qt = libos.pushto(sockfd, &sga, alice_addr).unwrap();
-        assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_PUSH);
-
-        assert!(libos.rt().free_sgarray(sga).is_ok());
+        let qt: QToken = libos.pushto2(sockfd, &bytes, alice_addr).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Push => (),
+            _ => panic!("push() failed"),
+        }
 
         // Close connection.
         libos.close(sockfd).unwrap();
