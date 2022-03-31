@@ -443,7 +443,7 @@ impl<RT: Runtime> Catnip<RT> {
     /// and the file descriptor for this connection.
     ///
     /// This function will panic if the specified future had not completed or is _background_ future.
-    fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult<RT::Buf>) {
+    pub fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult<RT::Buf>) {
         let boxed_future: Box<dyn Any> = self.rt.take(handle).as_any();
 
         let boxed_concrete_type = *boxed_future
