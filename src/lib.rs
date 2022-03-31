@@ -479,7 +479,7 @@ impl<RT: Runtime> Catnip<RT> {
     /// Scheduler will poll all futures that are ready to make progress.
     /// Then ask the runtime to receive new data which we will forward to the engine to parse and
     /// route to the correct protocol.
-    fn poll_bg_work(&mut self) {
+    pub fn poll_bg_work(&mut self) {
         #[cfg(feature = "profiler")]
         timer!("catnip::poll_bg_work");
         {
