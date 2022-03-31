@@ -45,22 +45,17 @@ const RECV_QUEUE_SZ: usize = 2048;
 // Ideally, we'd limit out-of-order data to that which (along with the unread data) will fit in the receive window.
 const MAX_OUT_OF_ORDER: usize = 16;
 
-// ToDo: Review this.  The TCP Specification doesn't have states called ActiveClose, FinWait3, Closing2, TimeWait2,
-// PassiveClose, CloseWait2 or Reset.  And it has states Listen, SynReceived, and SynSent, which aren't listed here.
+// TCP Connection State.
+// Note: This ControlBlock structure is only used after we've reached the ESTABLISHED state, so states LISTEN,
+// SYN_RCVD, and SYN_SENT aren't included here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum State {
     Established,
-    ActiveClose,  // ToDo: Not a real state.  Remove.
     FinWait1,
     FinWait2,
-    FinWait3,  // ToDo: Not a real state.  Remove.
     Closing,
-    Closing2,  // ToDo: Not a real state.  Remove.
     TimeWait,
-    TimeWait2,  // ToDo: Not a real state.  Remove.
-    PassiveClose,  // ToDo: Not a real state.  Remove.
     CloseWait,
-    CloseWait2,  // ToDo: Not a real state.  Remove.
     LastAck,
     Closed,
 }
@@ -84,12 +79,6 @@ struct Receiver<RT: Runtime> {
     // Sequence number of next byte of data in the unread queue.
     pub reader_next: Cell<SeqNumber>,
 
-    // Running counter of ack sequence number we have sent to our peer.
-    // ToDo: This tracks the most recently sent ack sequence number (i.e. whenever we send an ACK, we set this to
-    // receive_next).  Not clear that we need to track this (at least after we remove the closer closures).
-    // Even if we keep this (or its equivalent), it need not be a WatchedValue.
-    pub ack_seq_no: WatchedValue<SeqNumber>,
-
     // Sequence number of the next byte of data (or FIN) that we expect to receive.  In RFC 793 terms, this is RCV.NXT.
     pub receive_next: Cell<SeqNumber>,
 
@@ -98,10 +87,9 @@ struct Receiver<RT: Runtime> {
 }
 
 impl<RT: Runtime> Receiver<RT> {
-    pub fn new(reader_next: SeqNumber, ack_seq_no: SeqNumber, receive_next: SeqNumber) -> Self {
+    pub fn new(reader_next: SeqNumber, receive_next: SeqNumber) -> Self {
         Self {
             reader_next: Cell::new(reader_next),
-            ack_seq_no: WatchedValue::new(ack_seq_no),
             receive_next: Cell::new(receive_next),
             recv_queue: RefCell::new(VecDeque::with_capacity(RECV_QUEUE_SZ)),
         }
@@ -146,8 +134,8 @@ pub struct ControlBlock<RT: Runtime> {
     // Send-side state information.  ToDo: Consider incorporating this directly into ControlBlock.
     sender: Sender<RT>,
 
-    // ToDo: Change this from a WatchedValue to a Cell once the closer closures are removed.
-    state: WatchedValue<State>,
+    // TCP Connection State.
+    state: Cell<State>,
 
     ack_delay_timeout: Duration,
 
@@ -212,25 +200,16 @@ impl<RT: Runtime> ControlBlock<RT> {
             rt: Rc::new(rt),
             arp: Rc::new(arp),
             sender: sender,
-            state: WatchedValue::new(State::Established),
+            state: Cell::new(State::Established),
             ack_delay_timeout,
             ack_deadline: WatchedValue::new(None),
             receive_buffer_size: receiver_window_size,
             window_scale: receiver_window_scale,
             waker: RefCell::new(None),
             out_of_order: RefCell::new(VecDeque::new()),
-            receiver: Receiver::new(receiver_seq_no, receiver_seq_no, receiver_seq_no),
+            receiver: Receiver::new(receiver_seq_no, receiver_seq_no),
             user_is_done_sending: Cell::new(false),
         }
-    }
-
-    pub fn get_state(&self) -> (State, WatchFuture<State>) {
-        self.state.watch()
-    }
-
-    // ToDo: Remove after we remove the closer closures.
-    pub fn set_state(&self, new_value: State) {
-        self.state.set(new_value)
     }
 
     pub fn get_local(&self) -> Ipv4Endpoint {
@@ -716,23 +695,12 @@ impl<RT: Runtime> ControlBlock<RT> {
     /// Transmit this message to our connected peer.
     ///
     pub fn emit(&self, header: TcpHeader, data: RT::Buf, remote_link_addr: MacAddress) {
-        // ToDo: At this point, all segments should have the ACK bit set, so it is wasteful to check in mainline builds.
-        if header.ack {
-            // ToDo: Below check should only be done in debug builds, if at all (looks to be checking that we ACK FINs
-            // properly, although it gets this wrong).
-            let ack_check = self.get_recv_seq_no();
-            if self.state.get() == State::PassiveClose || self.state.get() == State::FinWait3 {
-                assert_eq!(header.ack_num, ack_check + SeqNumber::from(1));
-            } else {
-                assert_eq!(header.ack_num, ack_check);
-            }
-
-            // Clear ACK timer and remember acknowledgement number of most-recently sent ACK.
-            self.set_ack_deadline(None);
-            self.set_ack_seq_no(header.ack_num);
-        }
-
         debug!("Sending {} bytes + {:?}", data.len(), header);
+
+        // This routine should only ever be called to send TCP segments that contain a valid ACK value.
+        debug_assert!(header.ack);
+
+        let sent_fin: bool = header.fin;
 
         // Prepare description of TCP segment to send.
         // ToDo: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
@@ -754,6 +722,26 @@ impl<RT: Runtime> ControlBlock<RT> {
 
         // Call the runtime to send the segment.
         self.rt.transmit(segment);
+
+        // Post-send operations follow.
+        // Review: We perform these after the send, in order to keep send latency as low as possible.
+
+        // Since we sent an ACK, cancel any outstanding delayed ACK request.
+        self.set_ack_deadline(None);
+
+        // If we sent a FIN, update our protocol state.
+        if sent_fin {
+            match self.state.get() {
+                // Active close.
+                State::Established => self.state.set(State::FinWait1),
+                // Passive close.
+                State::CloseWait => self.state.set(State::LastAck),
+                // We can legitimately retransmit the FIN in these states.  And we stay there until the FIN is ACK'd.
+                State::FinWait1 | State::LastAck => {},
+                // We shouldn't be sending a FIN from any other state.
+                state => warn!("Sent FIN while in nonsensical TCP state {:?}", state),
+            }
+        }
     }
 
     pub fn remote_mss(&self) -> usize {
@@ -762,19 +750,6 @@ impl<RT: Runtime> ControlBlock<RT> {
 
     pub fn rto_current(&self) -> Duration {
         self.sender.current_rto()
-    }
-
-    pub fn get_ack_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        let (seq_no, fut) = self.receiver.ack_seq_no.watch();
-        (seq_no, fut)
-    }
-
-    pub fn set_ack_seq_no(&self, new_value: SeqNumber) {
-        self.receiver.ack_seq_no.set(new_value)
-    }
-
-    pub fn get_recv_seq_no(&self) -> SeqNumber {
-        self.receiver.receive_next.get()
     }
 
     pub fn get_ack_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
