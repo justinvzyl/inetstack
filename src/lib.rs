@@ -312,7 +312,7 @@ impl<RT: Runtime> Catnip<RT> {
         Ok(self.rt.schedule(future).into_raw().into())
     }
 
-    fn do_pushto(
+    pub fn do_pushto(
         &mut self,
         qd: QDesc,
         buf: RT::Buf,
