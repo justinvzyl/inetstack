@@ -291,7 +291,7 @@ impl<RT: Runtime> Catnip<RT> {
         Ok(())
     }
 
-    fn do_push(&mut self, qd: QDesc, buf: RT::Buf) -> Result<FutureOperation<RT>, Fail> {
+    pub fn do_push(&mut self, qd: QDesc, buf: RT::Buf) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.push(qd, buf))),
