@@ -21,7 +21,6 @@ extern crate log;
 
 use crate::{
     futures::operation::FutureOperation,
-    interop::pack_result,
     operations::OperationResult,
     protocols::{
         arp::ArpPeer,
@@ -32,13 +31,7 @@ use crate::{
 };
 use ::catwalk::{FutureResult, SchedulerHandle};
 use ::libc::{c_int, EBADF, EINVAL, ENOTSUP};
-use ::runtime::{
-    fail::Fail,
-    memory::Buffer,
-    queue::IoQueueTable,
-    types::{dmtr_qresult_t, dmtr_sgarray_t},
-    QDesc, QToken, QType, Runtime,
-};
+use ::runtime::{fail::Fail, memory::Buffer, queue::IoQueueTable, QDesc, QToken, QType, Runtime};
 use ::std::{any::Any, convert::TryFrom, time::Instant};
 use protocols::udp::UdpOperation;
 
@@ -54,7 +47,6 @@ pub mod test_helpers;
 
 pub mod collections;
 pub mod futures;
-pub mod interop;
 pub mod operations;
 pub mod options;
 pub mod protocols;
@@ -309,27 +301,6 @@ impl<RT: Runtime> Catnip<RT> {
         }
     }
 
-    /// Create a push request for Demikernel to asynchronously write data from `sga` to the
-    /// IO connection represented by `qd`. This operation returns immediately with a `QToken`.
-    /// The data has been written when [`wait`ing](Self::wait) on the QToken returns.
-    pub fn push(&mut self, qd: QDesc, sga: &dmtr_sgarray_t) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::push");
-        trace!("push(): qd={:?}", qd);
-        match self.rt.clone_sgarray(sga) {
-            Ok(buf) => {
-                if buf.len() == 0 {
-                    return Err(Fail::new(EINVAL, "zero-length buffer"));
-                }
-                let future = self.do_push(qd, buf)?;
-                Ok(self.rt.schedule(future).into_raw().into())
-            }
-            Err(e) => Err(e),
-        }
-    }
-
-    /// Similar to [push](Self::push) but uses a [Runtime]-specific buffer instead of the
-    /// [dmtr_sgarray_t].
     pub fn push2(&mut self, qd: QDesc, buf: RT::Buf) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::push2");
@@ -356,27 +327,6 @@ impl<RT: Runtime> Catnip<RT> {
                 _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
             _ => Err(Fail::new(EBADF, "bad queue descriptor")),
-        }
-    }
-
-    pub fn pushto(
-        &mut self,
-        qd: QDesc,
-        sga: &dmtr_sgarray_t,
-        to: Ipv4Endpoint,
-    ) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::pushto");
-        trace!("pushto2(): qd={:?}", qd);
-        match self.rt.clone_sgarray(sga) {
-            Ok(buf) => {
-                if buf.len() == 0 {
-                    return Err(Fail::new(EINVAL, "zero-length buffer"));
-                }
-                let future = self.do_pushto(qd, buf, to)?;
-                Ok(self.rt.schedule(future).into_raw().into())
-            }
-            Err(e) => Err(e),
         }
     }
 
@@ -434,15 +384,6 @@ impl<RT: Runtime> Catnip<RT> {
         Ok(self.rt.schedule(future).into_raw().into())
     }
 
-    /// Block until request represented by `qt` is finished returning the results of this request.
-    pub fn wait(&mut self, qt: QToken) -> dmtr_qresult_t {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::wait");
-        trace!("wait(): qt={:?}", qt);
-        let (qd, result) = self.wait2(qt);
-        pack_result(&self.rt, result, qd, qt.into())
-    }
-
     /// Block until request represented by `qt` is finished returning the file descriptor
     /// representing this request and the results of that operation.
     pub fn wait2(&mut self, qt: QToken) -> (QDesc, OperationResult<RT::Buf>) {
@@ -478,25 +419,6 @@ impl<RT: Runtime> Catnip<RT> {
                 },
                 Ok(())
             )
-        }
-    }
-
-    /// Given a list of queue tokens, run all ready tasks and return the first task which has
-    /// finished.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> (usize, dmtr_qresult_t) {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::wait_any");
-        trace!("wait_any(): qts={:?}", qts);
-        loop {
-            self.poll_bg_work();
-            for (i, &qt) in qts.iter().enumerate() {
-                let handle = self.rt.get_handle(qt.into()).unwrap();
-                if handle.has_completed() {
-                    let (qd, r) = self.take_operation(handle);
-                    return (i, pack_result(&self.rt, r, qd, qt.into()));
-                }
-                handle.into_raw();
-            }
         }
     }
 
