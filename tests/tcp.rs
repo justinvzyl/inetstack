@@ -2,20 +2,24 @@
 // Licensed under the MIT license.
 
 #![feature(new_uninit)]
-#![feature(const_panic, const_alloc_layout)]
-#![feature(const_mut_refs, const_type_name)]
-#![feature(maybe_uninit_uninit_array, maybe_uninit_extra, maybe_uninit_ref)]
 
 mod common;
+
+//==============================================================================
+// Imports
+//==============================================================================
 
 use crate::common::{
     arp, libos::*, runtime::DummyRuntime, ALICE_IPV4, ALICE_MAC, BOB_IPV4, BOB_MAC, PORT_BASE,
 };
-use ::catnip::{protocols::ipv4::Ipv4Endpoint, Catnip};
-use ::crossbeam_channel::{self};
-use ::libc::{EBADF, EINVAL, ENOTSUP};
-use ::runtime::{memory::MemoryRuntime, network::types::Port16, types::dmtr_opcode_t, QDesc};
-use ::std::{convert::TryFrom, net::Ipv4Addr, thread};
+use ::catnip::{operations::OperationResult, protocols::ipv4::Ipv4Endpoint, Catnip};
+use ::crossbeam_channel::{self, Receiver, Sender};
+use ::runtime::{fail::Fail, memory::Bytes, network::types::Port16, QDesc, QToken};
+use ::std::{
+    convert::TryFrom,
+    net::Ipv4Addr,
+    thread::{self, JoinHandle},
+};
 
 //==============================================================================
 // Open/Close Passive Socket
@@ -23,20 +27,23 @@ use ::std::{convert::TryFrom, net::Ipv4Addr, thread};
 
 /// Tests if a passive socket may be successfully opened and closed.
 fn do_tcp_connection_setup(libos: &mut Catnip<DummyRuntime>, port: u16) {
-    let port = Port16::try_from(port).unwrap();
-    let local = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let port: Port16 = Port16::try_from(port).unwrap();
+    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Open and close a connection.
-    let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     libos.listen(sockfd, 8).unwrap();
-    libos.close(sockfd).unwrap_err();
+    match libos.close(sockfd) {
+        Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
+        Err(_) => (),
+    };
 }
 
 #[test]
 fn catnip_tcp_connection_setup() {
-    let (tx, rx) = crossbeam_channel::unbounded();
-    let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let mut libos: Catnip<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     do_tcp_connection_setup(&mut libos, PORT_BASE);
 }
@@ -47,42 +54,59 @@ fn catnip_tcp_connection_setup() {
 
 /// Tests if data can be successfully established.
 fn do_tcp_establish_connection(port: u16) {
-    let (alice_tx, alice_rx) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
 
-    let alice = thread::spawn(move || {
-        let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: Catnip<DummyRuntime> =
+            DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port = Port16::try_from(port).unwrap();
-        let local = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: Port16 = Port16::try_from(port).unwrap();
+        let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
         libos.bind(sockfd, local).unwrap();
         libos.listen(sockfd, 8).unwrap();
-        let qt = libos.accept(sockfd).unwrap();
-        let r = libos.wait(qt);
-        assert_eq!(r.qr_opcode, dmtr_opcode_t::DMTR_OPC_ACCEPT);
-        let qd = QDesc::from(unsafe { r.qr_value.ares.qd } as usize);
+        let qt: QToken = libos.accept(sockfd).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let qd: QDesc = match qr {
+            OperationResult::Accept(qd) => qd,
+            _ => panic!("accept() has failed"),
+        };
 
         // Close connection.
-        libos.close(qd).unwrap();
-        libos.close(sockfd).unwrap_err();
+        match libos.close(qd) {
+            Ok(_) => (),
+            Err(_) => panic!("close() on passive socket has failed"),
+        };
+        match libos.close(sockfd) {
+            Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
+            Err(_) => (),
+        };
     });
 
-    let bob = thread::spawn(move || {
-        let mut libos = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: Catnip<DummyRuntime> =
+            DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port = Port16::try_from(port).unwrap();
-        let remote = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: Port16 = Port16::try_from(port).unwrap();
+        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        let qt = libos.connect(sockfd, remote).unwrap();
-        assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_CONNECT);
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let qt: QToken = libos.connect(sockfd, remote).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Connect => (),
+            _ => panic!("connect() has failed"),
+        }
 
         // Close connection.
-        libos.close(sockfd).unwrap();
+        match libos.close(sockfd) {
+            Ok(_) => (),
+            Err(_) => panic!("close() on active socket has failed"),
+        };
     });
 
     alice.join().unwrap();
@@ -98,62 +122,80 @@ fn catnip_tcp_establish_connection() {
 // Push
 //==============================================================================
 
-/// Tests if data can be successfully established.
+/// Tests if data can be pushed.
 fn do_tcp_push_remote(port: u16) {
-    let (alice_tx, alice_rx) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
 
-    let alice = thread::spawn(move || {
-        let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: Catnip<DummyRuntime> =
+            DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port = Port16::try_from(port).unwrap();
-        let local = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: Port16 = Port16::try_from(port).unwrap();
+        let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
         libos.bind(sockfd, local).unwrap();
         libos.listen(sockfd, 8).unwrap();
-        let qt = libos.accept(sockfd).unwrap();
-        let r = libos.wait(qt);
-        assert_eq!(r.qr_opcode, dmtr_opcode_t::DMTR_OPC_ACCEPT);
+        let qt: QToken = libos.accept(sockfd).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let qd: QDesc = match qr {
+            OperationResult::Accept(qd) => qd,
+            _ => panic!("accept() has failed"),
+        };
 
         // Pop data.
-        let qd = QDesc::from(unsafe { r.qr_value.ares.qd } as usize);
-        let qt = libos.pop(qd).unwrap();
-        let qr = libos.wait(qt);
-        assert_eq!(qr.qr_opcode, dmtr_opcode_t::DMTR_OPC_POP);
-
-        // Sanity check data.
-        let sga = unsafe { qr.qr_value.sga };
-        DummyLibOS::check_data(sga);
-        assert!(libos.rt().free_sgarray(sga).is_ok());
+        let qt: QToken = libos.pop(qd).unwrap();
+        let (qd, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Pop(_, _) => (),
+            _ => panic!("pop() has has failed {:?}", qr),
+        }
 
         // Close connection.
-        libos.close(qd).unwrap();
-        libos.close(sockfd).unwrap_err();
+        match libos.close(qd) {
+            Ok(_) => (),
+            Err(_) => panic!("close() on passive socket has failed"),
+        };
+        match libos.close(sockfd) {
+            Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
+            Err(_) => (),
+        };
     });
 
-    let bob = thread::spawn(move || {
-        let mut libos = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: Catnip<DummyRuntime> =
+            DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port = Port16::try_from(port).unwrap();
-        let remote = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: Port16 = Port16::try_from(port).unwrap();
+        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        let qt = libos.connect(sockfd, remote).unwrap();
-        assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_CONNECT);
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let qt: QToken = libos.connect(sockfd, remote).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Connect => (),
+            _ => panic!("connect() has failed"),
+        }
 
         // Cook some data.
-        let body_sga = DummyLibOS::cook_data(&mut libos, 32);
+        let bytes: Bytes = DummyLibOS::cook_data(32);
 
         // Push data.
-        let qt = libos.push(sockfd, &body_sga).unwrap();
-        assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_PUSH);
-        assert!(libos.rt().free_sgarray(body_sga).is_ok());
+        let qt: QToken = libos.push2(sockfd, bytes).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Push => (),
+            _ => panic!("push() has failed"),
+        }
 
         // Close connection.
-        libos.close(sockfd).unwrap();
+        match libos.close(sockfd) {
+            Ok(_) => (),
+            Err(_) => panic!("close() on active socket has failed"),
+        };
     });
 
     alice.join().unwrap();
@@ -171,8 +213,8 @@ fn catnip_tcp_push_remote() {
 
 /// Tests for bad socket creation.
 fn do_tcp_bad_socket() {
-    let (tx, rx) = crossbeam_channel::unbounded();
-    let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let mut libos: Catnip<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let domains: Vec<libc::c_int> = vec![
         libc::AF_ALG,
@@ -233,16 +275,16 @@ fn do_tcp_bad_socket() {
 
     // Invalid domain.
     for d in domains {
-        let sockfd = libos.socket(d, libc::SOCK_STREAM, 0);
-        let e = sockfd.unwrap_err();
-        assert_eq!(e.errno, ENOTSUP);
+        let sockfd: Result<QDesc, Fail> = libos.socket(d, libc::SOCK_STREAM, 0);
+        let e: Fail = sockfd.unwrap_err();
+        assert_eq!(e.errno, libc::ENOTSUP);
     }
 
     // Invalid socket tpe.
     for t in scoket_types {
-        let sockfd = libos.socket(libc::AF_INET, t, 0);
-        let e = sockfd.unwrap_err();
-        assert_eq!(e.errno, ENOTSUP);
+        let sockfd: Result<QDesc, Fail> = libos.socket(libc::AF_INET, t, 0);
+        let e: Fail = sockfd.unwrap_err();
+        assert_eq!(e.errno, libc::ENOTSUP);
     }
 }
 
@@ -257,14 +299,14 @@ fn catnip_tcp_bad_socket() {
 
 /// Test bad calls for `bind()`.
 fn do_tcp_bad_bind(port: u16) {
-    let (tx, rx) = crossbeam_channel::unbounded();
-    let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let mut libos: Catnip<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     // Invalid file descriptor.
-    let port = Port16::try_from(port).unwrap();
-    let local = Ipv4Endpoint::new(ALICE_IPV4, port);
-    let e = libos.bind(QDesc::from(0), local).unwrap_err();
-    assert_eq!(e.errno, EBADF);
+    let port: Port16 = Port16::try_from(port).unwrap();
+    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let e: Fail = libos.bind(QDesc::from(0), local).unwrap_err();
+    assert_eq!(e.errno, libc::EBADF);
 }
 
 #[test]
@@ -278,21 +320,21 @@ fn catnip_tcp_bad_bind() {
 
 /// Tests bad calls for `listen()`.
 fn do_tcp_bad_listen(port: u16) {
-    let (tx, rx) = crossbeam_channel::unbounded();
-    let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let mut libos: Catnip<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port = Port16::try_from(port).unwrap();
-    let local = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let port: Port16 = Port16::try_from(port).unwrap();
+    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Invalid file descriptor.
-    let e = libos.listen(QDesc::from(0), 8).unwrap_err();
-    assert_eq!(e.errno, EBADF);
+    let e: Fail = libos.listen(QDesc::from(0), 8).unwrap_err();
+    assert_eq!(e.errno, libc::EBADF);
 
     // Invalid backlog length
-    let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
-    let e = libos.listen(sockfd, 0).unwrap_err();
-    assert_eq!(e.errno, EINVAL);
+    let e: Fail = libos.listen(sockfd, 0).unwrap_err();
+    assert_eq!(e.errno, libc::EINVAL);
     libos.close(sockfd).unwrap_err();
 }
 
@@ -307,12 +349,12 @@ fn catnip_tcp_bad_listen() {
 
 /// Tests bad calls for `accept()`.
 fn do_tcp_bad_accept() {
-    let (tx, rx) = crossbeam_channel::unbounded();
-    let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let mut libos: Catnip<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     // Invalid file descriptor.
-    let e = libos.accept(QDesc::from(0)).unwrap_err();
-    assert_eq!(e.errno, EBADF);
+    let e: Fail = libos.accept(QDesc::from(0)).unwrap_err();
+    assert_eq!(e.errno, libc::EBADF);
 }
 
 #[test]
@@ -326,50 +368,69 @@ fn catnip_tcp_bad_accept() {
 
 /// Tests if data can be successfully established.
 fn do_tcp_bad_connect(port: u16) {
-    let (alice_tx, alice_rx) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
 
-    let alice = thread::spawn(move || {
-        let mut libos = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
-        let port = Port16::try_from(port).unwrap();
-        let local = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let alice: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: Catnip<DummyRuntime> =
+            DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let port: Port16 = Port16::try_from(port).unwrap();
+        let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
         libos.bind(sockfd, local).unwrap();
         libos.listen(sockfd, 8).unwrap();
-        let qt = libos.accept(sockfd).unwrap();
-        let r = libos.wait(qt);
-        assert_eq!(r.qr_opcode, dmtr_opcode_t::DMTR_OPC_ACCEPT);
-        let qd = QDesc::from(unsafe { r.qr_value.ares.qd } as usize);
+        let qt: QToken = libos.accept(sockfd).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let qd: QDesc = match qr {
+            OperationResult::Accept(qd) => qd,
+            _ => panic!("accept() has failed"),
+        };
 
         // Close connection.
-        libos.close(qd).unwrap();
-        libos.close(sockfd).unwrap_err();
+        match libos.close(qd) {
+            Ok(_) => (),
+            Err(_) => {
+                panic!("close() on passive socket has failed")
+            }
+        };
+        match libos.close(sockfd) {
+            Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
+            Err(_) => (),
+        };
     });
 
-    let bob = thread::spawn(move || {
-        let mut libos = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: Catnip<DummyRuntime> =
+            DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port = Port16::try_from(port).unwrap();
-        let remote = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: Port16 = Port16::try_from(port).unwrap();
+        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Bad file descriptor.
-        let e = libos.connect(QDesc::from(0), remote).unwrap_err();
-        assert_eq!(e.errno, EBADF);
+        let e: Fail = libos.connect(QDesc::from(0), remote).unwrap_err();
+        assert_eq!(e.errno, libc::EBADF);
 
         // Bad endpoint.
-        let remote = Ipv4Endpoint::new(Ipv4Addr::new(0, 0, 0, 0), port);
-        let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        let qt = libos.connect(sockfd, remote).unwrap();
-        assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_FAILED);
+        let remote: Ipv4Endpoint = Ipv4Endpoint::new(Ipv4Addr::new(0, 0, 0, 0), port);
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let qt: QToken = libos.connect(sockfd, remote).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Connect => panic!("connect() should have failed"),
+            _ => (),
+        }
 
         // Close connection.
-        let remote = Ipv4Endpoint::new(ALICE_IPV4, port);
-        let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        let qt = libos.connect(sockfd, remote).unwrap();
-        assert_eq!(libos.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_CONNECT);
-        libos.close(sockfd).unwrap();
+        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let qt: QToken = libos.connect(sockfd, remote).unwrap();
+        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        match qr {
+            OperationResult::Connect => (),
+            _ => panic!("connect() has failed"),
+        }
     });
 
     alice.join().unwrap();
