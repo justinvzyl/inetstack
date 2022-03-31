@@ -45,6 +45,7 @@ const RECV_QUEUE_SZ: usize = 2048;
 // Ideally, we'd limit out-of-order data to that which (along with the unread data) will fit in the receive window.
 const MAX_OUT_OF_ORDER: usize = 16;
 
+// TCP Connection State.
 // Note: This ControlBlock structure is only used after we've reached the ESTABLISHED state, so states LISTEN,
 // SYN_RCVD, and SYN_SENT aren't included here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -133,8 +134,8 @@ pub struct ControlBlock<RT: Runtime> {
     // Send-side state information.  ToDo: Consider incorporating this directly into ControlBlock.
     sender: Sender<RT>,
 
-    // ToDo: Change this from a WatchedValue to a Cell once the closer closures are removed.
-    state: WatchedValue<State>,
+    // TCP Connection State.
+    state: Cell<State>,
 
     ack_delay_timeout: Duration,
 
@@ -199,7 +200,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             rt: Rc::new(rt),
             arp: Rc::new(arp),
             sender: sender,
-            state: WatchedValue::new(State::Established),
+            state: Cell::new(State::Established),
             ack_delay_timeout,
             ack_deadline: WatchedValue::new(None),
             receive_buffer_size: receiver_window_size,
