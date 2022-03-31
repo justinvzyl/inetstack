@@ -2,15 +2,14 @@
 // Licensed under the MIT license.
 
 mod acknowledger;
-mod closer;
 mod retransmitter;
 mod sender;
 
 use self::{
-    acknowledger::acknowledger, closer::connection_terminated, retransmitter::retransmitter,
+    acknowledger::acknowledger, retransmitter::retransmitter,
     sender::sender,
 };
-use super::{ControlBlock, State};
+use super::{ControlBlock};
 use ::futures::{channel::mpsc, FutureExt};
 use ::runtime::{QDesc, Runtime};
 use ::std::{future::Future, rc::Rc};
@@ -32,14 +31,10 @@ pub fn background<RT: Runtime>(
         let sender = sender(cb.clone()).fuse();
         futures::pin_mut!(sender);
 
-        let closer = connection_terminated(cb).fuse();
-        futures::pin_mut!(closer);
-
         let r = futures::select_biased! {
             r = acknowledger => r,
             r = retransmitter => r,
             r = sender => r,
-            r = closer => r,
         };
         error!("Connection (fd {:?}) terminated: {:?}", fd, r);
 
