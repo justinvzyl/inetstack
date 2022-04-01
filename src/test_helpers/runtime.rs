@@ -23,7 +23,7 @@ use ::runtime::{
     },
     task::SchedulerRuntime,
     timer::{Timer, TimerRc, WaitFuture},
-    types::{dmtr_sgarray_t, dmtr_sgaseg_t},
+    types::dmtr_sgarray_t,
     utils::UtilsRuntime,
     Runtime,
 };
@@ -31,11 +31,8 @@ use ::std::{
     cell::RefCell,
     collections::VecDeque,
     future::Future,
-    mem,
     net::Ipv4Addr,
-    ptr,
     rc::Rc,
-    slice,
     time::{Duration, Instant},
 };
 
@@ -105,7 +102,11 @@ impl TestRuntime {
     }
 
     pub fn pop_frame(&self) -> Bytes {
-        self.inner.borrow_mut().outgoing.pop_front().expect("pop_front didn't return an outgoing frame")
+        self.inner
+            .borrow_mut()
+            .outgoing
+            .pop_front()
+            .expect("pop_front didn't return an outgoing frame")
     }
 
     pub fn pop_frame_unchecked(&self) -> Option<Bytes> {
@@ -129,66 +130,20 @@ impl TestRuntime {
 impl MemoryRuntime for TestRuntime {
     type Buf = Bytes;
 
-    fn into_sgarray(&self, buf: Bytes) -> Result<dmtr_sgarray_t, Fail> {
-        let buf_copy: Box<[u8]> = (&buf[..]).into();
-        let ptr = Box::into_raw(buf_copy);
-        let sgaseg = dmtr_sgaseg_t {
-            sgaseg_buf: ptr as *mut _,
-            sgaseg_len: buf.len() as u32,
-        };
-        Ok(dmtr_sgarray_t {
-            sga_buf: ptr::null_mut(),
-            sga_numsegs: 1,
-            sga_segs: [sgaseg],
-            sga_addr: unsafe { mem::zeroed() },
-        })
+    fn into_sgarray(&self, _buf: Bytes) -> Result<dmtr_sgarray_t, Fail> {
+        unreachable!()
     }
 
-    fn alloc_sgarray(&self, size: usize) -> Result<dmtr_sgarray_t, Fail> {
-        let allocation: Box<[u8]> = unsafe { Box::new_uninit_slice(size).assume_init() };
-        let ptr = Box::into_raw(allocation);
-        let sgaseg = dmtr_sgaseg_t {
-            sgaseg_buf: ptr as *mut _,
-            sgaseg_len: size as u32,
-        };
-        Ok(dmtr_sgarray_t {
-            sga_buf: ptr::null_mut(),
-            sga_numsegs: 1,
-            sga_segs: [sgaseg],
-            sga_addr: unsafe { mem::zeroed() },
-        })
+    fn alloc_sgarray(&self, _size: usize) -> Result<dmtr_sgarray_t, Fail> {
+        unreachable!()
     }
 
-    fn free_sgarray(&self, sga: dmtr_sgarray_t) -> Result<(), Fail> {
-        assert_eq!(sga.sga_numsegs, 1);
-        let sgaseg = sga.sga_segs[0];
-        let allocation: Box<[u8]> = unsafe {
-            Box::from_raw(slice::from_raw_parts_mut(
-                sgaseg.sgaseg_buf as *mut _,
-                sgaseg.sgaseg_len as usize,
-            ))
-        };
-        drop(allocation);
-
-        Ok(())
+    fn free_sgarray(&self, _sga: dmtr_sgarray_t) -> Result<(), Fail> {
+        unreachable!()
     }
 
-    fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Result<Bytes, Fail> {
-        let mut len = 0;
-        for i in 0..sga.sga_numsegs as usize {
-            len += sga.sga_segs[i].sgaseg_len;
-        }
-        let mut buf = BytesMut::zeroed(len as usize).unwrap();
-        let mut pos = 0;
-        for i in 0..sga.sga_numsegs as usize {
-            let seg = &sga.sga_segs[i];
-            let seg_slice = unsafe {
-                slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize)
-            };
-            buf[pos..(pos + seg_slice.len())].copy_from_slice(seg_slice);
-            pos += seg_slice.len();
-        }
-        Ok(buf.freeze())
+    fn clone_sgarray(&self, _sga: &dmtr_sgarray_t) -> Result<Bytes, Fail> {
+        unreachable!()
     }
 }
 
