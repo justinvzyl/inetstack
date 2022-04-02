@@ -44,7 +44,7 @@ async fn retransmit<RT: Runtime>(
     segment.initial_tx.take();
 
     // Prepare and send the segment.
-    let (seq_no, _) = cb.get_base_seq_no();
+    let (seq_no, _) = cb.get_send_unacked();
     let mut header = cb.tcp_header();
     header.seq_num = seq_no;
     cb.emit(header, segment.bytes.clone(), remote_link_addr);
@@ -83,8 +83,8 @@ pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, F
             _ = rtx_deadline_changed => continue,
             _ = rtx_fast_retransmit_changed => continue,
             _ = rtx_future => {
-                let (base_seq_no, _) = cb.get_base_seq_no();
-                cb.congestion_ctrl_on_rto(base_seq_no);
+                let (send_unacknowledged, _) = cb.get_send_unacked();
+                cb.congestion_ctrl_on_rto(send_unacknowledged);
                 retransmit(RetransmitCause::TimeOut, &cb).await?;
             },
         }

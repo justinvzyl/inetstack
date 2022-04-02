@@ -39,29 +39,32 @@ pub struct UnackedSegment<RT: Runtime> {
 const UNSENT_QUEUE_CUTOFF: usize = 1024;
 
 pub struct Sender<RT: Runtime> {
-    // ToDo: Just use Figure 4 from RFC 793 here.
     //
-    //                    |------------window_size------------|
+    // Send Sequence Space:
     //
-    //               base_seq_no               sent_seq_no           unsent_seq_no
-    //                    v                         v                      v
-    // ... ---------------|-------------------------|----------------------| (unavailable)
-    //       acknowledged        unacknowledged     ^        unsent
+    //                     |<-----------------send window size----------------->|
+    //                     |                                                    |
+    //                send_unacked               send_next         send_unacked + send window
+    //                     v                         v                          v
+    // ... ----------------|-------------------------|--------------------------|------------------------------
+    //       acknowledged  |      unacknowledged     |      allowed to send     | future sequence number space
+    //
+    // Note: In RFC 793 terminology, send_unacked is SND.UNA, send_next is SND.NXT, and "send window" is SND.WND.
     //
 
-    // ToDo: Rename this.  It appears to be SND.UNA.
-    base_seq_no: WatchedValue<SeqNumber>,
+    // Sequence Number of the oldest byte of unacknowledged sent data.  In RFC 793 terms, this is SND.UNA.
+    send_unacked: WatchedValue<SeqNumber>,
 
-    // RFC 793 calls this the "retransmission queue".
+    // Queue of unacknowledged sent data.  RFC 793 calls this the "retransmission queue".
     unacked_queue: RefCell<VecDeque<UnackedSegment<RT>>>,
 
-    // ToDo: Rename this.  It appears to be SND.NXT.
+    // Sequence Number of the next data to be sent.  ToDo: Rename this.  It appears to be SND.NXT.
     sent_seq_no: WatchedValue<SeqNumber>,
 
     // This is the send buffer (user data we do not yet have window to send).
     unsent_queue: RefCell<VecDeque<RT::Buf>>,
 
-    // ToDo: Remove this.
+    // ToDo: Remove this as soon as sender.rs is fixed to not use it to tell if there is unsent data.
     unsent_seq_no: WatchedValue<SeqNumber>,
 
     // ToDo: Rename this.  It appears to be SND.WND.
@@ -85,7 +88,7 @@ pub struct Sender<RT: Runtime> {
 impl<RT: Runtime> fmt::Debug for Sender<RT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender")
-            .field("base_seq_no", &self.base_seq_no)
+            .field("send_unacked", &self.send_unacked)
             .field("sent_seq_no", &self.sent_seq_no)
             .field("unsent_seq_no", &self.unsent_seq_no)
             .field("window_size", &self.window_size)
@@ -107,7 +110,7 @@ impl<RT: Runtime> Sender<RT> {
         congestion_control_options: Option<cc::Options>,
     ) -> Self {
         Self {
-            base_seq_no: WatchedValue::new(seq_no),
+            send_unacked: WatchedValue::new(seq_no),
             unacked_queue: RefCell::new(VecDeque::new()),
             sent_seq_no: WatchedValue::new(seq_no),
             unsent_queue: RefCell::new(VecDeque::new()),
@@ -132,8 +135,8 @@ impl<RT: Runtime> Sender<RT> {
         self.window_size.watch()
     }
 
-    pub fn get_base_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.base_seq_no.watch()
+    pub fn get_send_unacked(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.send_unacked.watch()
     }
 
     pub fn get_sent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
@@ -212,9 +215,9 @@ impl<RT: Runtime> Sender<RT> {
             // No unsent data queued up, so we can try to send this new buffer immediately.
 
             // Calculate amount of data in flight (SND.NXT - SND.UNA).
-            let base_seq = self.base_seq_no.get();
+            let send_unacknowledged = self.send_unacked.get();
             let sent_seq = self.sent_seq_no.get();
-            let sent_data: u32 = (sent_seq - base_seq).into();
+            let sent_data: u32 = (sent_seq - send_unacknowledged).into();
 
             // ToDo: What limits buffer len to MSS?
             let in_flight_after_send = sent_data + buf_len;
@@ -243,7 +246,7 @@ impl<RT: Runtime> Sender<RT> {
                     header.seq_num = sent_seq;
                     if buf_len == 0 {
                         // This buffer is the end-of-send marker.
-                        debug_assert_eq!(cb.user_is_done_sending.get(), true);
+                        debug_assert!(cb.user_is_done_sending.get());
                         // Set FIN and adjust sequence number consumption accordingly.
                         header.fin = true;
                         buf_len = 1;
@@ -300,11 +303,11 @@ impl<RT: Runtime> Sender<RT> {
         //  + update the send window.
         //
 
-        let base_seq_no = self.base_seq_no.get();
+        let send_unacked = self.send_unacked.get();
         let sent_seq_no = self.sent_seq_no.get();
 
-        let bytes_outstanding: u32 = (sent_seq_no - base_seq_no).into();
-        let bytes_acknowledged: u32 = (seg_ack - base_seq_no).into();
+        let bytes_outstanding: u32 = (sent_seq_no - send_unacked).into();
+        let bytes_acknowledged: u32 = (seg_ack - send_unacked).into();
 
         if bytes_acknowledged > bytes_outstanding {
             return Err(Fail::new(EBADMSG, "ACK is outside of send window"));
@@ -313,7 +316,7 @@ impl<RT: Runtime> Sender<RT> {
         // Inform congestion control about this ACK.
         let rto: Duration = self.current_rto();
         self.congestion_ctrl
-            .on_ack_received(rto, base_seq_no, sent_seq_no, seg_ack);
+            .on_ack_received(rto, send_unacked, sent_seq_no, seg_ack);
         if bytes_acknowledged == 0 {
             return Ok(());
         }
@@ -349,14 +352,8 @@ impl<RT: Runtime> Sender<RT> {
                 break;
             }
         }
-        self.base_seq_no
+        self.send_unacked
             .modify(|b| b + SeqNumber::from(bytes_acknowledged));
-        let new_base_seq_no = self.base_seq_no.get();
-        if new_base_seq_no < base_seq_no {
-            // We've wrapped around, and so we need to do some bookkeeping
-            // ToDo: Figure out what this is doing -- it's probably wrong.
-            self.congestion_ctrl.on_base_seq_no_wraparound();
-        }
 
         Ok(())
     }
@@ -429,8 +426,8 @@ impl<RT: Runtime> Sender<RT> {
         self.congestion_ctrl.on_fast_retransmit()
     }
 
-    pub fn congestion_ctrl_on_rto(&self, base_seq_no: SeqNumber) {
-        self.congestion_ctrl.on_rto(base_seq_no)
+    pub fn congestion_ctrl_on_rto(&self, send_unacked: SeqNumber) {
+        self.congestion_ctrl.on_rto(send_unacked)
     }
 
     pub fn congestion_ctrl_on_send(&self, rto: Duration, num_sent_bytes: u32) {

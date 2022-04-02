@@ -241,8 +241,8 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.congestion_ctrl_on_fast_retransmit()
     }
 
-    pub fn congestion_ctrl_on_rto(&self, base_seq_no: SeqNumber) {
-        self.sender.congestion_ctrl_on_rto(base_seq_no)
+    pub fn congestion_ctrl_on_rto(&self, send_unacknowledged: SeqNumber) {
+        self.sender.congestion_ctrl_on_rto(send_unacknowledged)
     }
 
     pub fn congestion_ctrl_on_send(&self, rto: Duration, num_sent_bytes: u32) {
@@ -271,8 +271,8 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.get_window_size()
     }
 
-    pub fn get_base_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.sender.get_base_seq_no()
+    pub fn get_send_unacked(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.sender.get_send_unacked()
     }
 
     pub fn get_unsent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
@@ -507,7 +507,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         // Start by checking that the ACK acknowledges something new.
         // ToDo: Cleanup send-side variable names and removed Watched types.
         //
-        let (send_unacknowledged, _): (SeqNumber, _) = self.sender.get_base_seq_no();
+        let (send_unacknowledged, _): (SeqNumber, _) = self.sender.get_send_unacked();
         let (send_next, _): (SeqNumber, _) = self.sender.get_sent_seq_no();
 
         if send_unacknowledged < header.ack_num {

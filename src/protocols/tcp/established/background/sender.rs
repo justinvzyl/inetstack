@@ -10,6 +10,7 @@ use ::std::{cmp, rc::Rc, time::Duration};
 pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
+        // ToDo: Change this to just look at the unsent queue to see if it is empty or not.
         let (unsent_seq, unsent_seq_changed) = cb.get_unsent_seq_no();
         futures::pin_mut!(unsent_seq_changed);
 
@@ -69,8 +70,8 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         }
 
         // The remote window is nonzero, but there still may not be room.
-        let (base_seq, base_seq_changed) = cb.get_base_seq_no();
-        futures::pin_mut!(base_seq_changed);
+        let (send_unacked, send_unacked_changed) = cb.get_send_unacked();
+        futures::pin_mut!(send_unacked_changed);
 
         // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
         cb.congestion_ctrl_on_cwnd_check_before_send();
@@ -84,13 +85,13 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let effective_cwnd = cwnd + ltci;
         let next_buf_size = cb.unsent_top_size().expect("no buffer in unsent queue");
 
-        let sent_data = (sent_seq - base_seq).into();
+        let sent_data = (sent_seq - send_unacked).into();
         if win_sz <= (sent_data + next_buf_size as u32)
             || effective_cwnd <= sent_data
             || (effective_cwnd - sent_data) <= cb.get_mss() as u32
         {
             futures::select_biased! {
-                _ = base_seq_changed => continue 'top,
+                _ = send_unacked_changed => continue 'top,
                 _ = sent_seq_changed => continue 'top,
                 _ = win_sz_changed => continue 'top,
                 _ = cwnd_changed => continue 'top,
@@ -124,7 +125,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         header.seq_num = sent_seq;
         if segment_data_len == 0 {
             // This buffer is the end-of-send marker.
-            debug_assert_eq!(cb.user_is_done_sending.get(), true);
+            debug_assert!(cb.user_is_done_sending.get());
             // Set FIN and adjust sequence number consumption accordingly.
             header.fin = true;
             segment_data_len = 1;
