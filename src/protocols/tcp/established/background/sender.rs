@@ -14,13 +14,13 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let (unsent_seq, unsent_seq_changed) = cb.get_unsent_seq_no();
         futures::pin_mut!(unsent_seq_changed);
 
-        let (sent_seq, sent_seq_changed) = cb.get_sent_seq_no();
-        futures::pin_mut!(sent_seq_changed);
+        let (send_next, send_next_changed) = cb.get_send_next();
+        futures::pin_mut!(send_next_changed);
 
-        if sent_seq == unsent_seq {
+        if send_next == unsent_seq {
             futures::select_biased! {
                 _ = unsent_seq_changed => continue 'top,
-                _ = sent_seq_changed => continue 'top,
+                _ = send_next_changed => continue 'top,
             }
         }
 
@@ -36,10 +36,10 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
             let remote_link_addr = cb.arp().query(cb.get_remote().get_address()).await?;
             let buf = cb
                 .pop_one_unsent_byte()
-                .unwrap_or_else(|| panic!("No unsent data? {}, {}", sent_seq, unsent_seq));
+                .unwrap_or_else(|| panic!("No unsent data? {}, {}", send_next, unsent_seq));
 
             // Update SND.NXT.
-            cb.modify_sent_seq_no(|s| s + SeqNumber::from(1));
+            cb.modify_send_next(|s| s + SeqNumber::from(1));
 
             // Add the probe byte (as a new separate buffer) to our unacknowledged queue.
             let unacked_segment = UnackedSegment {
@@ -49,7 +49,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
             cb.push_unacked_segment(unacked_segment);
 
             let mut header = cb.tcp_header();
-            header.seq_num = sent_seq;
+            header.seq_num = send_next;
             cb.emit(header, buf.clone(), remote_link_addr);
 
             // Note that we loop here *forever*, exponentially backing off.
@@ -64,7 +64,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
                 }
                 // Retransmit our window probe.
                 let mut header = cb.tcp_header();
-                header.seq_num = sent_seq;
+                header.seq_num = send_next;
                 cb.emit(header, buf.clone(), remote_link_addr);
             }
         }
@@ -85,14 +85,14 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let effective_cwnd = cwnd + ltci;
         let next_buf_size = cb.unsent_top_size().expect("no buffer in unsent queue");
 
-        let sent_data = (sent_seq - send_unacked).into();
+        let sent_data = (send_next - send_unacked).into();
         if win_sz <= (sent_data + next_buf_size as u32)
             || effective_cwnd <= sent_data
             || (effective_cwnd - sent_data) <= cb.get_mss() as u32
         {
             futures::select_biased! {
                 _ = send_unacked_changed => continue 'top,
-                _ = sent_seq_changed => continue 'top,
+                _ = send_next_changed => continue 'top,
                 _ = win_sz_changed => continue 'top,
                 _ = cwnd_changed => continue 'top,
                 _ = ltci_changed => continue 'top,
@@ -122,7 +122,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
 
         // Prepare the segment and send it.
         let mut header = cb.tcp_header();
-        header.seq_num = sent_seq;
+        header.seq_num = send_next;
         if segment_data_len == 0 {
             // This buffer is the end-of-send marker.
             debug_assert!(cb.user_is_done_sending.get());
@@ -133,7 +133,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         cb.emit(header, segment_data.clone(), remote_link_addr);
 
         // Update SND.NXT.
-        cb.modify_sent_seq_no(|s| s + SeqNumber::from(segment_data_len));
+        cb.modify_send_next(|s| s + SeqNumber::from(segment_data_len));
 
         // Put this segment on the unacknowledged list.
         let unacked_segment = UnackedSegment {

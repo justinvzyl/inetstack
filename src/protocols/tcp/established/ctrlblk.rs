@@ -279,12 +279,12 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.get_unsent_seq_no()
     }
 
-    pub fn get_sent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.sender.get_sent_seq_no()
+    pub fn get_send_next(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.sender.get_send_next()
     }
 
-    pub fn modify_sent_seq_no(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
-        self.sender.modify_sent_seq_no(f)
+    pub fn modify_send_next(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
+        self.sender.modify_send_next(f)
     }
 
     pub fn get_retransmit_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
@@ -508,7 +508,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         // ToDo: Cleanup send-side variable names and removed Watched types.
         //
         let (send_unacknowledged, _): (SeqNumber, _) = self.sender.get_send_unacked();
-        let (send_next, _): (SeqNumber, _) = self.sender.get_sent_seq_no();
+        let (send_next, _): (SeqNumber, _) = self.sender.get_send_next();
 
         if send_unacknowledged < header.ack_num {
             if header.ack_num <= send_next {
@@ -682,7 +682,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         let mut header: TcpHeader = self.tcp_header();
 
         // ToDo: Think about moving this to tcp_header() as well.
-        let (seq_num, _): (SeqNumber, _) = self.get_sent_seq_no();
+        let (seq_num, _): (SeqNumber, _) = self.get_send_next();
         header.seq_num = seq_num;
 
         // ToDo: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be

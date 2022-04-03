@@ -123,7 +123,7 @@ impl Cubic {
         duplicate_ack_count
     }
 
-    fn on_dup_ack_received(&self, sent_seq_no: SeqNumber, ack_seq_no: SeqNumber) {
+    fn on_dup_ack_received(&self, send_next: SeqNumber, ack_seq_no: SeqNumber) {
         // Get and increment the duplicate ACK count, and store the updated value
         let duplicate_ack_count = self.increment_dup_ack_count();
 
@@ -139,7 +139,7 @@ impl Cubic {
         {
             // Check against recover specified in RFC6582.
             self.in_fast_recovery.set(true);
-            self.recover.set(sent_seq_no);
+            self.recover.set(send_next);
             let reduced_cwnd = (cwnd as f32 * Self::BETA_CUBIC) as u32;
 
             if self.fast_convergence {
@@ -160,10 +160,10 @@ impl Cubic {
     fn on_ack_received_fast_recovery(
         &self,
         send_unacked: SeqNumber,
-        sent_seq_no: SeqNumber,
+        send_next: SeqNumber,
         ack_seq_no: SeqNumber,
     ) {
-        let bytes_outstanding: u32 = (sent_seq_no - send_unacked).into();
+        let bytes_outstanding: u32 = (send_next - send_unacked).into();
         let bytes_acknowledged: u32 = (ack_seq_no - send_unacked).into();
         let mss = self.mss;
 
@@ -309,13 +309,13 @@ impl<RT: Runtime> SlowStartCongestionAvoidance<RT> for Cubic {
         &self,
         rto: Duration,
         send_unacked: SeqNumber,
-        sent_seq_no: SeqNumber,
+        send_next: SeqNumber,
         ack_seq_no: SeqNumber,
     ) {
         let bytes_acknowledged: u32 = (ack_seq_no - send_unacked).into();
         if bytes_acknowledged == 0 {
             // ACK is a duplicate
-            self.on_dup_ack_received(sent_seq_no, ack_seq_no);
+            self.on_dup_ack_received(send_next, ack_seq_no);
             // We attempt to keep track of the number of retransmitted packets in flight because we do not alter
             // ssthresh if a packet is lost when it has been retransmitted. There is almost certainly a better way.
             self.retransmitted_packets_in_flight
@@ -325,7 +325,7 @@ impl<RT: Runtime> SlowStartCongestionAvoidance<RT> for Cubic {
 
             if self.in_fast_recovery.get() {
                 // Fast Recovery response to new data.
-                self.on_ack_received_fast_recovery(send_unacked, sent_seq_no, ack_seq_no);
+                self.on_ack_received_fast_recovery(send_unacked, send_next, ack_seq_no);
             } else {
                 self.on_ack_received_ss_ca(rto, send_unacked, ack_seq_no);
             }

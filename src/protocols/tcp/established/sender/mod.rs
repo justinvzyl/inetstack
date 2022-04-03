@@ -58,8 +58,8 @@ pub struct Sender<RT: Runtime> {
     // Queue of unacknowledged sent data.  RFC 793 calls this the "retransmission queue".
     unacked_queue: RefCell<VecDeque<UnackedSegment<RT>>>,
 
-    // Sequence Number of the next data to be sent.  ToDo: Rename this.  It appears to be SND.NXT.
-    sent_seq_no: WatchedValue<SeqNumber>,
+    // Sequence Number of the next data to be sent.  In RFC 793 terms, this is SND.NXT.
+    send_next: WatchedValue<SeqNumber>,
 
     // This is the send buffer (user data we do not yet have window to send).
     unsent_queue: RefCell<VecDeque<RT::Buf>>,
@@ -89,7 +89,7 @@ impl<RT: Runtime> fmt::Debug for Sender<RT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender")
             .field("send_unacked", &self.send_unacked)
-            .field("sent_seq_no", &self.sent_seq_no)
+            .field("send_next", &self.send_next)
             .field("unsent_seq_no", &self.unsent_seq_no)
             .field("window_size", &self.window_size)
             .field("window_scale", &self.window_scale)
@@ -112,7 +112,7 @@ impl<RT: Runtime> Sender<RT> {
         Self {
             send_unacked: WatchedValue::new(seq_no),
             unacked_queue: RefCell::new(VecDeque::new()),
-            sent_seq_no: WatchedValue::new(seq_no),
+            send_next: WatchedValue::new(seq_no),
             unsent_queue: RefCell::new(VecDeque::new()),
             unsent_seq_no: WatchedValue::new(seq_no),
 
@@ -139,12 +139,12 @@ impl<RT: Runtime> Sender<RT> {
         self.send_unacked.watch()
     }
 
-    pub fn get_sent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.sent_seq_no.watch()
+    pub fn get_send_next(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.send_next.watch()
     }
 
-    pub fn modify_sent_seq_no(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
-        self.sent_seq_no.modify(f)
+    pub fn modify_send_next(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
+        self.send_next.modify(f)
     }
 
     pub fn get_unsent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
@@ -216,8 +216,8 @@ impl<RT: Runtime> Sender<RT> {
 
             // Calculate amount of data in flight (SND.NXT - SND.UNA).
             let send_unacknowledged = self.send_unacked.get();
-            let sent_seq = self.sent_seq_no.get();
-            let sent_data: u32 = (sent_seq - send_unacknowledged).into();
+            let send_next = self.send_next.get();
+            let sent_data: u32 = (send_next - send_unacknowledged).into();
 
             // ToDo: What limits buffer len to MSS?
             let in_flight_after_send = sent_data + buf_len;
@@ -243,7 +243,7 @@ impl<RT: Runtime> Sender<RT> {
 
                     // Prepare the segment and send it.
                     let mut header = cb.tcp_header();
-                    header.seq_num = sent_seq;
+                    header.seq_num = send_next;
                     if buf_len == 0 {
                         // This buffer is the end-of-send marker.
                         debug_assert!(cb.user_is_done_sending.get());
@@ -254,7 +254,7 @@ impl<RT: Runtime> Sender<RT> {
                     cb.emit(header, buf.clone(), remote_link_addr);
 
                     // Update SND.NXT.
-                    self.sent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
+                    self.send_next.modify(|s| s + SeqNumber::from(buf_len));
 
                     // ToDo: We don't need to track this.
                     self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
@@ -304,9 +304,9 @@ impl<RT: Runtime> Sender<RT> {
         //
 
         let send_unacked = self.send_unacked.get();
-        let sent_seq_no = self.sent_seq_no.get();
+        let send_next = self.send_next.get();
 
-        let bytes_outstanding: u32 = (sent_seq_no - send_unacked).into();
+        let bytes_outstanding: u32 = (send_next - send_unacked).into();
         let bytes_acknowledged: u32 = (seg_ack - send_unacked).into();
 
         if bytes_acknowledged > bytes_outstanding {
@@ -316,13 +316,13 @@ impl<RT: Runtime> Sender<RT> {
         // Inform congestion control about this ACK.
         let rto: Duration = self.current_rto();
         self.congestion_ctrl
-            .on_ack_received(rto, send_unacked, sent_seq_no, seg_ack);
+            .on_ack_received(rto, send_unacked, send_next, seg_ack);
         if bytes_acknowledged == 0 {
             return Ok(());
         }
 
         // Manage the retransmit timer.
-        if seg_ack == sent_seq_no {
+        if seg_ack == send_next {
             // If we've acknowledged all sent data, turn off the retransmit timer.
             self.retransmit_deadline.set(None);
         } else {

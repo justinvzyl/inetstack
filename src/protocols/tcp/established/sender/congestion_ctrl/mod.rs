@@ -30,7 +30,7 @@ pub trait SlowStartCongestionAvoidance<RT: Runtime> {
         &self,
         _rto: Duration,
         _send_unacked: SeqNumber,
-        _sent_seq_no: SeqNumber,
+        _send_next: SeqNumber,
         _ack_seq_no: SeqNumber,
     ) {
     }
