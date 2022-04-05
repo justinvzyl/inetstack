@@ -291,6 +291,8 @@ impl<RT: Runtime> Catnip<RT> {
         Ok(())
     }
 
+    /// Pushes a buffer to a TCP socket.
+    /// TODO: Rename this function to push() once we have a common representation across all libOSes.
     pub fn do_push(&mut self, qd: QDesc, buf: RT::Buf) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
@@ -302,6 +304,7 @@ impl<RT: Runtime> Catnip<RT> {
     }
 
     /// Pushes raw data to a TCP socket.
+    /// TODO: Move this function to demikernel repo once we have a common buffer representation across all libOSes.
     pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::push2");
@@ -320,6 +323,8 @@ impl<RT: Runtime> Catnip<RT> {
         Ok(qt)
     }
 
+    /// Pushes a buffer to a UDP socket.
+    /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
     pub fn do_pushto(
         &mut self,
         qd: QDesc,
@@ -339,6 +344,7 @@ impl<RT: Runtime> Catnip<RT> {
     }
 
     /// Pushes raw data to a UDP socket.
+    /// TODO: Move this function to demikernel repo once we have a common buffer representation across all libOSes.
     pub fn pushto2(
         &mut self,
         qd: QDesc,
