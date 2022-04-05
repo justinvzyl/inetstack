@@ -338,6 +338,7 @@ impl<RT: Runtime> Catnip<RT> {
         }
     }
 
+    /// Pushes raw data to a UDP socket.
     pub fn pushto2(
         &mut self,
         qd: QDesc,
@@ -347,13 +348,18 @@ impl<RT: Runtime> Catnip<RT> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto2");
         trace!("pushto2(): qd={:?}", qd);
-        let buf = RT::Buf::from_slice(data);
-        if buf.len() == 0 {
+
+        // Convert raw data to a buffer representation.
+        let buf: RT::Buf = RT::Buf::from_slice(data);
+        if buf.is_empty() {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
 
-        let future = self.do_pushto(qd, buf, remote)?;
-        Ok(self.rt.schedule(future).into_raw().into())
+        // Issue operation.
+        let future: FutureOperation<RT> = self.do_pushto(qd, buf, remote)?;
+        let qt: QToken = self.rt.schedule(future).into_raw().into();
+
+        Ok(qt)
     }
 
     /// Create a pop request to write data from IO connection represented by `qd` into a buffer
