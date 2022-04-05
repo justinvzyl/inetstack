@@ -291,6 +291,8 @@ impl<RT: Runtime> Catnip<RT> {
         Ok(())
     }
 
+    /// Pushes a buffer to a TCP socket.
+    /// TODO: Rename this function to push() once we have a common representation across all libOSes.
     pub fn do_push(&mut self, qd: QDesc, buf: RT::Buf) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
@@ -301,17 +303,28 @@ impl<RT: Runtime> Catnip<RT> {
         }
     }
 
-    pub fn push2(&mut self, qd: QDesc, buf: RT::Buf) -> Result<QToken, Fail> {
+    /// Pushes raw data to a TCP socket.
+    /// TODO: Move this function to demikernel repo once we have a common buffer representation across all libOSes.
+    pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::push2");
         trace!("push2(): qd={:?}", qd);
-        if buf.len() == 0 {
+
+        // Convert raw data to a buffer representation.
+        let buf: RT::Buf = RT::Buf::from_slice(data);
+        if buf.is_empty() {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
-        let future = self.do_push(qd, buf)?;
-        Ok(self.rt.schedule(future).into_raw().into())
+
+        // Issue operation.
+        let future: FutureOperation<RT> = self.do_push(qd, buf)?;
+        let qt: QToken = self.rt.schedule(future).into_raw().into();
+
+        Ok(qt)
     }
 
+    /// Pushes a buffer to a UDP socket.
+    /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
     pub fn do_pushto(
         &mut self,
         qd: QDesc,
@@ -330,6 +343,8 @@ impl<RT: Runtime> Catnip<RT> {
         }
     }
 
+    /// Pushes raw data to a UDP socket.
+    /// TODO: Move this function to demikernel repo once we have a common buffer representation across all libOSes.
     pub fn pushto2(
         &mut self,
         qd: QDesc,
@@ -339,25 +354,18 @@ impl<RT: Runtime> Catnip<RT> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto2");
         trace!("pushto2(): qd={:?}", qd);
-        let buf = RT::Buf::from_slice(data);
-        if buf.len() == 0 {
+
+        // Convert raw data to a buffer representation.
+        let buf: RT::Buf = RT::Buf::from_slice(data);
+        if buf.is_empty() {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
 
-        let future = self.do_pushto(qd, buf, remote)?;
-        Ok(self.rt.schedule(future).into_raw().into())
-    }
+        // Issue operation.
+        let future: FutureOperation<RT> = self.do_pushto(qd, buf, remote)?;
+        let qt: QToken = self.rt.schedule(future).into_raw().into();
 
-    ///
-    /// **Brief**
-    ///
-    /// Invalidates the queue token referred to by `qt`. Any operations on this
-    /// operations will fail.
-    ///
-    pub fn drop_qtoken(&mut self, qt: QToken) {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::drop_qtoken");
-        drop(self.rt.get_handle(qt.into()).unwrap());
+        Ok(qt)
     }
 
     /// Create a pop request to write data from IO connection represented by `qd` into a buffer
