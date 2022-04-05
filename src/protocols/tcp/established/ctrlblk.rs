@@ -266,9 +266,8 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.get_mss()
     }
 
-    // ToDo: Rename this for clarity?  There is both a send window size and a receive window size.
-    pub fn get_window_size(&self) -> (u32, WatchFuture<u32>) {
-        self.sender.get_window_size()
+    pub fn get_send_window(&self) -> (u32, WatchFuture<u32>) {
+        self.sender.get_send_window()
     }
 
     pub fn get_send_unacked(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {

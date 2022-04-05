@@ -26,7 +26,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
 
         // Okay, we know we have some unsent data past this point. Next, check to see that the
         // remote side has available window.
-        let (win_sz, win_sz_changed) = cb.get_window_size();
+        let (win_sz, win_sz_changed) = cb.get_send_window();
         futures::pin_mut!(win_sz_changed);
 
         // If we don't have any window size at all, we need to transition to PERSIST mode and

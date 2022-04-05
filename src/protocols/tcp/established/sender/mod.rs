@@ -67,8 +67,8 @@ pub struct Sender<RT: Runtime> {
     // ToDo: Remove this as soon as sender.rs is fixed to not use it to tell if there is unsent data.
     unsent_seq_no: WatchedValue<SeqNumber>,
 
-    // ToDo: Rename this.  It appears to be SND.WND.
-    window_size: WatchedValue<u32>,
+    // Available window to send into, as advertised by our peer.  In RFC 793 terms, this is SND.WND.
+    send_window: WatchedValue<u32>,
 
     // RFC 1323: Number of bits to shift advertised window, defaults to zero.
     window_scale: u8,
@@ -91,7 +91,7 @@ impl<RT: Runtime> fmt::Debug for Sender<RT> {
             .field("send_unacked", &self.send_unacked)
             .field("send_next", &self.send_next)
             .field("unsent_seq_no", &self.unsent_seq_no)
-            .field("window_size", &self.window_size)
+            .field("send_window", &self.send_window)
             .field("window_scale", &self.window_scale)
             .field("mss", &self.mss)
             .field("retransmit_deadline", &self.retransmit_deadline)
@@ -103,7 +103,7 @@ impl<RT: Runtime> fmt::Debug for Sender<RT> {
 impl<RT: Runtime> Sender<RT> {
     pub fn new(
         seq_no: SeqNumber,
-        window_size: u32,
+        send_window: u32,
         window_scale: u8,
         mss: usize,
         cc_constructor: cc::CongestionControlConstructor<RT>,
@@ -116,7 +116,7 @@ impl<RT: Runtime> Sender<RT> {
             unsent_queue: RefCell::new(VecDeque::new()),
             unsent_seq_no: WatchedValue::new(seq_no),
 
-            window_size: WatchedValue::new(window_size),
+            send_window: WatchedValue::new(send_window),
             window_scale,
             mss,
 
@@ -131,8 +131,8 @@ impl<RT: Runtime> Sender<RT> {
         self.mss
     }
 
-    pub fn get_window_size(&self) -> (u32, WatchFuture<u32>) {
-        self.window_size.watch()
+    pub fn get_send_window(&self) -> (u32, WatchFuture<u32>) {
+        self.send_window.watch()
     }
 
     pub fn get_send_unacked(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
@@ -229,7 +229,7 @@ impl<RT: Runtime> Sender<RT> {
             // The limited transmit algorithm can increase the effective size of cwnd by up to 2MSS.
             let effective_cwnd: u32 = cwnd + self.congestion_ctrl.get_limited_transmit_cwnd_increase();
 
-            let win_sz: u32 = self.window_size.get();
+            let win_sz: u32 = self.send_window.get();
 
             if win_sz > 0
                 && win_sz >= in_flight_after_send
@@ -395,17 +395,17 @@ impl<RT: Runtime> Sender<RT> {
         Some(unsent_queue.front()?.len())
     }
 
-    pub fn update_remote_window(&self, window_size_hdr: u16) -> Result<(), Fail> {
+    pub fn update_remote_window(&self, send_window_hdr: u16) -> Result<(), Fail> {
         // TODO: Is this the right check?  No - Remove this check, it should never fail if window_scale is legit.
-        let window_size: u32 = (window_size_hdr as u32)
+        let send_window: u32 = (send_window_hdr as u32)
             .checked_shl(self.window_scale as u32)
             .ok_or(Fail::new(ENOBUFS, "window size overlow"))?;
 
         debug!(
             "Updating window size -> {} (hdr {}, scale {})",
-            window_size, window_size_hdr, self.window_scale
+            send_window, send_window_hdr, self.window_scale
         );
-        self.window_size.set(window_size);
+        self.send_window.set(send_window);
 
         Ok(())
     }
