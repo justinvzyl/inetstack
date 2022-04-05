@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::super::super::SeqNumber;
+use super::super::super::{segment::TcpHeader, SeqNumber};
 use super::super::{ctrlblk::ControlBlock, sender::UnackedSegment};
 use ::futures::FutureExt;
 use ::runtime::{fail::Fail, Runtime};
@@ -34,7 +34,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         if win_sz == 0 {
             // Send a window probe (this is a one-byte packet designed to elicit a window update from our peer).
             let remote_link_addr = cb.arp().query(cb.get_remote().get_address()).await?;
-            let buf = cb
+            let buf: RT::Buf = cb
                 .pop_one_unsent_byte()
                 .unwrap_or_else(|| panic!("No unsent data? {}, {}", send_next, unsent_seq));
 
@@ -48,13 +48,13 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
             };
             cb.push_unacked_segment(unacked_segment);
 
-            let mut header = cb.tcp_header();
+            let mut header: TcpHeader = cb.tcp_header();
             header.seq_num = send_next;
             cb.emit(header, buf.clone(), remote_link_addr);
 
             // Note that we loop here *forever*, exponentially backing off.
             // TODO: Use the correct PERSIST mode timer here.
-            let mut timeout = Duration::from_secs(1);
+            let mut timeout: Duration = Duration::from_secs(1);
             loop {
                 futures::select_biased! {
                     _ = win_sz_changed => continue 'top,
@@ -63,7 +63,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
                     }
                 }
                 // Retransmit our window probe.
-                let mut header = cb.tcp_header();
+                let mut header: TcpHeader = cb.tcp_header();
                 header.seq_num = send_next;
                 cb.emit(header, buf.clone(), remote_link_addr);
             }
@@ -82,10 +82,10 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let (ltci, ltci_changed) = cb.congestion_ctrl_watch_limited_transmit_cwnd_increase();
         futures::pin_mut!(ltci_changed);
 
-        let effective_cwnd = cwnd + ltci;
-        let next_buf_size = cb.unsent_top_size().expect("no buffer in unsent queue");
+        let effective_cwnd: u32 = cwnd + ltci;
+        let next_buf_size: usize = cb.unsent_top_size().expect("no buffer in unsent queue");
 
-        let sent_data = (send_next - send_unacked).into();
+        let sent_data: u32 = (send_next - send_unacked).into();
         if win_sz <= (sent_data + next_buf_size as u32)
             || effective_cwnd <= sent_data
             || (effective_cwnd - sent_data) <= cb.get_mss() as u32
@@ -108,20 +108,20 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let remote_link_addr = cb.arp().query(cb.get_remote().get_address()).await?;
 
         // Form an outgoing packet.
-        let max_size = cmp::min(
+        let max_size: usize = cmp::min(
             cmp::min((win_sz - sent_data) as usize, cb.get_mss()),
             (effective_cwnd - sent_data) as usize,
         );
-        let segment_data = cb
+        let segment_data: RT::Buf = cb
             .pop_unsent_segment(max_size)
             .expect("No unsent data with sequence number gap?");
-        let mut segment_data_len = segment_data.len() as u32;
+        let mut segment_data_len: u32 = segment_data.len() as u32;
 
         let rto: Duration = cb.rto_current();
         cb.congestion_ctrl_on_send(rto, sent_data);
 
         // Prepare the segment and send it.
-        let mut header = cb.tcp_header();
+        let mut header: TcpHeader = cb.tcp_header();
         header.seq_num = send_next;
         if segment_data_len == 0 {
             // This buffer is the end-of-send marker.
@@ -146,7 +146,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         // ToDo: Fix how the retransmit timer works.
         let (retransmit_deadline, _) = cb.get_retransmit_deadline();
         if retransmit_deadline.is_none() {
-            let rto = cb.rto_estimate();
+            let rto: Duration = cb.rto_estimate();
             cb.set_retransmit_deadline(Some(cb.rt().now() + rto));
         }
     }

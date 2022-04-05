@@ -59,14 +59,14 @@ impl<RT: Runtime> CongestionControl<RT> for Cubic {
     ) -> Box<dyn CongestionControl<RT>> {
         let mss: u32 = mss.try_into().unwrap();
         // The initial value of cwnd is set according to RFC5681, section 3.1, page 7.
-        let initial_cwnd = match mss {
+        let initial_cwnd: u32 = match mss {
             0..=1095 => 4 * mss,
             1096..=2190 => 3 * mss,
             _ => 2 * mss,
         };
 
         let options: Options = options.unwrap_or_default();
-        let fast_convergence = options.get_bool("fast_convergence").unwrap_or(true);
+        let fast_convergence: bool = options.get_bool("fast_convergence").unwrap_or(true);
 
         Box::new(Self {
             mss,
@@ -103,7 +103,7 @@ impl Cubic {
     fn fast_convergence(&self) {
         // The fast convergence algorithm assumes that w_max and cwnd are stored in units of mss, so we do this
         // integer division to prevent it being applied too often.
-        let cwnd = self.cwnd.get();
+        let cwnd: u32 = self.cwnd.get();
 
         if (cwnd / self.mss) < self.w_max.get() / self.mss {
             self.w_max
@@ -114,7 +114,7 @@ impl Cubic {
     }
 
     fn increment_dup_ack_count(&self) -> u32 {
-        let duplicate_ack_count = self.duplicate_ack_count.get() + 1;
+        let duplicate_ack_count: u32 = self.duplicate_ack_count.get() + 1;
         self.duplicate_ack_count.set(duplicate_ack_count);
         if duplicate_ack_count < Self::DUP_ACK_THRESHOLD {
             self.limited_transmit_cwnd_increase
@@ -124,15 +124,14 @@ impl Cubic {
     }
 
     fn on_dup_ack_received(&self, send_next: SeqNumber, ack_seq_no: SeqNumber) {
-        // Get and increment the duplicate ACK count, and store the updated value
-        let duplicate_ack_count = self.increment_dup_ack_count();
+        // Get and increment the duplicate ACK count, and store the updated value.
+        let duplicate_ack_count: u32 = self.increment_dup_ack_count();
 
-        let prev_ack_seq_no = self.prev_ack_seq_no.get();
+        let prev_ack_seq_no: SeqNumber = self.prev_ack_seq_no.get();
         let ack_seq_no_diff: u32 = (ack_seq_no - prev_ack_seq_no).into();
-        let cwnd = self.cwnd.get();
-        let ack_covers_recover = ack_seq_no - SeqNumber::from(1) > self.recover.get();
-        let retransmitted_packet_dropped_heuristic =
-            cwnd > self.mss && ack_seq_no_diff <= 4 * self.mss;
+        let cwnd: u32 = self.cwnd.get();
+        let ack_covers_recover: bool = ack_seq_no - SeqNumber::from(1) > self.recover.get();
+        let retransmitted_packet_dropped_heuristic: bool = cwnd > self.mss && ack_seq_no_diff <= 4 * self.mss;
 
         if duplicate_ack_count == Self::DUP_ACK_THRESHOLD
             && (ack_covers_recover || retransmitted_packet_dropped_heuristic)
@@ -140,7 +139,7 @@ impl Cubic {
             // Check against recover specified in RFC6582.
             self.in_fast_recovery.set(true);
             self.recover.set(send_next);
-            let reduced_cwnd = (cwnd as f32 * Self::BETA_CUBIC) as u32;
+            let reduced_cwnd: u32 = (cwnd as f32 * Self::BETA_CUBIC) as u32;
 
             if self.fast_convergence {
                 self.fast_convergence();
@@ -165,7 +164,7 @@ impl Cubic {
     ) {
         let bytes_outstanding: u32 = (send_next - send_unacked).into();
         let bytes_acknowledged: u32 = (ack_seq_no - send_unacked).into();
-        let mss = self.mss;
+        let mss: u32 = self.mss;
 
         if ack_seq_no > self.recover.get() {
             // Full acknowledgement.
@@ -208,35 +207,35 @@ impl Cubic {
     fn w_est(&self, w_max: f32, t: f32, rtt: f32) -> f32 {
         // While we store w_max in terms of bytes, we have pre-normalised it to units of MSS
         // for compatibility with RFC8312.
-        let bc = Self::BETA_CUBIC;
+        let bc: f32 = Self::BETA_CUBIC;
         w_max * bc + ((3. * (1. - bc) / (1. + bc)) * t / rtt)
     }
 
     fn on_ack_received_ss_ca(&self, rto: Duration, send_unacked: SeqNumber, ack_seq_no: SeqNumber) {
         let bytes_acknowledged: u32 = (ack_seq_no - send_unacked).into();
-        let mss = self.mss;
-        let cwnd = self.cwnd.get();
-        let ssthresh = self.ssthresh.get();
+        let mss: u32 = self.mss;
+        let cwnd: u32 = self.cwnd.get();
+        let ssthresh: u32 = self.ssthresh.get();
 
         if cwnd < ssthresh {
             // Slow start.
             self.cwnd.modify(|c| c + min(bytes_acknowledged, mss));
         } else {
             // Congestion avoidance.
-            let t = self.ca_start.get().elapsed().as_secs_f32();
-            let rtt = rto.as_secs_f32();
-            let mss_f32 = mss as f32;
-            let normalised_w_max = self.w_max.get() as f32 / mss_f32;
-            let k = self.k(normalised_w_max);
-            let w_est = self.w_est(normalised_w_max, t, rtt);
+            let t: f32 = self.ca_start.get().elapsed().as_secs_f32();
+            let rtt: f32 = rto.as_secs_f32();
+            let mss_f32: f32 = mss as f32;
+            let normalised_w_max: f32 = self.w_max.get() as f32 / mss_f32;
+            let k: f32 = self.k(normalised_w_max);
+            let w_est: f32 = self.w_est(normalised_w_max, t, rtt);
             if self.w_cubic(normalised_w_max, t, k) < w_est {
                 // w_est return units of MSS which we multiply back up to get bytes.
                 self.cwnd.set((w_est * mss_f32) as u32);
             } else {
-                let cwnd_f32 = cwnd as f32;
+                let cwnd_f32: f32 = cwnd as f32;
                 // Again, do everything in terms of units of MSS.
-                let normalised_cwnd = cwnd_f32 / mss_f32;
-                let cwnd_inc = ((self.w_cubic(normalised_w_max, t + rtt, k) - normalised_cwnd)
+                let normalised_cwnd: f32 = cwnd_f32 / mss_f32;
+                let cwnd_inc: f32 = ((self.w_cubic(normalised_w_max, t + rtt, k) - normalised_cwnd)
                     / normalised_cwnd)
                     * mss_f32;
                 self.cwnd.modify(|c| c + cwnd_inc as u32);
@@ -245,7 +244,7 @@ impl Cubic {
     }
 
     fn on_rto_ss_ca(&self) {
-        let cwnd = self.cwnd.get();
+        let cwnd: u32 = self.cwnd.get();
 
         if self.fast_convergence {
             self.fast_convergence();
@@ -254,7 +253,7 @@ impl Cubic {
         }
         self.cwnd.set(self.mss);
 
-        let rpif = self.retransmitted_packets_in_flight.get();
+        let rpif: u32 = self.retransmitted_packets_in_flight.get();
         if rpif == 0 {
             // If we lost a retransmitted packet, we don't shrink ssthresh.
             // So we have to check if a retransmitted packet was in flight before we shrink it.
@@ -286,10 +285,10 @@ impl<RT: Runtime> SlowStartCongestionAvoidance<RT> for Cubic {
     }
 
     fn on_cwnd_check_before_send(&self) {
-        let long_time_since_send =
+        let long_time_since_send: bool =
             Instant::now().duration_since(self.last_send_time.get()) > self.rtt_at_last_send.get();
         if long_time_since_send {
-            let restart_window = min(self.initial_cwnd, self.cwnd.get());
+            let restart_window: u32 = min(self.initial_cwnd, self.cwnd.get());
             self.cwnd.set(restart_window);
             self.limited_transmit_cwnd_increase.set_without_notify(0);
         }

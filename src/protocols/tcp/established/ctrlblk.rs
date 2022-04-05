@@ -103,7 +103,7 @@ impl<RT: Runtime> Receiver<RT> {
     }
 
     pub fn push(&self, buf: RT::Buf) {
-        let buf_len: u32 = buf.len() as u32;
+    let buf_len: u32 = buf.len() as u32;
         self.recv_queue.borrow_mut().push_back(buf);
         self.receive_next.set(self.receive_next.get() + SeqNumber::from(buf_len as u32));
     }
@@ -399,7 +399,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                     // Some of this segment's data is new.  Cut the duplicate data off of the front.
                     // If there is a SYN at the start of this segment, remove it too.
                     //
-                    let mut duplicate = u32::from(receive_next - seg_start);
+                    let mut duplicate: u32 = u32::from(receive_next - seg_start);
                     seg_start = seg_start + SeqNumber::from(duplicate);
                     seg_len -= duplicate;
                     if header.syn {
@@ -666,7 +666,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     /// Fetch a TCP header filling out various values based on our current state.
     /// ToDo: Fix the "filling out various values based on our current state" part to actually do that correctly.
     pub fn tcp_header(&self) -> TcpHeader {
-        let mut header = TcpHeader::new(self.local.get_port(), self.remote.get_port());
+        let mut header: TcpHeader = TcpHeader::new(self.local.get_port(), self.remote.get_port());
         header.window_size = self.hdr_window_size();
 
         // Note that once we reach a synchronized state we always include a valid acknowledgement number.
@@ -766,8 +766,8 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     pub fn hdr_window_size(&self) -> u16 {
-        let window_size = self.get_receive_window_size();
-        let hdr_window_size = (window_size >> self.window_scale)
+        let window_size: u32 = self.get_receive_window_size();
+        let hdr_window_size: u16 = (window_size >> self.window_scale)
             .try_into()
             .expect("Window size overflow");
         debug!(
@@ -791,7 +791,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             return Poll::Pending;
         }
 
-        let segment = self
+        let segment: RT::Buf = self
             .receiver
             .pop()
             .expect("poll_recv failed to pop data from receive queue");

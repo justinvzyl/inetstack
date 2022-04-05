@@ -6,7 +6,7 @@ mod rto;
 
 use self::{congestion_ctrl as cc, rto::RtoCalculator};
 use super::ControlBlock;
-use crate::protocols::tcp::SeqNumber;
+use crate::protocols::tcp::{segment::TcpHeader, SeqNumber};
 use ::libc::{EBADMSG, EBUSY, EINVAL, ENOBUFS};
 use ::runtime::{
     fail::Fail,
@@ -215,21 +215,21 @@ impl<RT: Runtime> Sender<RT> {
             // No unsent data queued up, so we can try to send this new buffer immediately.
 
             // Calculate amount of data in flight (SND.NXT - SND.UNA).
-            let send_unacknowledged = self.send_unacked.get();
-            let send_next = self.send_next.get();
+            let send_unacknowledged: SeqNumber = self.send_unacked.get();
+            let send_next: SeqNumber = self.send_next.get();
             let sent_data: u32 = (send_next - send_unacknowledged).into();
 
             // ToDo: What limits buffer len to MSS?
-            let in_flight_after_send = sent_data + buf_len;
+            let in_flight_after_send: u32 = sent_data + buf_len;
 
             // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
             self.congestion_ctrl.on_cwnd_check_before_send();
-            let cwnd = self.congestion_ctrl.get_cwnd();
+            let cwnd: u32 = self.congestion_ctrl.get_cwnd();
 
             // The limited transmit algorithm can increase the effective size of cwnd by up to 2MSS.
-            let effective_cwnd = cwnd + self.congestion_ctrl.get_limited_transmit_cwnd_increase();
+            let effective_cwnd: u32 = cwnd + self.congestion_ctrl.get_limited_transmit_cwnd_increase();
 
-            let win_sz = self.window_size.get();
+            let win_sz: u32 = self.window_size.get();
 
             if win_sz > 0
                 && win_sz >= in_flight_after_send
@@ -242,7 +242,7 @@ impl<RT: Runtime> Sender<RT> {
                     self.congestion_ctrl.on_send(rto, sent_data);
 
                     // Prepare the segment and send it.
-                    let mut header = cb.tcp_header();
+                    let mut header: TcpHeader = cb.tcp_header();
                     header.seq_num = send_next;
                     if buf_len == 0 {
                         // This buffer is the end-of-send marker.
@@ -268,7 +268,7 @@ impl<RT: Runtime> Sender<RT> {
 
                     // Start the retransmission timer if it isn't already running.
                     if self.retransmit_deadline.get().is_none() {
-                        let rto = self.rto.borrow().estimate();
+                        let rto: Duration = self.rto.borrow().estimate();
                         self.retransmit_deadline.set(Some(cb.rt().now() + rto));
                     }
 
@@ -303,8 +303,8 @@ impl<RT: Runtime> Sender<RT> {
         //  + update the send window.
         //
 
-        let send_unacked = self.send_unacked.get();
-        let send_next = self.send_next.get();
+        let send_unacked: SeqNumber = self.send_unacked.get();
+        let send_next: SeqNumber = self.send_next.get();
 
         let bytes_outstanding: u32 = (send_next - send_unacked).into();
         let bytes_acknowledged: u32 = (seg_ack - send_unacked).into();
@@ -328,14 +328,14 @@ impl<RT: Runtime> Sender<RT> {
         } else {
             // Otherwise, set it to the current RTO.
             // ToDo: This looks wrong.  Why extend the deadline here?
-            let deadline = now + self.rto.borrow().estimate();
+            let deadline: Instant = now + self.rto.borrow().estimate();
             self.retransmit_deadline.set(Some(deadline));
         }
 
         // Remove now acknowledged data from the unacked queue and advance SND.UNA.
         // TODO: Do acks need to be on segment boundaries? How does this interact with repacketization?
         // Answer: No, ACKs need not be on segment boundaries.  We need to handle this properly.
-        let mut bytes_remaining = bytes_acknowledged as usize;
+        let mut bytes_remaining: usize = bytes_acknowledged as usize;
         while let Some(segment) = self.unacked_queue.borrow_mut().pop_front() {
             if segment.bytes.len() > bytes_remaining {
                 // TODO: We need to close the connection in this case.
@@ -362,8 +362,8 @@ impl<RT: Runtime> Sender<RT> {
         let mut queue = self.unsent_queue.borrow_mut();
 
         let buf = queue.front_mut()?;
-        let mut cloned_buf = buf.clone();
-        let buf_len = buf.len();
+        let mut cloned_buf: RT::Buf = buf.clone();
+        let buf_len: usize = buf.len();
 
         // Pop one byte off the buf still in the queue and all but one of the bytes on our clone.
         buf.adjust(1);
@@ -375,11 +375,11 @@ impl<RT: Runtime> Sender<RT> {
     pub fn pop_unsent(&self, max_bytes: usize) -> Option<RT::Buf> {
         // TODO: Use a scatter/gather array to coalesce multiple buffers into a single segment.
         let mut unsent_queue = self.unsent_queue.borrow_mut();
-        let mut buf = unsent_queue.pop_front()?;
-        let buf_len = buf.len();
+        let mut buf: RT::Buf = unsent_queue.pop_front()?;
+        let buf_len: usize = buf.len();
 
         if buf_len > max_bytes {
-            let mut cloned_buf = buf.clone();
+            let mut cloned_buf: RT::Buf = buf.clone();
 
             buf.adjust(max_bytes);
             cloned_buf.trim(buf_len - max_bytes);
@@ -396,8 +396,8 @@ impl<RT: Runtime> Sender<RT> {
     }
 
     pub fn update_remote_window(&self, window_size_hdr: u16) -> Result<(), Fail> {
-        // TODO: Is this the right check?
-        let window_size = (window_size_hdr as u32)
+        // TODO: Is this the right check?  No - Remove this check, it should never fail if window_scale is legit.
+        let window_size: u32 = (window_size_hdr as u32)
             .checked_shl(self.window_scale as u32)
             .ok_or(Fail::new(ENOBUFS, "window size overlow"))?;
 

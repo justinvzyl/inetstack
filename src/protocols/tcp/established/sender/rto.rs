@@ -30,7 +30,7 @@ impl RtoCalculator {
         const BETA: f64 = 0.25;
         const GRANULARITY: f64 = 0.001f64;
 
-        let rtt = FloatDuration::from(rtt).as_seconds();
+        let rtt: f64 = FloatDuration::from(rtt).as_seconds();
 
         if !self.received_sample {
             self.srtt = rtt;
@@ -41,7 +41,7 @@ impl RtoCalculator {
             self.srtt = (1.0 - ALPHA) * self.srtt + ALPHA * rtt;
         }
 
-        let rttvar_x4 = match (4.0 * self.rttvar).partial_cmp(&GRANULARITY) {
+        let rttvar_x4: f64 = match (4.0 * self.rttvar).partial_cmp(&GRANULARITY) {
             Some(cmp::Ordering::Less) => GRANULARITY,
             None => panic!("NaN rttvar: {:?}", self.rttvar),
             _ => self.rttvar,

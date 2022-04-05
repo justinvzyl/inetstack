@@ -2,12 +2,13 @@
 // Licensed under the MIT license.
 
 use super::ControlBlock;
+use crate::protocols::tcp::segment::TcpHeader;
 use ::futures::{
     future::{self, Either},
     FutureExt,
 };
-use ::runtime::{fail::Fail, Runtime};
-use ::std::{rc::Rc, time::Duration};
+use ::runtime::{fail::Fail, network::types::MacAddress, Runtime};
+use ::std::{rc::Rc, time::{Duration, Instant}};
 
 pub enum RetransmitCause {
     TimeOut,
@@ -38,21 +39,21 @@ async fn retransmit<RT: Runtime>(
     };
 
     // Our retransmission timer fired, so we need to resend a packet.
-    let remote_link_addr = cb.arp().query(cb.get_remote().get_address()).await?;
+    let remote_link_addr: MacAddress = cb.arp().query(cb.get_remote().get_address()).await?;
 
     // Unset the initial timestamp so we don't use this for RTT estimation.
     segment.initial_tx.take();
 
     // Prepare and send the segment.
     let (seq_no, _) = cb.get_send_unacked();
-    let mut header = cb.tcp_header();
+    let mut header: TcpHeader = cb.tcp_header();
     header.seq_num = seq_no;
     cb.emit(header, segment.bytes.clone(), remote_link_addr);
 
     // Set new retransmit deadline.
     // ToDo: Review this.  Shouldn't we only do this for RetransmitCause::Timeout?
     let rto: Duration = cb.rto_estimate();
-    let deadline = cb.rt().now() + rto;
+    let deadline: Instant = cb.rt().now() + rto;
     cb.set_retransmit_deadline(Some(deadline));
 
     Ok(())
