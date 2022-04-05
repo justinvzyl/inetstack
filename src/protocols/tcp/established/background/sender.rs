@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::super::super::SeqNumber;
+use super::super::super::{segment::TcpHeader, SeqNumber};
 use super::super::{ctrlblk::ControlBlock, sender::UnackedSegment};
 use ::futures::FutureExt;
 use ::runtime::{fail::Fail, Runtime};
@@ -10,22 +10,23 @@ use ::std::{cmp, rc::Rc, time::Duration};
 pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
+        // ToDo: Change this to just look at the unsent queue to see if it is empty or not.
         let (unsent_seq, unsent_seq_changed) = cb.get_unsent_seq_no();
         futures::pin_mut!(unsent_seq_changed);
 
-        let (sent_seq, sent_seq_changed) = cb.get_sent_seq_no();
-        futures::pin_mut!(sent_seq_changed);
+        let (send_next, send_next_changed) = cb.get_send_next();
+        futures::pin_mut!(send_next_changed);
 
-        if sent_seq == unsent_seq {
+        if send_next == unsent_seq {
             futures::select_biased! {
                 _ = unsent_seq_changed => continue 'top,
-                _ = sent_seq_changed => continue 'top,
+                _ = send_next_changed => continue 'top,
             }
         }
 
         // Okay, we know we have some unsent data past this point. Next, check to see that the
         // remote side has available window.
-        let (win_sz, win_sz_changed) = cb.get_window_size();
+        let (win_sz, win_sz_changed) = cb.get_send_window();
         futures::pin_mut!(win_sz_changed);
 
         // If we don't have any window size at all, we need to transition to PERSIST mode and
@@ -33,12 +34,12 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         if win_sz == 0 {
             // Send a window probe (this is a one-byte packet designed to elicit a window update from our peer).
             let remote_link_addr = cb.arp().query(cb.get_remote().get_address()).await?;
-            let buf = cb
+            let buf: RT::Buf = cb
                 .pop_one_unsent_byte()
-                .unwrap_or_else(|| panic!("No unsent data? {}, {}", sent_seq, unsent_seq));
+                .unwrap_or_else(|| panic!("No unsent data? {}, {}", send_next, unsent_seq));
 
             // Update SND.NXT.
-            cb.modify_sent_seq_no(|s| s + SeqNumber::from(1));
+            cb.modify_send_next(|s| s + SeqNumber::from(1));
 
             // Add the probe byte (as a new separate buffer) to our unacknowledged queue.
             let unacked_segment = UnackedSegment {
@@ -47,13 +48,13 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
             };
             cb.push_unacked_segment(unacked_segment);
 
-            let mut header = cb.tcp_header();
-            header.seq_num = sent_seq;
+            let mut header: TcpHeader = cb.tcp_header();
+            header.seq_num = send_next;
             cb.emit(header, buf.clone(), remote_link_addr);
 
             // Note that we loop here *forever*, exponentially backing off.
             // TODO: Use the correct PERSIST mode timer here.
-            let mut timeout = Duration::from_secs(1);
+            let mut timeout: Duration = Duration::from_secs(1);
             loop {
                 futures::select_biased! {
                     _ = win_sz_changed => continue 'top,
@@ -62,15 +63,15 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
                     }
                 }
                 // Retransmit our window probe.
-                let mut header = cb.tcp_header();
-                header.seq_num = sent_seq;
+                let mut header: TcpHeader = cb.tcp_header();
+                header.seq_num = send_next;
                 cb.emit(header, buf.clone(), remote_link_addr);
             }
         }
 
         // The remote window is nonzero, but there still may not be room.
-        let (base_seq, base_seq_changed) = cb.get_base_seq_no();
-        futures::pin_mut!(base_seq_changed);
+        let (send_unacked, send_unacked_changed) = cb.get_send_unacked();
+        futures::pin_mut!(send_unacked_changed);
 
         // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
         cb.congestion_ctrl_on_cwnd_check_before_send();
@@ -81,17 +82,17 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let (ltci, ltci_changed) = cb.congestion_ctrl_watch_limited_transmit_cwnd_increase();
         futures::pin_mut!(ltci_changed);
 
-        let effective_cwnd = cwnd + ltci;
-        let next_buf_size = cb.unsent_top_size().expect("no buffer in unsent queue");
+        let effective_cwnd: u32 = cwnd + ltci;
+        let next_buf_size: usize = cb.unsent_top_size().expect("no buffer in unsent queue");
 
-        let sent_data = (sent_seq - base_seq).into();
+        let sent_data: u32 = (send_next - send_unacked).into();
         if win_sz <= (sent_data + next_buf_size as u32)
             || effective_cwnd <= sent_data
             || (effective_cwnd - sent_data) <= cb.get_mss() as u32
         {
             futures::select_biased! {
-                _ = base_seq_changed => continue 'top,
-                _ = sent_seq_changed => continue 'top,
+                _ = send_unacked_changed => continue 'top,
+                _ = send_next_changed => continue 'top,
                 _ = win_sz_changed => continue 'top,
                 _ = cwnd_changed => continue 'top,
                 _ = ltci_changed => continue 'top,
@@ -107,24 +108,24 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let remote_link_addr = cb.arp().query(cb.get_remote().get_address()).await?;
 
         // Form an outgoing packet.
-        let max_size = cmp::min(
+        let max_size: usize = cmp::min(
             cmp::min((win_sz - sent_data) as usize, cb.get_mss()),
             (effective_cwnd - sent_data) as usize,
         );
-        let segment_data = cb
+        let segment_data: RT::Buf = cb
             .pop_unsent_segment(max_size)
             .expect("No unsent data with sequence number gap?");
-        let mut segment_data_len = segment_data.len() as u32;
+        let mut segment_data_len: u32 = segment_data.len() as u32;
 
         let rto: Duration = cb.rto_current();
         cb.congestion_ctrl_on_send(rto, sent_data);
 
         // Prepare the segment and send it.
-        let mut header = cb.tcp_header();
-        header.seq_num = sent_seq;
+        let mut header: TcpHeader = cb.tcp_header();
+        header.seq_num = send_next;
         if segment_data_len == 0 {
             // This buffer is the end-of-send marker.
-            debug_assert_eq!(cb.user_is_done_sending.get(), true);
+            debug_assert!(cb.user_is_done_sending.get());
             // Set FIN and adjust sequence number consumption accordingly.
             header.fin = true;
             segment_data_len = 1;
@@ -132,7 +133,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         cb.emit(header, segment_data.clone(), remote_link_addr);
 
         // Update SND.NXT.
-        cb.modify_sent_seq_no(|s| s + SeqNumber::from(segment_data_len));
+        cb.modify_send_next(|s| s + SeqNumber::from(segment_data_len));
 
         // Put this segment on the unacknowledged list.
         let unacked_segment = UnackedSegment {
@@ -145,7 +146,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         // ToDo: Fix how the retransmit timer works.
         let (retransmit_deadline, _) = cb.get_retransmit_deadline();
         if retransmit_deadline.is_none() {
-            let rto = cb.rto_estimate();
+            let rto: Duration = cb.rto_estimate();
             cb.set_retransmit_deadline(Some(cb.rt().now() + rto));
         }
     }

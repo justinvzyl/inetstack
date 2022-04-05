@@ -103,7 +103,7 @@ impl<RT: Runtime> Receiver<RT> {
     }
 
     pub fn push(&self, buf: RT::Buf) {
-        let buf_len: u32 = buf.len() as u32;
+    let buf_len: u32 = buf.len() as u32;
         self.recv_queue.borrow_mut().push_back(buf);
         self.receive_next.set(self.receive_next.get() + SeqNumber::from(buf_len as u32));
     }
@@ -241,8 +241,8 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.congestion_ctrl_on_fast_retransmit()
     }
 
-    pub fn congestion_ctrl_on_rto(&self, base_seq_no: SeqNumber) {
-        self.sender.congestion_ctrl_on_rto(base_seq_no)
+    pub fn congestion_ctrl_on_rto(&self, send_unacknowledged: SeqNumber) {
+        self.sender.congestion_ctrl_on_rto(send_unacknowledged)
     }
 
     pub fn congestion_ctrl_on_send(&self, rto: Duration, num_sent_bytes: u32) {
@@ -266,25 +266,24 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.get_mss()
     }
 
-    // ToDo: Rename this for clarity?  There is both a send window size and a receive window size.
-    pub fn get_window_size(&self) -> (u32, WatchFuture<u32>) {
-        self.sender.get_window_size()
+    pub fn get_send_window(&self) -> (u32, WatchFuture<u32>) {
+        self.sender.get_send_window()
     }
 
-    pub fn get_base_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.sender.get_base_seq_no()
+    pub fn get_send_unacked(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.sender.get_send_unacked()
     }
 
     pub fn get_unsent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
         self.sender.get_unsent_seq_no()
     }
 
-    pub fn get_sent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.sender.get_sent_seq_no()
+    pub fn get_send_next(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.sender.get_send_next()
     }
 
-    pub fn modify_sent_seq_no(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
-        self.sender.modify_sent_seq_no(f)
+    pub fn modify_send_next(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
+        self.sender.modify_send_next(f)
     }
 
     pub fn get_retransmit_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
@@ -399,7 +398,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                     // Some of this segment's data is new.  Cut the duplicate data off of the front.
                     // If there is a SYN at the start of this segment, remove it too.
                     //
-                    let mut duplicate = u32::from(receive_next - seg_start);
+                    let mut duplicate: u32 = u32::from(receive_next - seg_start);
                     seg_start = seg_start + SeqNumber::from(duplicate);
                     seg_len -= duplicate;
                     if header.syn {
@@ -507,8 +506,8 @@ impl<RT: Runtime> ControlBlock<RT> {
         // Start by checking that the ACK acknowledges something new.
         // ToDo: Cleanup send-side variable names and removed Watched types.
         //
-        let (send_unacknowledged, _): (SeqNumber, _) = self.sender.get_base_seq_no();
-        let (send_next, _): (SeqNumber, _) = self.sender.get_sent_seq_no();
+        let (send_unacknowledged, _): (SeqNumber, _) = self.sender.get_send_unacked();
+        let (send_next, _): (SeqNumber, _) = self.sender.get_send_next();
 
         if send_unacknowledged < header.ack_num {
             if header.ack_num <= send_next {
@@ -666,7 +665,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     /// Fetch a TCP header filling out various values based on our current state.
     /// ToDo: Fix the "filling out various values based on our current state" part to actually do that correctly.
     pub fn tcp_header(&self) -> TcpHeader {
-        let mut header = TcpHeader::new(self.local.get_port(), self.remote.get_port());
+        let mut header: TcpHeader = TcpHeader::new(self.local.get_port(), self.remote.get_port());
         header.window_size = self.hdr_window_size();
 
         // Note that once we reach a synchronized state we always include a valid acknowledgement number.
@@ -682,7 +681,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         let mut header: TcpHeader = self.tcp_header();
 
         // ToDo: Think about moving this to tcp_header() as well.
-        let (seq_num, _): (SeqNumber, _) = self.get_sent_seq_no();
+        let (seq_num, _): (SeqNumber, _) = self.get_send_next();
         header.seq_num = seq_num;
 
         // ToDo: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
@@ -766,8 +765,8 @@ impl<RT: Runtime> ControlBlock<RT> {
     }
 
     pub fn hdr_window_size(&self) -> u16 {
-        let window_size = self.get_receive_window_size();
-        let hdr_window_size = (window_size >> self.window_scale)
+        let window_size: u32 = self.get_receive_window_size();
+        let hdr_window_size: u16 = (window_size >> self.window_scale)
             .try_into()
             .expect("Window size overflow");
         debug!(
@@ -791,7 +790,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             return Poll::Pending;
         }
 
-        let segment = self
+        let segment: RT::Buf = self
             .receiver
             .pop()
             .expect("poll_recv failed to pop data from receive queue");

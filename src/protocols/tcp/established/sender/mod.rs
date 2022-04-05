@@ -6,7 +6,7 @@ mod rto;
 
 use self::{congestion_ctrl as cc, rto::RtoCalculator};
 use super::ControlBlock;
-use crate::protocols::tcp::SeqNumber;
+use crate::protocols::tcp::{segment::TcpHeader, SeqNumber};
 use ::libc::{EBADMSG, EBUSY, EINVAL, ENOBUFS};
 use ::runtime::{
     fail::Fail,
@@ -39,33 +39,36 @@ pub struct UnackedSegment<RT: Runtime> {
 const UNSENT_QUEUE_CUTOFF: usize = 1024;
 
 pub struct Sender<RT: Runtime> {
-    // ToDo: Just use Figure 4 from RFC 793 here.
     //
-    //                    |------------window_size------------|
+    // Send Sequence Space:
     //
-    //               base_seq_no               sent_seq_no           unsent_seq_no
-    //                    v                         v                      v
-    // ... ---------------|-------------------------|----------------------| (unavailable)
-    //       acknowledged        unacknowledged     ^        unsent
+    //                     |<-----------------send window size----------------->|
+    //                     |                                                    |
+    //                send_unacked               send_next         send_unacked + send window
+    //                     v                         v                          v
+    // ... ----------------|-------------------------|--------------------------|------------------------------
+    //       acknowledged  |      unacknowledged     |      allowed to send     | future sequence number space
+    //
+    // Note: In RFC 793 terminology, send_unacked is SND.UNA, send_next is SND.NXT, and "send window" is SND.WND.
     //
 
-    // ToDo: Rename this.  It appears to be SND.UNA.
-    base_seq_no: WatchedValue<SeqNumber>,
+    // Sequence Number of the oldest byte of unacknowledged sent data.  In RFC 793 terms, this is SND.UNA.
+    send_unacked: WatchedValue<SeqNumber>,
 
-    // RFC 793 calls this the "retransmission queue".
+    // Queue of unacknowledged sent data.  RFC 793 calls this the "retransmission queue".
     unacked_queue: RefCell<VecDeque<UnackedSegment<RT>>>,
 
-    // ToDo: Rename this.  It appears to be SND.NXT.
-    sent_seq_no: WatchedValue<SeqNumber>,
+    // Sequence Number of the next data to be sent.  In RFC 793 terms, this is SND.NXT.
+    send_next: WatchedValue<SeqNumber>,
 
     // This is the send buffer (user data we do not yet have window to send).
     unsent_queue: RefCell<VecDeque<RT::Buf>>,
 
-    // ToDo: Remove this.
+    // ToDo: Remove this as soon as sender.rs is fixed to not use it to tell if there is unsent data.
     unsent_seq_no: WatchedValue<SeqNumber>,
 
-    // ToDo: Rename this.  It appears to be SND.WND.
-    window_size: WatchedValue<u32>,
+    // Available window to send into, as advertised by our peer.  In RFC 793 terms, this is SND.WND.
+    send_window: WatchedValue<u32>,
 
     // RFC 1323: Number of bits to shift advertised window, defaults to zero.
     window_scale: u8,
@@ -85,10 +88,10 @@ pub struct Sender<RT: Runtime> {
 impl<RT: Runtime> fmt::Debug for Sender<RT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender")
-            .field("base_seq_no", &self.base_seq_no)
-            .field("sent_seq_no", &self.sent_seq_no)
+            .field("send_unacked", &self.send_unacked)
+            .field("send_next", &self.send_next)
             .field("unsent_seq_no", &self.unsent_seq_no)
-            .field("window_size", &self.window_size)
+            .field("send_window", &self.send_window)
             .field("window_scale", &self.window_scale)
             .field("mss", &self.mss)
             .field("retransmit_deadline", &self.retransmit_deadline)
@@ -100,20 +103,20 @@ impl<RT: Runtime> fmt::Debug for Sender<RT> {
 impl<RT: Runtime> Sender<RT> {
     pub fn new(
         seq_no: SeqNumber,
-        window_size: u32,
+        send_window: u32,
         window_scale: u8,
         mss: usize,
         cc_constructor: cc::CongestionControlConstructor<RT>,
         congestion_control_options: Option<cc::Options>,
     ) -> Self {
         Self {
-            base_seq_no: WatchedValue::new(seq_no),
+            send_unacked: WatchedValue::new(seq_no),
             unacked_queue: RefCell::new(VecDeque::new()),
-            sent_seq_no: WatchedValue::new(seq_no),
+            send_next: WatchedValue::new(seq_no),
             unsent_queue: RefCell::new(VecDeque::new()),
             unsent_seq_no: WatchedValue::new(seq_no),
 
-            window_size: WatchedValue::new(window_size),
+            send_window: WatchedValue::new(send_window),
             window_scale,
             mss,
 
@@ -128,20 +131,20 @@ impl<RT: Runtime> Sender<RT> {
         self.mss
     }
 
-    pub fn get_window_size(&self) -> (u32, WatchFuture<u32>) {
-        self.window_size.watch()
+    pub fn get_send_window(&self) -> (u32, WatchFuture<u32>) {
+        self.send_window.watch()
     }
 
-    pub fn get_base_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.base_seq_no.watch()
+    pub fn get_send_unacked(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.send_unacked.watch()
     }
 
-    pub fn get_sent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.sent_seq_no.watch()
+    pub fn get_send_next(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+        self.send_next.watch()
     }
 
-    pub fn modify_sent_seq_no(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
-        self.sent_seq_no.modify(f)
+    pub fn modify_send_next(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
+        self.send_next.modify(f)
     }
 
     pub fn get_unsent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
@@ -212,21 +215,21 @@ impl<RT: Runtime> Sender<RT> {
             // No unsent data queued up, so we can try to send this new buffer immediately.
 
             // Calculate amount of data in flight (SND.NXT - SND.UNA).
-            let base_seq = self.base_seq_no.get();
-            let sent_seq = self.sent_seq_no.get();
-            let sent_data: u32 = (sent_seq - base_seq).into();
+            let send_unacknowledged: SeqNumber = self.send_unacked.get();
+            let send_next: SeqNumber = self.send_next.get();
+            let sent_data: u32 = (send_next - send_unacknowledged).into();
 
             // ToDo: What limits buffer len to MSS?
-            let in_flight_after_send = sent_data + buf_len;
+            let in_flight_after_send: u32 = sent_data + buf_len;
 
             // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
             self.congestion_ctrl.on_cwnd_check_before_send();
-            let cwnd = self.congestion_ctrl.get_cwnd();
+            let cwnd: u32 = self.congestion_ctrl.get_cwnd();
 
             // The limited transmit algorithm can increase the effective size of cwnd by up to 2MSS.
-            let effective_cwnd = cwnd + self.congestion_ctrl.get_limited_transmit_cwnd_increase();
+            let effective_cwnd: u32 = cwnd + self.congestion_ctrl.get_limited_transmit_cwnd_increase();
 
-            let win_sz = self.window_size.get();
+            let win_sz: u32 = self.send_window.get();
 
             if win_sz > 0
                 && win_sz >= in_flight_after_send
@@ -239,11 +242,11 @@ impl<RT: Runtime> Sender<RT> {
                     self.congestion_ctrl.on_send(rto, sent_data);
 
                     // Prepare the segment and send it.
-                    let mut header = cb.tcp_header();
-                    header.seq_num = sent_seq;
+                    let mut header: TcpHeader = cb.tcp_header();
+                    header.seq_num = send_next;
                     if buf_len == 0 {
                         // This buffer is the end-of-send marker.
-                        debug_assert_eq!(cb.user_is_done_sending.get(), true);
+                        debug_assert!(cb.user_is_done_sending.get());
                         // Set FIN and adjust sequence number consumption accordingly.
                         header.fin = true;
                         buf_len = 1;
@@ -251,7 +254,7 @@ impl<RT: Runtime> Sender<RT> {
                     cb.emit(header, buf.clone(), remote_link_addr);
 
                     // Update SND.NXT.
-                    self.sent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
+                    self.send_next.modify(|s| s + SeqNumber::from(buf_len));
 
                     // ToDo: We don't need to track this.
                     self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
@@ -265,7 +268,7 @@ impl<RT: Runtime> Sender<RT> {
 
                     // Start the retransmission timer if it isn't already running.
                     if self.retransmit_deadline.get().is_none() {
-                        let rto = self.rto.borrow().estimate();
+                        let rto: Duration = self.rto.borrow().estimate();
                         self.retransmit_deadline.set(Some(cb.rt().now() + rto));
                     }
 
@@ -300,11 +303,11 @@ impl<RT: Runtime> Sender<RT> {
         //  + update the send window.
         //
 
-        let base_seq_no = self.base_seq_no.get();
-        let sent_seq_no = self.sent_seq_no.get();
+        let send_unacked: SeqNumber = self.send_unacked.get();
+        let send_next: SeqNumber = self.send_next.get();
 
-        let bytes_outstanding: u32 = (sent_seq_no - base_seq_no).into();
-        let bytes_acknowledged: u32 = (seg_ack - base_seq_no).into();
+        let bytes_outstanding: u32 = (send_next - send_unacked).into();
+        let bytes_acknowledged: u32 = (seg_ack - send_unacked).into();
 
         if bytes_acknowledged > bytes_outstanding {
             return Err(Fail::new(EBADMSG, "ACK is outside of send window"));
@@ -313,26 +316,26 @@ impl<RT: Runtime> Sender<RT> {
         // Inform congestion control about this ACK.
         let rto: Duration = self.current_rto();
         self.congestion_ctrl
-            .on_ack_received(rto, base_seq_no, sent_seq_no, seg_ack);
+            .on_ack_received(rto, send_unacked, send_next, seg_ack);
         if bytes_acknowledged == 0 {
             return Ok(());
         }
 
         // Manage the retransmit timer.
-        if seg_ack == sent_seq_no {
+        if seg_ack == send_next {
             // If we've acknowledged all sent data, turn off the retransmit timer.
             self.retransmit_deadline.set(None);
         } else {
             // Otherwise, set it to the current RTO.
             // ToDo: This looks wrong.  Why extend the deadline here?
-            let deadline = now + self.rto.borrow().estimate();
+            let deadline: Instant = now + self.rto.borrow().estimate();
             self.retransmit_deadline.set(Some(deadline));
         }
 
         // Remove now acknowledged data from the unacked queue and advance SND.UNA.
         // TODO: Do acks need to be on segment boundaries? How does this interact with repacketization?
         // Answer: No, ACKs need not be on segment boundaries.  We need to handle this properly.
-        let mut bytes_remaining = bytes_acknowledged as usize;
+        let mut bytes_remaining: usize = bytes_acknowledged as usize;
         while let Some(segment) = self.unacked_queue.borrow_mut().pop_front() {
             if segment.bytes.len() > bytes_remaining {
                 // TODO: We need to close the connection in this case.
@@ -349,14 +352,8 @@ impl<RT: Runtime> Sender<RT> {
                 break;
             }
         }
-        self.base_seq_no
+        self.send_unacked
             .modify(|b| b + SeqNumber::from(bytes_acknowledged));
-        let new_base_seq_no = self.base_seq_no.get();
-        if new_base_seq_no < base_seq_no {
-            // We've wrapped around, and so we need to do some bookkeeping
-            // ToDo: Figure out what this is doing -- it's probably wrong.
-            self.congestion_ctrl.on_base_seq_no_wraparound();
-        }
 
         Ok(())
     }
@@ -365,8 +362,8 @@ impl<RT: Runtime> Sender<RT> {
         let mut queue = self.unsent_queue.borrow_mut();
 
         let buf = queue.front_mut()?;
-        let mut cloned_buf = buf.clone();
-        let buf_len = buf.len();
+        let mut cloned_buf: RT::Buf = buf.clone();
+        let buf_len: usize = buf.len();
 
         // Pop one byte off the buf still in the queue and all but one of the bytes on our clone.
         buf.adjust(1);
@@ -378,11 +375,11 @@ impl<RT: Runtime> Sender<RT> {
     pub fn pop_unsent(&self, max_bytes: usize) -> Option<RT::Buf> {
         // TODO: Use a scatter/gather array to coalesce multiple buffers into a single segment.
         let mut unsent_queue = self.unsent_queue.borrow_mut();
-        let mut buf = unsent_queue.pop_front()?;
-        let buf_len = buf.len();
+        let mut buf: RT::Buf = unsent_queue.pop_front()?;
+        let buf_len: usize = buf.len();
 
         if buf_len > max_bytes {
-            let mut cloned_buf = buf.clone();
+            let mut cloned_buf: RT::Buf = buf.clone();
 
             buf.adjust(max_bytes);
             cloned_buf.trim(buf_len - max_bytes);
@@ -398,17 +395,17 @@ impl<RT: Runtime> Sender<RT> {
         Some(unsent_queue.front()?.len())
     }
 
-    pub fn update_remote_window(&self, window_size_hdr: u16) -> Result<(), Fail> {
-        // TODO: Is this the right check?
-        let window_size = (window_size_hdr as u32)
+    pub fn update_remote_window(&self, send_window_hdr: u16) -> Result<(), Fail> {
+        // TODO: Is this the right check?  No - Remove this check, it should never fail if window_scale is legit.
+        let send_window: u32 = (send_window_hdr as u32)
             .checked_shl(self.window_scale as u32)
             .ok_or(Fail::new(ENOBUFS, "window size overlow"))?;
 
         debug!(
             "Updating window size -> {} (hdr {}, scale {})",
-            window_size, window_size_hdr, self.window_scale
+            send_window, send_window_hdr, self.window_scale
         );
-        self.window_size.set(window_size);
+        self.send_window.set(send_window);
 
         Ok(())
     }
@@ -429,8 +426,8 @@ impl<RT: Runtime> Sender<RT> {
         self.congestion_ctrl.on_fast_retransmit()
     }
 
-    pub fn congestion_ctrl_on_rto(&self, base_seq_no: SeqNumber) {
-        self.congestion_ctrl.on_rto(base_seq_no)
+    pub fn congestion_ctrl_on_rto(&self, send_unacked: SeqNumber) {
+        self.congestion_ctrl.on_rto(send_unacked)
     }
 
     pub fn congestion_ctrl_on_send(&self, rto: Duration, num_sent_bytes: u32) {

@@ -23,22 +23,22 @@ pub trait SlowStartCongestionAvoidance<RT: Runtime> {
         (u32::MAX, WatchFuture::Pending)
     }
 
-    // Called immediately before the cwnd check is performed before data is sent
+    // Called immediately before the cwnd check is performed before data is sent.
     fn on_cwnd_check_before_send(&self) {}
 
     fn on_ack_received(
         &self,
         _rto: Duration,
-        _base_seq_no: SeqNumber,
-        _sent_seq_no: SeqNumber,
+        _send_unacked: SeqNumber,
+        _send_next: SeqNumber,
         _ack_seq_no: SeqNumber,
     ) {
     }
 
-    // Called immediately before retransmit after RTO
-    fn on_rto(&self, _base_seq_no: SeqNumber) {}
+    // Called immediately before retransmit after RTO.
+    fn on_rto(&self, _send_unacked: SeqNumber) {}
 
-    // Called immediately before a segment is sent for the 1st time
+    // Called immediately before a segment is sent for the 1st time.
     fn on_send(&self, _rto: Duration, _num_sent_bytes: u32) {}
 }
 
@@ -58,7 +58,6 @@ where
     }
 
     fn on_fast_retransmit(&self) {}
-    fn on_base_seq_no_wraparound(&self) {}
 }
 
 pub trait LimitedTransmit<RT: Runtime>
