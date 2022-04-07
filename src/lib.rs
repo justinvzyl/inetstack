@@ -410,26 +410,6 @@ impl<RT: Runtime> Catnip<RT> {
         }
     }
 
-    pub fn wait_all_pushes(&mut self, qts: &mut Vec<QToken>) {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::wait_all_pushes");
-        trace!("wait_all_pushes(): qts={:?}", qts);
-        self.poll_bg_work();
-        for qt in qts.drain(..) {
-            let handle = self.rt.get_handle(qt.into()).unwrap();
-            // TODO I don't understand what guarantees that this task will be done by the time we
-            // get here and make this assert true.
-            assert!(handle.has_completed());
-            assert_eq!(
-                match self.take_operation(handle) {
-                    (_, OperationResult::Push) => Ok(()),
-                    _ => Err(()),
-                },
-                Ok(())
-            )
-        }
-    }
-
     pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<RT::Buf>) {
         #[cfg(feature = "profiler")]
         timer!("catnip::wait_any2");
