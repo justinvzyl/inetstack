@@ -392,57 +392,60 @@ impl<RT: Runtime> Catnip<RT> {
         Ok(self.rt.schedule(future).into_raw().into())
     }
 
-    /// Block until request represented by `qt` is finished returning the file descriptor
-    /// representing this request and the results of that operation.
-    pub fn wait2(&mut self, qt: QToken) -> (QDesc, OperationResult<RT::Buf>) {
+    /// Waits for an operation to complete.
+    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<RT::Buf>), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::wait2");
         trace!("wait2(): qt={:?}", qt);
-        let handle = self.rt.get_handle(qt.into()).unwrap();
 
-        // Continously call the scheduler to make progress until the future represented by `qt`
-        // finishes.
+        // Retrieve associated schedule handle.
+        let handle: SchedulerHandle = match self.rt.get_handle(qt.into()) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+        };
+
         loop {
+            // Poll first, so as to give pending operations a chance to complete.
             self.poll_bg_work();
+
+            // The operation has completed, so extract the result and return.
             if handle.has_completed() {
-                return self.take_operation(handle);
+                return Ok(self.take_operation(handle));
             }
         }
     }
 
-    pub fn wait_all_pushes(&mut self, qts: &mut Vec<QToken>) {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::wait_all_pushes");
-        trace!("wait_all_pushes(): qts={:?}", qts);
-        self.poll_bg_work();
-        for qt in qts.drain(..) {
-            let handle = self.rt.get_handle(qt.into()).unwrap();
-            // TODO I don't understand what guarantees that this task will be done by the time we
-            // get here and make this assert true.
-            assert!(handle.has_completed());
-            assert_eq!(
-                match self.take_operation(handle) {
-                    (_, OperationResult::Push) => Ok(()),
-                    _ => Err(()),
-                },
-                Ok(())
-            )
-        }
-    }
-
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<RT::Buf>) {
+    /// Waits for any operation to complete.
+    pub fn wait_any2(
+        &mut self,
+        qts: &[QToken],
+    ) -> Result<(usize, QDesc, OperationResult<RT::Buf>), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::wait_any2");
         trace!("wait_any2(): qts={:?}", qts);
+
         loop {
+            // Poll first, so as to give pending operations a chance to complete.
             self.poll_bg_work();
+
+            // Search for any operation that has completed.
             for (i, &qt) in qts.iter().enumerate() {
-                let handle = self.rt.get_handle(qt.into()).unwrap();
+                // Retrieve associated schedule handle.
+                // TODO: move this out of the loop.
+                let mut handle: SchedulerHandle = match self.rt.get_handle(qt.into()) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+                };
+
+                // Found one, so extract the result and return.
                 if handle.has_completed() {
-                    let (qd, r) = self.take_operation(handle);
-                    return (i, qd, r);
+                    let (qd, r): (QDesc, OperationResult<RT::Buf>) = self.take_operation(handle);
+                    return Ok((i, qd, r));
                 }
-                handle.into_raw();
+
+                // Return this operation to the scheduling queue by removing the associated key
+                // (which would otherwise cause the operation to be freed).
+                handle.take_key();
             }
         }
     }

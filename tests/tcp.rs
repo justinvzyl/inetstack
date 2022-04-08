@@ -69,7 +69,11 @@ fn do_tcp_establish_connection(port: u16) {
         libos.bind(sockfd, local).unwrap();
         libos.listen(sockfd, 8).unwrap();
         let qt: QToken = libos.accept(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
+
         let qd: QDesc = match qr {
             OperationResult::Accept(qd) => qd,
             _ => panic!("accept() has failed"),
@@ -96,7 +100,10 @@ fn do_tcp_establish_connection(port: u16) {
         // Open connection.
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
         let qt: QToken = libos.connect(sockfd, remote).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Connect => (),
             _ => panic!("connect() has failed"),
@@ -139,7 +146,10 @@ fn do_tcp_push_remote(port: u16) {
         libos.bind(sockfd, local).unwrap();
         libos.listen(sockfd, 8).unwrap();
         let qt: QToken = libos.accept(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         let qd: QDesc = match qr {
             OperationResult::Accept(qd) => qd,
             _ => panic!("accept() has failed"),
@@ -147,7 +157,10 @@ fn do_tcp_push_remote(port: u16) {
 
         // Pop data.
         let qt: QToken = libos.pop(qd).unwrap();
-        let (qd, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (qd, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Pop(_, _) => (),
             _ => panic!("pop() has has failed {:?}", qr),
@@ -174,7 +187,10 @@ fn do_tcp_push_remote(port: u16) {
         // Open connection.
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
         let qt: QToken = libos.connect(sockfd, remote).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Connect => (),
             _ => panic!("connect() has failed"),
@@ -185,7 +201,10 @@ fn do_tcp_push_remote(port: u16) {
 
         // Push data.
         let qt: QToken = libos.push2(sockfd, &bytes).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Push => (),
             _ => panic!("push() has failed"),
@@ -382,7 +401,10 @@ fn do_tcp_bad_connect(port: u16) {
         libos.bind(sockfd, local).unwrap();
         libos.listen(sockfd, 8).unwrap();
         let qt: QToken = libos.accept(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         let qd: QDesc = match qr {
             OperationResult::Accept(qd) => qd,
             _ => panic!("accept() has failed"),
@@ -416,7 +438,10 @@ fn do_tcp_bad_connect(port: u16) {
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(Ipv4Addr::new(0, 0, 0, 0), port);
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
         let qt: QToken = libos.connect(sockfd, remote).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Connect => panic!("connect() should have failed"),
             _ => (),
@@ -426,7 +451,10 @@ fn do_tcp_bad_connect(port: u16) {
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
         let qt: QToken = libos.connect(sockfd, remote).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Connect => (),
             _ => panic!("connect() has failed"),

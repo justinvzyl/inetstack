@@ -84,7 +84,10 @@ fn udp_push_remote() {
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Push => (),
             _ => panic!("push() failed"),
@@ -92,7 +95,10 @@ fn udp_push_remote() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Pop(_, _) => (),
             _ => panic!("pop() failed"),
@@ -112,7 +118,10 @@ fn udp_push_remote() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         let bytes: Bytes = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => panic!("pop() failed"),
@@ -120,7 +129,10 @@ fn udp_push_remote() {
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, alice_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Push => (),
             _ => panic!("push() failed"),
@@ -158,7 +170,10 @@ fn udp_loopback() {
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Push => (),
             _ => panic!("push() failed"),
@@ -166,7 +181,10 @@ fn udp_loopback() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Pop(_, _) => (),
             _ => panic!("pop() failed"),
@@ -186,7 +204,10 @@ fn udp_loopback() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         let bytes: Bytes = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => panic!("pop() failed"),
@@ -194,7 +215,10 @@ fn udp_loopback() {
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, alice_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = libos.wait2(qt);
+        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
         match qr {
             OperationResult::Push => (),
             _ => panic!("push() failed"),
