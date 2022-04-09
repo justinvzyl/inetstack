@@ -7,7 +7,7 @@ mod rto;
 use self::{congestion_ctrl as cc, rto::RtoCalculator};
 use super::ControlBlock;
 use crate::protocols::tcp::{segment::TcpHeader, SeqNumber};
-use ::libc::{EBADMSG, EBUSY, EINVAL, ENOBUFS};
+use ::libc::{EBADMSG, EBUSY, EINVAL};
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
@@ -16,7 +16,7 @@ use ::runtime::{
 };
 use ::std::{
     boxed::Box,
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::VecDeque,
     convert::TryInto,
     fmt,
@@ -53,7 +53,7 @@ pub struct Sender<RT: Runtime> {
     //
 
     // Sequence Number of the oldest byte of unacknowledged sent data.  In RFC 793 terms, this is SND.UNA.
-    send_unacked: WatchedValue<SeqNumber>,
+    pub send_unacked: WatchedValue<SeqNumber>,
 
     // Queue of unacknowledged sent data.  RFC 793 calls this the "retransmission queue".
     unacked_queue: RefCell<VecDeque<UnackedSegment<RT>>>,
@@ -69,6 +69,8 @@ pub struct Sender<RT: Runtime> {
 
     // Available window to send into, as advertised by our peer.  In RFC 793 terms, this is SND.WND.
     send_window: WatchedValue<u32>,
+    send_window_last_update_seq: Cell<SeqNumber>,  // SND.WL1
+    send_window_last_update_ack: Cell<SeqNumber>,  // SND.WL2
 
     // RFC 1323: Number of bits to shift advertised window, defaults to zero.
     window_scale: u8,
@@ -77,12 +79,12 @@ pub struct Sender<RT: Runtime> {
     // ToDo: Revisit this once we support path MTU discovery.
     mss: usize,
 
-    retransmit_deadline: WatchedValue<Option<Instant>>,
+    pub retransmit_deadline: WatchedValue<Option<Instant>>,
 
     // Retransmission Timeout (RTO) calculator.
-    rto: RefCell<RtoCalculator>,
+    pub rto: RefCell<RtoCalculator>,
 
-    congestion_ctrl: Box<dyn cc::CongestionControl<RT>>,
+    pub congestion_ctrl: Box<dyn cc::CongestionControl<RT>>,
 }
 
 impl<RT: Runtime> fmt::Debug for Sender<RT> {
@@ -117,6 +119,9 @@ impl<RT: Runtime> Sender<RT> {
             unsent_seq_no: WatchedValue::new(seq_no),
 
             send_window: WatchedValue::new(send_window),
+            send_window_last_update_seq: Cell::new(seq_no),
+            send_window_last_update_ack: Cell::new(seq_no),
+        
             window_scale,
             mss,
 
@@ -296,41 +301,16 @@ impl<RT: Runtime> Sender<RT> {
     // ToDo: Rename this to something more meaningful.  Or maybe move this back into mainline receive?
     pub fn remote_ack(&self, seg_ack: SeqNumber, now: Instant) -> Result<(), Fail> {
         // ToDo: What we're supposed to do here:
-        // This acknowledges new data, so update SND.UNA = SEG.ACK
+        // This acknowledges new data, so
+        //  + update SND.UNA = SEG.ACK (fixed - now done in receive()),
         //  + remove acknowledged data from the retransmission queue,
         //  + report any fully acknowledged buffers to the user (do we have an API to do this?),
-        //  + manage the retransmission timer,
-        //  + update the send window.
+        //  + manage the retransmission timer (fixed - now done in receive()),
+        //  + update the send window. (done by update_send_window() called from receive()).
         //
 
         let send_unacked: SeqNumber = self.send_unacked.get();
-        let send_next: SeqNumber = self.send_next.get();
-
-        let bytes_outstanding: u32 = (send_next - send_unacked).into();
         let bytes_acknowledged: u32 = (seg_ack - send_unacked).into();
-
-        if bytes_acknowledged > bytes_outstanding {
-            return Err(Fail::new(EBADMSG, "ACK is outside of send window"));
-        }
-
-        // Inform congestion control about this ACK.
-        let rto: Duration = self.current_rto();
-        self.congestion_ctrl
-            .on_ack_received(rto, send_unacked, send_next, seg_ack);
-        if bytes_acknowledged == 0 {
-            return Ok(());
-        }
-
-        // Manage the retransmit timer.
-        if seg_ack == send_next {
-            // If we've acknowledged all sent data, turn off the retransmit timer.
-            self.retransmit_deadline.set(None);
-        } else {
-            // Otherwise, set it to the current RTO.
-            // ToDo: This looks wrong.  Why extend the deadline here?
-            let deadline: Instant = now + self.rto.borrow().estimate();
-            self.retransmit_deadline.set(Some(deadline));
-        }
 
         // Remove now acknowledged data from the unacked queue and advance SND.UNA.
         // TODO: Do acks need to be on segment boundaries? How does this interact with repacketization?
@@ -352,8 +332,6 @@ impl<RT: Runtime> Sender<RT> {
                 break;
             }
         }
-        self.send_unacked
-            .modify(|b| b + SeqNumber::from(bytes_acknowledged));
 
         Ok(())
     }
@@ -395,19 +373,22 @@ impl<RT: Runtime> Sender<RT> {
         Some(unsent_queue.front()?.len())
     }
 
-    pub fn update_remote_window(&self, send_window_hdr: u16) -> Result<(), Fail> {
-        // TODO: Is this the right check?  No - Remove this check, it should never fail if window_scale is legit.
-        let send_window: u32 = (send_window_hdr as u32)
-            .checked_shl(self.window_scale as u32)
-            .ok_or(Fail::new(ENOBUFS, "window size overlow"))?;
+    // Function to update our send window to the value advertised by our peer.
+    pub fn update_send_window(&self, header: &TcpHeader) {
+        // Check that the ACK we're using to update the window isn't older than the last one used to update it.
+        if self.send_window_last_update_seq.get() < header.seq_num ||
+            (self.send_window_last_update_seq.get() == header.seq_num &&
+             self.send_window_last_update_ack.get() <= header.ack_num) {
+                // Update our send window.
+                self.send_window.set((header.window_size as u32) << self.window_scale);
+                self.send_window_last_update_seq.set(header.seq_num);
+                self.send_window_last_update_ack.set(header.ack_num);
+            }
 
         debug!(
             "Updating window size -> {} (hdr {}, scale {})",
-            send_window, send_window_hdr, self.window_scale
+            self.send_window.get(), header.window_size, self.window_scale
         );
-        self.send_window.set(send_window);
-
-        Ok(())
     }
 
     pub fn remote_mss(&self) -> usize {

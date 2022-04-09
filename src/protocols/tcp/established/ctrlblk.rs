@@ -504,58 +504,75 @@ impl<RT: Runtime> ControlBlock<RT> {
         // in some states (e.g. TIME-WAIT) as it is more wasteful to always check that we're not in TIME-WAIT.
         //
         // Start by checking that the ACK acknowledges something new.
-        // ToDo: Cleanup send-side variable names and removed Watched types.
+        // ToDo: Look into removing Watched types.
         //
         let (send_unacknowledged, _): (SeqNumber, _) = self.sender.get_send_unacked();
         let (send_next, _): (SeqNumber, _) = self.sender.get_send_next();
+
+        // ToDo: Restructure this call into congestion control to either integrate it directly or make it more fine-
+        // grained.  It currently duplicates the new/duplicate ack check itself internally, which is inefficient.
+        // We should either make separate calls for each case or integrate those cases directly.
+        self.sender.congestion_ctrl.on_ack_received(
+            self.sender.current_rto(),
+            send_unacknowledged,
+            send_next,
+            header.ack_num);
 
         if send_unacknowledged < header.ack_num {
             if header.ack_num <= send_next {
                 // This segment acknowledges new data (possibly and/or FIN).
                 //
+
+                // Remove now acknowledged data from the unacknowledged queue.
                 // ToDo: Fix below function.
                 if let Err(e) = self.sender.remote_ack(header.ack_num, now) {
                     warn!("Ignoring remote ack for {:?}: {:?}", header, e);
                 }
 
-                // Some states require additional processing.
-                // ToDo: Review order of checks here for efficiency.
-                //
-                match self.state.get() {
-                    State::Established => (),  // Common case.  Nothing more to do.
-                    State::FinWait1 => {
-                        // If our FIN is now ACK'd, then enter FIN-WAIT-2.
-                        if header.ack_num == send_next {
+                // Update SND.UNA to SEG.ACK.
+                self.sender.send_unacked.set(header.ack_num);
+
+                // Update our send window (SND.WND).
+                self.sender.update_send_window(header);
+
+                if header.ack_num == send_next {
+                    // This segment acknowledges everything we've ever sent (i.e. nothing is still outstanding).
+                    //
+
+                    // Since we no longer have anything outstanding, we can turn off the retransmit timer.
+                    self.sender.retransmit_deadline.set(None);
+
+                    // Some states require additional processing.
+                    //
+                    match self.state.get() {
+                        State::Established => (),  // Common case.  Nothing more to do.
+                        State::FinWait1 => {
+                            // Our FIN is now ACK'd, so enter FIN-WAIT-2.
                             self.state.set(State::FinWait2);
-                        }
-                    },
-                    State::Closing => {
-                        // If our FIN is now ACK'd, then enter TIME-WAIT.
-                        if header.ack_num == send_next {
+                        },
+                        State::Closing => {
+                            // Our FIN is now ACK'd, so enter TIME-WAIT.
                             self.state.set(State::TimeWait);
-                        }
-                    }
-                    State::LastAck => {
-                        // In LAST-ACK state we're just waiting for all of our sent data (including FIN) to be ACK'd.
-                        // Note we may have to retransmit something, but we've sent it all (incl. FIN) at least once.
-                        // Check if this ACK acknowledges our FIN.  If it does, we're done.
-                        //
-                        if header.ack_num == send_next {
+                        },
+                        State::LastAck => {
+                            // Our FIN is now ACK'd, so this connection can be safely closed.  In LAST-ACK state we
+                            // were just waiting for all of our sent data (including FIN) to be ACK'd, so now that it
+                            // is, we can delete our state (we maintained it in case we needed to retransmit something,
+                            // but we had already sent everything we're ever going to send (incl. FIN) at least once).
+                            //
                             self.state.set(State::Closed);
 
                             // ToDo: Delete the ControlBlock.
+                        },
 
-                            return;
-                        }
-                    },
-
-                    _ => (),
-                }
-
-                // See if the send window should be updated.
-                // ToDo: Fix below function.  Note that SEG.WND is an offset from SEG.ACK.
-                if let Err(e) = self.sender.update_remote_window(header.window_size as u16) {
-                    warn!("Invalid window size update for {:?}: {:?}", header, e);
+                        _ => (),
+                    }
+                } else {
+                    // Update the retransmit timer.  Some of our outstanding data is now acknowledged, but not all.
+                    // ToDo: This looks wrong.  We should reset the retransmit timer match the deadline for the oldest
+                    // still-outstanding data.  The below is overly generous (minor efficiency issue).
+                    let deadline: Instant = now + self.sender.rto.borrow().estimate();
+                    self.sender.retransmit_deadline.set(Some(deadline));
                 }
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
