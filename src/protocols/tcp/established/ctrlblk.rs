@@ -522,12 +522,10 @@ impl<RT: Runtime> ControlBlock<RT> {
             if header.ack_num <= send_next {
                 // This segment acknowledges new data (possibly and/or FIN).
                 //
+                let bytes_acknowledged: u32 = (header.ack_num - send_unacknowledged).into();
 
-                // Remove now acknowledged data from the unacknowledged queue.
-                // ToDo: Fix below function.
-                if let Err(e) = self.sender.remote_ack(header.ack_num, now) {
-                    warn!("Ignoring remote ack for {:?}: {:?}", header, e);
-                }
+                // Remove the now acknowledged data from the unacknowledged queue.
+                self.sender.remove_acknowledged_data(bytes_acknowledged, now);
 
                 // Update SND.UNA to SEG.ACK.
                 self.sender.send_unacked.set(header.ack_num);
@@ -536,7 +534,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                 self.sender.update_send_window(header);
 
                 if header.ack_num == send_next {
-                    // This segment acknowledges everything we've ever sent (i.e. nothing is still outstanding).
+                    // This segment acknowledges everything we've sent so far (i.e. nothing is currently outstanding).
                     //
 
                     // Since we no longer have anything outstanding, we can turn off the retransmit timer.
@@ -569,8 +567,8 @@ impl<RT: Runtime> ControlBlock<RT> {
                     }
                 } else {
                     // Update the retransmit timer.  Some of our outstanding data is now acknowledged, but not all.
-                    // ToDo: This looks wrong.  We should reset the retransmit timer match the deadline for the oldest
-                    // still-outstanding data.  The below is overly generous (minor efficiency issue).
+                    // ToDo: This looks wrong.  We should reset the retransmit timer to match the deadline for the
+                    // oldest still-outstanding data.  The below is overly generous (minor efficiency issue).
                     let deadline: Instant = now + self.sender.rto.borrow().estimate();
                     self.sender.retransmit_deadline.set(Some(deadline));
                 }

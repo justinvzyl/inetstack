@@ -7,7 +7,7 @@ mod rto;
 use self::{congestion_ctrl as cc, rto::RtoCalculator};
 use super::ControlBlock;
 use crate::protocols::tcp::{segment::TcpHeader, SeqNumber};
-use ::libc::{EBADMSG, EBUSY, EINVAL};
+use ::libc::{EBUSY, EINVAL};
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
@@ -297,43 +297,58 @@ impl<RT: Runtime> Sender<RT> {
         Ok(())
     }
 
-    // Process an "acceptable" acknowledgement received from our peer.
-    // ToDo: Rename this to something more meaningful.  Or maybe move this back into mainline receive?
-    pub fn remote_ack(&self, seg_ack: SeqNumber, now: Instant) -> Result<(), Fail> {
+    // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
+    //
+    pub fn remove_acknowledged_data(&self, bytes_acknowledged: u32, now: Instant) {
         // ToDo: What we're supposed to do here:
         // This acknowledges new data, so
         //  + update SND.UNA = SEG.ACK (fixed - now done in receive()),
         //  + remove acknowledged data from the retransmission queue,
         //  + report any fully acknowledged buffers to the user (do we have an API to do this?),
         //  + manage the retransmission timer (fixed - now done in receive()),
-        //  + update the send window. (done by update_send_window() called from receive()).
+        //  + update the send window. (fixed - done by update_send_window() called from receive()).
         //
 
-        let send_unacked: SeqNumber = self.send_unacked.get();
-        let bytes_acknowledged: u32 = (seg_ack - send_unacked).into();
-
-        // Remove now acknowledged data from the unacked queue and advance SND.UNA.
-        // TODO: Do acks need to be on segment boundaries? How does this interact with repacketization?
-        // Answer: No, ACKs need not be on segment boundaries.  We need to handle this properly.
+        // Remove now acknowledged data from the unacked queue.
+        //
         let mut bytes_remaining: usize = bytes_acknowledged as usize;
-        while let Some(segment) = self.unacked_queue.borrow_mut().pop_front() {
-            if segment.bytes.len() > bytes_remaining {
-                // TODO: We need to close the connection in this case.
-                return Err(Fail::new(EBADMSG, "ACK isn't on segment boundary"));
-            }
-            bytes_remaining -= segment.bytes.len();
 
-            // Add sample for RTO if not a retransmission
-            // TODO: TCP timestamp support.
-            if let Some(initial_tx) = segment.initial_tx {
-                self.rto.borrow_mut().add_sample(now - initial_tx);
+        while bytes_remaining != 0 {
+            if let Some(segment) = self.unacked_queue.borrow_mut().front_mut() {
+
+                // Add sample for RTO if we have an initial transmit time.
+                // Note that in the case of repacketization, an ack for the first byte is enough for the time sample.
+                // ToDo: TCP timestamp support.
+                if let Some(initial_tx) = segment.initial_tx {
+                    self.rto.borrow_mut().add_sample(now - initial_tx);
+                }
+
+                if segment.bytes.len() > bytes_remaining {
+                    // Only some of the data in this segment has been acked.  Remove just the acked amount.
+                    segment.bytes.adjust(bytes_remaining);
+                    segment.initial_tx = None;
+
+                    // Leave this segment on the unacknowledged queue.
+                    break;
+                }
+
+                if segment.bytes.len() == 0 {
+                    // This buffer is the end-of-send marker.  So we should only have one byte of acknowledged sequence
+                    // space remaining (corresponding to our FIN).
+                    debug_assert_eq!(bytes_remaining, 1);
+                    bytes_remaining = 0;
+                }
+
+                bytes_remaining -= segment.bytes.len();
+
+            } else {
+                debug_assert!(false);  // Shouldn't have bytes_remaining with no segments remaining in unacked_queue.
             }
-            if bytes_remaining == 0 {
-                break;
-            }
+
+            // Remove this segment from the unacknowledged queue.
+            // ToDo: Mark the send operation associated with this buffer as complete, so the user can reuse the buffer.
+            self.unacked_queue.borrow_mut().pop_front();
         }
-
-        Ok(())
     }
 
     pub fn pop_one_unsent_byte(&self) -> Option<RT::Buf> {
@@ -373,7 +388,8 @@ impl<RT: Runtime> Sender<RT> {
         Some(unsent_queue.front()?.len())
     }
 
-    // Function to update our send window to the value advertised by our peer.
+    // Update our send window to the value advertised by our peer.
+    //
     pub fn update_send_window(&self, header: &TcpHeader) {
         // Check that the ACK we're using to update the window isn't older than the last one used to update it.
         if self.send_window_last_update_seq.get() < header.seq_num ||
@@ -383,7 +399,7 @@ impl<RT: Runtime> Sender<RT> {
                 self.send_window.set((header.window_size as u32) << self.window_scale);
                 self.send_window_last_update_seq.set(header.seq_num);
                 self.send_window_last_update_ack.set(header.ack_num);
-            }
+        }
 
         debug!(
             "Updating window size -> {} (hdr {}, scale {})",
