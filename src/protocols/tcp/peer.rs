@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//==============================================================================
+// Imports
+//==============================================================================
+
 use super::{
     active_open::ActiveOpenSocket, established::EstablishedSocket, isn_generator::IsnGenerator,
     passive_open::PassiveSocket,
@@ -12,6 +16,7 @@ use crate::protocols::{
     ip::IpProtocol,
     ipv4::{Ipv4Endpoint, Ipv4Header},
     tcp::{
+        established::ControlBlock,
         operations::{AcceptFuture, ConnectFuture, ConnectFutureState, PopFuture, PushFuture},
         segment::{TcpHeader, TcpSegment},
     },
@@ -33,6 +38,10 @@ use ::std::{
 #[cfg(feature = "profiler")]
 use perftools::timer;
 
+//==============================================================================
+// Enumerations
+//==============================================================================
+
 enum Socket {
     Inactive {
         local: Option<Ipv4Endpoint>,
@@ -49,6 +58,10 @@ enum Socket {
         remote: Ipv4Endpoint,
     },
 }
+
+//==============================================================================
+// Structures
+//==============================================================================
 
 pub struct Inner<RT: Runtime> {
     isn_generator: IsnGenerator,
@@ -71,6 +84,10 @@ pub struct Inner<RT: Runtime> {
 pub struct TcpPeer<RT: Runtime> {
     pub(super) inner: Rc<RefCell<Inner<RT>>>,
 }
+
+//==============================================================================
+// Associated FUnctions
+//==============================================================================
 
 impl<RT: Runtime> TcpPeer<RT> {
     pub fn new(rt: RT, arp: ArpPeer<RT>) -> Self {
@@ -146,18 +163,19 @@ impl<RT: Runtime> TcpPeer<RT> {
         ctx: &mut Context,
     ) -> Poll<Result<QDesc, Fail>> {
         let mut inner_: RefMut<Inner<RT>> = self.inner.borrow_mut();
-        let inner = &mut *inner_;
+        let inner: &mut Inner<RT> = &mut *inner_;
 
         let local: &Ipv4Endpoint = match inner.sockets.get(&qd) {
             Some(Socket::Listening { local }) => local,
             Some(..) => return Poll::Ready(Err(Fail::new(EOPNOTSUPP, "socket not listening"))),
             None => return Poll::Ready(Err(Fail::new(EBADF, "bad file descriptor"))),
         };
+
         let passive: &mut PassiveSocket<RT> = inner
             .passive
             .get_mut(local)
             .expect("sockets/local inconsistency");
-        let cb = match passive.poll_accept(ctx) {
+        let cb: ControlBlock<RT> = match passive.poll_accept(ctx) {
             Poll::Pending => return Poll::Pending,
             Poll::Ready(Ok(e)) => e,
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
@@ -171,8 +189,16 @@ impl<RT: Runtime> TcpPeer<RT> {
             local: established.cb.get_local(),
             remote: established.cb.get_remote(),
         };
-        assert!(inner.sockets.insert(new_qd, socket).is_none());
-        assert!(inner.established.insert(key, established).is_none());
+
+        // TODO: Reset the connection if the following following check fails, instead of panicking.
+        if inner.sockets.insert(new_qd, socket).is_some() {
+            panic!("duplicate queue descriptor in sockets table");
+        }
+
+        // TODO: Reset the connection if the following following check fails, instead of panicking.
+        if inner.established.insert(key, established).is_some() {
+            panic!("duplicate queue descriptor in established sockets table");
+        }
 
         Poll::Ready(Ok(new_qd))
     }
@@ -356,7 +382,8 @@ impl<RT: Runtime> Inner<RT> {
 
     fn receive(&mut self, ip_hdr: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
         let tcp_options = self.rt.tcp_options();
-        let (mut tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, tcp_options.get_rx_checksum_offload())?;
+        let (mut tcp_hdr, data) =
+            TcpHeader::parse(ip_hdr, buf, tcp_options.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
         let local = Ipv4Endpoint::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
         let remote = Ipv4Endpoint::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
