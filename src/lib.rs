@@ -217,19 +217,24 @@ impl<RT: Runtime> Catnip<RT> {
         #[cfg(feature = "profiler")]
         timer!("catnip::accept");
         trace!("accept(): {:?}", qd);
-        let r = match self.file_table.get(qd) {
+
+        // Search for target queue descriptor.
+        match self.file_table.get(qd) {
+            // Found, check if it concerns a TCP socket.
             Some(qtype) => match QType::try_from(qtype) {
+                // It does, so allocate a new queue descriptor and issue accept operation.
                 Ok(QType::TcpSocket) => {
-                    let new_qd = self.file_table.alloc(QType::TcpSocket.into());
-                    Ok(FutureOperation::from(self.ipv4.tcp.do_accept(qd, new_qd)))
+                    let new_qd: QDesc = self.file_table.alloc(QType::TcpSocket.into());
+                    let future: FutureOperation<RT> =
+                        FutureOperation::from(self.ipv4.tcp.do_accept(qd, new_qd));
+                    let handle: SchedulerHandle = self.rt.schedule(future);
+                    Ok(handle.into_raw().into())
                 }
-                _ => Err(Fail::new(EINVAL, "invalid queue type")),
+                // This queue descriptor does not concern a TCP socket.
+                _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
             },
-            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
-        };
-        match r {
-            Ok(future) => Ok(self.rt.schedule(future).into_raw().into()),
-            Err(fail) => Err(fail),
+            // The queue descriptor was not found.
+            _ => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
     }
 
@@ -456,13 +461,29 @@ impl<RT: Runtime> Catnip<RT> {
     /// This function will panic if the specified future had not completed or is _background_ future.
     pub fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult<RT::Buf>) {
         let boxed_future: Box<dyn Any> = self.rt.take(handle).as_any();
-
-        let boxed_concrete_type = *boxed_future
+        let boxed_concrete_type: FutureOperation<RT> = *boxed_future
             .downcast::<FutureOperation<RT>>()
             .expect("Wrong type!");
 
         match boxed_concrete_type {
-            FutureOperation::Tcp(f) => f.expect_result(),
+            FutureOperation::Tcp(f) => {
+                let (qd, new_qd, qr): (QDesc, Option<QDesc>, OperationResult<RT::Buf>) =
+                    f.expect_result();
+
+                // Handle accept failures.
+                if let Some(new_qd) = new_qd {
+                    match qr {
+                        // Operation failed, so release queue descriptor.
+                        OperationResult::Failed(_) => {
+                            self.file_table.free(new_qd);
+                        }
+                        // Operation succeeded.
+                        _ => (),
+                    }
+                }
+
+                (qd, qr)
+            }
             FutureOperation::Udp(f) => f.get_result(),
             FutureOperation::Background(..) => {
                 panic!("`take_operation` attempted on background task!")

@@ -59,45 +59,51 @@ impl<RT: Runtime> Future for TcpOperation<RT> {
 }
 
 impl<RT: Runtime> TcpOperation<RT> {
-    pub fn expect_result(self) -> (QDesc, OperationResult<RT::Buf>) {
-        use TcpOperation::*;
-
+    pub fn expect_result(self) -> (QDesc, Option<QDesc>, OperationResult<RT::Buf>) {
         match self {
-            Connect(FutureResult {
+            // Connect operation.
+            TcpOperation::Connect(FutureResult {
                 future,
                 done: Some(Ok(())),
-            }) => (future.fd, OperationResult::Connect),
-            Connect(FutureResult {
+            }) => (future.fd, None, OperationResult::Connect),
+            TcpOperation::Connect(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.fd, OperationResult::Failed(e)),
+            }) => (future.fd, None, OperationResult::Failed(e)),
 
-            Accept(FutureResult {
+            // Accept operation.
+            TcpOperation::Accept(FutureResult {
                 future,
-                done: Some(Ok(fd)),
-            }) => (future.fd, OperationResult::Accept(fd)),
-            Accept(FutureResult {
+                done: Some(Ok(new_qd)),
+            }) => (
+                future.qd,
+                Some(future.new_qd),
+                OperationResult::Accept(new_qd),
+            ),
+            TcpOperation::Accept(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.fd, OperationResult::Failed(e)),
+            }) => (future.qd, Some(future.new_qd), OperationResult::Failed(e)),
 
-            Push(FutureResult {
+            // Push operation
+            TcpOperation::Push(FutureResult {
                 future,
                 done: Some(Ok(())),
-            }) => (future.fd, OperationResult::Push),
-            Push(FutureResult {
+            }) => (future.fd, None, OperationResult::Push),
+            TcpOperation::Push(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.fd, OperationResult::Failed(e)),
+            }) => (future.fd, None, OperationResult::Failed(e)),
 
-            Pop(FutureResult {
+            // Pop Operation.
+            TcpOperation::Pop(FutureResult {
                 future,
                 done: Some(Ok(bytes)),
-            }) => (future.fd, OperationResult::Pop(None, bytes)),
-            Pop(FutureResult {
+            }) => (future.fd, None, OperationResult::Pop(None, bytes)),
+            TcpOperation::Pop(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.fd, OperationResult::Failed(e)),
+            }) => (future.fd, None, OperationResult::Failed(e)),
 
             _ => panic!("Future not ready"),
         }
@@ -136,27 +142,43 @@ impl<RT: Runtime> Future for ConnectFuture<RT> {
     }
 }
 
+/// Accept Operation Descriptor
 pub struct AcceptFuture<RT: Runtime> {
-    pub fd: QDesc,
-    pub newfd: QDesc,
-    pub inner: Rc<RefCell<Inner<RT>>>,
+    /// Queue descriptor of listening socket.
+    qd: QDesc,
+    // Pre-booked queue descriptor for incoming connection.
+    new_qd: QDesc,
+    // Reference to associated inner TCP peer.
+    inner: Rc<RefCell<Inner<RT>>>,
 }
 
-impl<RT: Runtime> fmt::Debug for AcceptFuture<RT> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "AcceptFuture({:?})", self.fd)
+/// Associated Functions for Accept Operation Descriptors
+impl<RT: Runtime> AcceptFuture<RT> {
+    /// Creates a descriptor for an accept operation.
+    pub fn new(qd: QDesc, new_qd: QDesc, inner: Rc<RefCell<Inner<RT>>>) -> Self {
+        Self { qd, new_qd, inner }
     }
 }
 
+/// Debug Trait Implementation for Accept Operation Descriptors
+impl<RT: Runtime> fmt::Debug for AcceptFuture<RT> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "AcceptFuture({:?})", self.qd)
+    }
+}
+
+/// Future Trait Implementation for Accept Operation Descriptors
 impl<RT: Runtime> Future for AcceptFuture<RT> {
     type Output = Result<QDesc, Fail>;
 
+    /// Polls the underlying accept operation.
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
-        let self_ = self.get_mut();
-        let peer = TcpPeer {
+        let self_: &mut AcceptFuture<RT> = self.get_mut();
+        // TODO: The following design pattern looks ugly. We should move poll_accept to the inner structure.
+        let peer: TcpPeer<RT> = TcpPeer::<RT> {
             inner: self_.inner.clone(),
         };
-        peer.poll_accept(self_.fd, self_.newfd, context)
+        peer.poll_accept(self_.qd, self_.new_qd, context)
     }
 }
 
