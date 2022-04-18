@@ -130,10 +130,10 @@ impl<RT: Runtime> TcpPeer<RT> {
     }
 
     /// Accepts an incoming connection.
-    pub fn do_accept(&self, fd: QDesc, newfd: QDesc) -> AcceptFuture<RT> {
+    pub fn do_accept(&self, qd: QDesc, new_qd: QDesc) -> AcceptFuture<RT> {
         AcceptFuture {
-            fd,
-            newfd,
+            qd,
+            new_qd,
             inner: self.inner.clone(),
         }
     }
@@ -141,19 +141,19 @@ impl<RT: Runtime> TcpPeer<RT> {
     /// Handles an incoming connection.
     pub fn poll_accept(
         &self,
-        fd: QDesc,
-        newfd: QDesc,
+        qd: QDesc,
+        new_qd: QDesc,
         ctx: &mut Context,
     ) -> Poll<Result<QDesc, Fail>> {
-        let mut inner_ = self.inner.borrow_mut();
+        let mut inner_: RefMut<Inner<RT>> = self.inner.borrow_mut();
         let inner = &mut *inner_;
 
-        let local = match inner.sockets.get(&fd) {
+        let local: &Ipv4Endpoint = match inner.sockets.get(&qd) {
             Some(Socket::Listening { local }) => local,
             Some(..) => return Poll::Ready(Err(Fail::new(EOPNOTSUPP, "socket not listening"))),
             None => return Poll::Ready(Err(Fail::new(EBADF, "bad file descriptor"))),
         };
-        let passive = inner
+        let passive: &mut PassiveSocket<RT> = inner
             .passive
             .get_mut(local)
             .expect("sockets/local inconsistency");
@@ -162,17 +162,19 @@ impl<RT: Runtime> TcpPeer<RT> {
             Poll::Ready(Ok(e)) => e,
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
         };
-        let established = EstablishedSocket::new(cb, newfd, inner.dead_socket_tx.clone());
-        let key = (established.cb.get_local(), established.cb.get_remote());
+        let established: EstablishedSocket<RT> =
+            EstablishedSocket::new(cb, new_qd, inner.dead_socket_tx.clone());
+        let key: (Ipv4Endpoint, Ipv4Endpoint) =
+            (established.cb.get_local(), established.cb.get_remote());
 
-        let socket = Socket::Established {
+        let socket: Socket = Socket::Established {
             local: established.cb.get_local(),
             remote: established.cb.get_remote(),
         };
-        assert!(inner.sockets.insert(newfd, socket).is_none());
+        assert!(inner.sockets.insert(new_qd, socket).is_none());
         assert!(inner.established.insert(key, established).is_none());
 
-        Poll::Ready(Ok(newfd))
+        Poll::Ready(Ok(new_qd))
     }
 
     pub fn connect(&self, fd: QDesc, remote: Ipv4Endpoint) -> ConnectFuture<RT> {
