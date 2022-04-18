@@ -148,11 +148,7 @@ impl<RT: Runtime> TcpPeer<RT> {
 
     /// Accepts an incoming connection.
     pub fn do_accept(&self, qd: QDesc, new_qd: QDesc) -> AcceptFuture<RT> {
-        AcceptFuture {
-            qd,
-            new_qd,
-            inner: self.inner.clone(),
-        }
+        AcceptFuture::new(qd, new_qd, self.inner.clone())
     }
 
     /// Handles an incoming connection.

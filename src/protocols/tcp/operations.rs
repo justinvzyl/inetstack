@@ -144,9 +144,20 @@ impl<RT: Runtime> Future for ConnectFuture<RT> {
 
 /// Accept Operation Descriptor
 pub struct AcceptFuture<RT: Runtime> {
-    pub qd: QDesc,
-    pub new_qd: QDesc,
-    pub inner: Rc<RefCell<Inner<RT>>>,
+    /// Queue descriptor of listening socket.
+    qd: QDesc,
+    // Pre-booked queue descriptor for incoming connection.
+    new_qd: QDesc,
+    // Reference to associated inner TCP peer.
+    inner: Rc<RefCell<Inner<RT>>>,
+}
+
+/// Associated Functions for Accept Operation Descriptors
+impl<RT: Runtime> AcceptFuture<RT> {
+    /// Creates a descriptor for an accept operation.
+    pub fn new(qd: QDesc, new_qd: QDesc, inner: Rc<RefCell<Inner<RT>>>) -> Self {
+        Self { qd, new_qd, inner }
+    }
 }
 
 /// Debug Trait Implementation for Accept Operation Descriptors
@@ -163,6 +174,7 @@ impl<RT: Runtime> Future for AcceptFuture<RT> {
     /// Polls the underlying accept operation.
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
         let self_: &mut AcceptFuture<RT> = self.get_mut();
+        // TODO: The following design pattern looks ugly. We should move poll_accept to the inner structure.
         let peer: TcpPeer<RT> = TcpPeer::<RT> {
             inner: self_.inner.clone(),
         };
