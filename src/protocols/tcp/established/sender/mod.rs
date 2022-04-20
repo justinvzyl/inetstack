@@ -38,6 +38,7 @@ pub struct UnackedSegment<RT: Runtime> {
 /// not segments) and rejecting send requests that exceed that, or by limiting the user's send buffer allocations.
 const UNSENT_QUEUE_CUTOFF: usize = 1024;
 
+// ToDo: Consider moving retransmit timer and congestion control fields out of this structure.
 pub struct Sender<RT: Runtime> {
     //
     // Send Sequence Space:
@@ -251,7 +252,6 @@ impl<RT: Runtime> Sender<RT> {
                     header.seq_num = send_next;
                     if buf_len == 0 {
                         // This buffer is the end-of-send marker.
-                        debug_assert!(cb.user_is_done_sending.get());
                         // Set FIN and adjust sequence number consumption accordingly.
                         header.fin = true;
                         buf_len = 1;
@@ -300,17 +300,6 @@ impl<RT: Runtime> Sender<RT> {
     // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
     //
     pub fn remove_acknowledged_data(&self, bytes_acknowledged: u32, now: Instant) {
-        // ToDo: What we're supposed to do here:
-        // This acknowledges new data, so
-        //  + update SND.UNA = SEG.ACK (fixed - now done in receive()),
-        //  + remove acknowledged data from the retransmission queue,
-        //  + report any fully acknowledged buffers to the user (do we have an API to do this?),
-        //  + manage the retransmission timer (fixed - now done in receive()),
-        //  + update the send window. (fixed - done by update_send_window() called from receive()).
-        //
-
-        // Remove now acknowledged data from the unacked queue.
-        //
         let mut bytes_remaining: usize = bytes_acknowledged as usize;
 
         while bytes_remaining != 0 {
