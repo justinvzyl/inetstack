@@ -17,7 +17,6 @@ use crate::protocols::{
         SeqNumber,
     },
 };
-use ::libc::{EBADMSG, ENOMEM};
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
@@ -103,20 +102,9 @@ impl<RT: Runtime> Receiver<RT> {
     }
 
     pub fn push(&self, buf: RT::Buf) {
-    let buf_len: u32 = buf.len() as u32;
+        let buf_len: u32 = buf.len() as u32;
         self.recv_queue.borrow_mut().push_back(buf);
         self.receive_next.set(self.receive_next.get() + SeqNumber::from(buf_len as u32));
-    }
-
-    // ToDo: This appears to add up all the bytes ready for reading in the recv_queue, and is called each time we get a
-    // new segment.  Seems like it would be more efficient to keep a running count of the bytes in the queue that we
-    // add/subtract from as we add/remove segments from the queue.
-    pub fn size(&self) -> usize {
-        self.recv_queue
-            .borrow()
-            .iter()
-            .map(|b| b.len())
-            .sum::<usize>()
     }
 }
 
@@ -159,6 +147,10 @@ pub struct ControlBlock<RT: Runtime> {
     // and what we've already presented to the user.
     //
     out_of_order: RefCell<VecDeque<(SeqNumber, RT::Buf)>>,
+
+    // The sequence number of the FIN, if we received it out-of-order.
+    // Note: This could just be a boolean to remember if we got a FIN; the sequence number is for checking correctness.
+    pub out_of_order_fin: Cell<Option<SeqNumber>>,
 
     // Receive-side state information.  ToDo: Consider incorporating this directly into ControlBlock.
     receiver: Receiver<RT>,
@@ -207,6 +199,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             window_scale: receiver_window_scale,
             waker: RefCell::new(None),
             out_of_order: RefCell::new(VecDeque::new()),
+            out_of_order_fin: Cell::new(Option::None),
             receiver: Receiver::new(receiver_seq_no, receiver_seq_no),
             user_is_done_sending: Cell::new(false),
         }
@@ -332,6 +325,8 @@ impl<RT: Runtime> ControlBlock<RT> {
             header
         );
 
+        let mut should_schedule_ack: bool = false;
+
         // ToDo: We're probably getting "now" here in order to get a timestamp as close as possible to when we received
         // the packet.  However, this is wasteful if we don't take a path below that actually uses it.  Review this.
         let now: Instant = self.rt.now();
@@ -441,12 +436,20 @@ impl<RT: Runtime> ControlBlock<RT> {
             data.trim(excess as usize);
         }
 
+        // From here on, the entire new segment (including any SYN or FIN flag remaining) is in the window.
+        // Note that one interpretation of RFC 793 would have us store away (or just drop) any out-of-order packets at
+        // this point, and only proceed onwards if seg_start == receive_next.  But we process any RSTs, SYNs, or ACKs
+        // we receive (as long as they're in the window) as we receive them, even if they're out-of-order.  It's only
+        // when we get to processing the data (and FIN) that we store aside any out-of-order segments for later.
+        debug_assert!(receive_next <= seg_start && seg_end < after_receive_window);
+
         // Check the RST bit.
         if header.rst {
+            // ToDo: RFC 5961 "Blind Reset Attack Using the RST Bit" prevention would have us ACK and drop if the new
+            // segment doesn't start precisely on RCV.NXT.
+
             // Our peer has given up.  Shut the connection down hard.
             match self.state.get() {
-                // ToDo: Can we be in SynReceived here?  If so, // State::SynReceived => return,
-
                 // Data transfer states.
                 State::Established | State::FinWait1 | State::FinWait2 | State::CloseWait => {
                     // ToDo: Return all outstanding user Receive and Send requests with "reset" responses.
@@ -479,6 +482,8 @@ impl<RT: Runtime> ControlBlock<RT> {
 
         // Check the SYN bit.
         if header.syn {
+            // ToDo: RFC 5961 "Blind Reset Attack Using the SYN Bit" prevention would have us always ACK and drop here.
+
             // Receiving a SYN here is an error.
             warn!("Received in-window SYN on established connection.");
             // ToDo: Send Reset.
@@ -498,6 +503,9 @@ impl<RT: Runtime> ControlBlock<RT> {
             warn!("Received non-ACK segment on established connection.");
             return;
         }
+
+        // ToDo: RFC 5961 "Blind Data Injection Attack" prevention would have us perform additional ACK validation
+        // checks here.
 
         // Process the ACK.
         // Note: We process valid ACKs while in any synchronized state, even though there shouldn't be anything to do
@@ -574,7 +582,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                 }
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
-                //
+                // ToDo: See RFC 5961, this could be a Blind Data Injection Attack.
                 warn!("Received segment acknowledging data we have yet to send!");
                 self.send_ack();
                 return;
@@ -589,31 +597,53 @@ impl<RT: Runtime> ControlBlock<RT> {
             warn!("Got packet with URG bit set!");
         }
 
-        // Process the segment text (if any).
-        if !data.is_empty() {
-            if self.state.get() != State::Established {
-                // ToDo: Review this warning.  TCP connections in FIN-WAIT-1 and FIN-WAIT-2 can still receive data.
-                warn!("Receiver closed");
-            }
-            if let Err(e) = self.receive_data(seg_start, data, now) {
-                warn!("Ignoring remote data for {:?}: {:?}", header, e);
+        // We can only process in-order data (or FIN).  Check for out-of-order segment.
+        if seg_start != receive_next {
+            // This segment is out-of-order.  If it carries data, and/or a FIN, we should store it for later processing
+            // after the "hole" in the sequence number space has been filled.
+            if seg_len > 0 {
+                match self.state.get() {
+                    State::Established | State::FinWait1 | State::FinWait2 => {
+                        // We can only legitimately receive data in ESTABLISHED, FIN-WAIT-1, and FIN-WAIT-2.
+                        if header.fin {
+                            seg_len -= 1;
+                            self.store_out_of_order_fin(seg_end);
+                            seg_end = seg_end - SeqNumber::from(1);
+                        }
+                        debug_assert_eq!(seg_len, data.len() as u32);
+                        if seg_len > 0 {
+                            self.store_out_of_order_segment(seg_start, seg_end, data);
+                        }
+                        // Sending an ACK here is only a "MAY" according to the RFCs, but helpful for fast retransmit.
+                        self.send_ack();
+                    },
+                    state => warn!("Ignoring data received after FIN (in state {:?}).", state),
+                }
             }
 
-            // ToDo: Arrange for an ACK to be sent soon.
+            // We're done with this out-of-order segment.
+            return;
         }
 
-        // ToDo: If new segment was out-of-order above, make sure we've cleared the FIN by now.  Likewise, if this new
-        // segment filled a hole allowing a previous out-of-order segment to be processed, and it had a FIN, make sure
-        // we've set the FIN bit by now.
+        // Process the segment text (if any).
+        if !data.is_empty() {
+            match self.state.get() {
+                State::Established | State::FinWait1 | State::FinWait2 => {
+                    // We can only legitimately receive data in ESTABLISHED, FIN-WAIT-1, and FIN-WAIT-2.
+                    header.fin |= self.receive_data(seg_start, data);
+                    should_schedule_ack = true;
+                },
+                state => warn!("Ignoring data received after FIN (in state {:?}).", state),
+            }
+        }
 
         // Check the FIN bit.
         if header.fin {
             // ToDo: Signal the user "connection closing" and return any pending Receive requests.
 
-            // Advance RCV.NXT over the FIN and send ACK (delayed?).
+            // Advance RCV.NXT over the FIN.
             //
             self.receiver.receive_next.set(self.receiver.receive_next.get() + SeqNumber::from(1));
-            self.send_ack();
 
             match self.state.get() {
                 State::Established => self.state.set(State::CloseWait),
@@ -637,11 +667,26 @@ impl<RT: Runtime> ControlBlock<RT> {
                 },
                 state => panic!("Bad TCP state {:?}", state),  // Should never happen.
             }
+
+            // Since we consumed the FIN we ACK immediately rather than opportunistically.
+            // ToDo: Consider doing this opportunistically.  Note our current tests expect the immediate behavior.
+            self.send_ack();
+            return;
         }
 
-        // ToDo: Implement delayed ACKs.
-        //
-        //self.send_ack();
+        // Check if we need to ACK soon.
+        if should_schedule_ack {
+            // We should ACK this segment, preferably via piggybacking on a response.
+            // ToDo: Consider replacing the delayed ACK timer with a simple flag.
+            if self.ack_deadline.get().is_none() {
+                // Start the delayed ACK timer to ensure an ACK gets sent soon even if no piggyback opportunity occurs.
+                self.ack_deadline.set(Some(now + self.ack_delay_timeout));
+            } else {
+                // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
+                self.ack_deadline.set(None);
+                self.send_ack();
+            }
+        }
     }
 
     /// Handle the user's close request.
@@ -785,7 +830,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             .try_into()
             .expect("Window size overflow");
         debug!(
-            "Sending window size update -> {} (hdr {}, scale {})",
+            "Window size -> {} (hdr {}, scale {})",
             (hdr_window_size as u32) << self.window_scale,
             hdr_window_size,
             self.window_scale
@@ -795,10 +840,12 @@ impl<RT: Runtime> ControlBlock<RT> {
 
     pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {
         // ToDo: Need to add a way to indicate that the other side closed (i.e. that we've received a FIN).
+        // Should we do this via a zero-sized buffer?  Same as with the unsent and unacked queues on the send side?
+        //
         // This code was checking for an empty receive queue by comparing sequence numbers, as in:
         //  if self.receiver.reader_next.get() == self.receiver.receive_next.get() {
         // But that will think data is available to be read once we've received a FIN, because FINs consume sequence
-        // number space.
+        // number space.  Now we call is_empty() on the receive queue instead.
         //
         if self.receiver.recv_queue.borrow().is_empty() {
             *self.waker.borrow_mut() = Some(ctx.waker().clone());
@@ -813,91 +860,143 @@ impl<RT: Runtime> ControlBlock<RT> {
         Poll::Ready(Ok(segment))
     }
 
-    // ToDo: Improve following comment:
-    // This routine appears to take an incoming TCP segment and either add it to the receiver's queue of data that is
-    // ready to be read by the user (if the segment contains in-order data) or add it to the proper position in the
-    // receiver's store of out-of-order data.  Also, in the in-order case, it updates our receiver's sequence number
-    // corresponding to the minumum number allowed for new reception (RCV.NXT in RFC 793 terms).
+    // This routine remembers that we have received an out-of-order FIN.
     //
-    pub fn receive_data(&self, seq_no: SeqNumber, buf: RT::Buf, now: Instant) -> Result<(), Fail> {
-        let recv_seq_no: SeqNumber = self.receiver.receive_next.get();
+    pub fn store_out_of_order_fin(&self, fin: SeqNumber) {
+        self.out_of_order_fin.set(Some(fin));
+    }
 
-        if seq_no > recv_seq_no {
-            // This new segment comes after what we're expecting (i.e. the new segment arrived out-of-order).
-            let mut out_of_order = self.out_of_order.borrow_mut();
+    // This routine takes an incoming TCP segment and adds it to the out-of-order receive queue.
+    // If the new segment had a FIN it has been removed prior to this routine being called.
+    // Note: Since this is not the "fast path", this is written for clarity over efficiency.
+    //
+    pub fn store_out_of_order_segment(&self, mut new_start: SeqNumber, mut new_end: SeqNumber, mut buf: RT::Buf) {
+        let mut out_of_order = self.out_of_order.borrow_mut();
+        let mut action_index: usize = out_of_order.len();
+        let mut another_pass_neeeded: bool = true;
 
-            // Check if the new data segment's starting sequence number is already in the out-of-order store.
-            // ToDo: We should check if any part of the new segment contains new data, and not just the start.
-            for stored_segment in out_of_order.iter() {
-                if stored_segment.0 == seq_no {
-                    // Drop this segment as a duplicate.
-                    // ToDo: We should ACK when we drop a segment.
-                    return Err(Fail::new(EBADMSG, "out of order segment (duplicate)"));
-                }
-            }
+        while another_pass_neeeded {
+            another_pass_neeeded = false;
 
-            // Before adding more, if the out-of-order store contains too many entries, delete the later entries.
-            while out_of_order.len() > MAX_OUT_OF_ORDER {
-                out_of_order.pop_back();
-            }
-
-            // Add the new segment to the out-of-order store (the store is sorted by starting sequence number).
-            let mut insert_index: usize = out_of_order.len();
+            // Find the new segment's place in the out-of-order store.
+            // The out-of-order store is sorted by starting sequence number, and contains no duplicate data.
+            //
+            action_index = out_of_order.len();
             for index in 0..out_of_order.len() {
-                if seq_no > out_of_order[index].0 {
-                    insert_index = index;
+                let stored_segment: &(SeqNumber, RT::Buf) = &out_of_order[index];
+
+                // Properties of the segment stored at this index.
+                let stored_start: SeqNumber = stored_segment.0;
+                let stored_len: u32 = stored_segment.1.len() as u32;
+                debug_assert_ne!(stored_len, 0);
+                let stored_end: SeqNumber = stored_start + SeqNumber::from(stored_len - 1);
+
+                //
+                // The new data segment has six possibilites when compared to an existing out-of-order segment:
+                //
+                //                                |<- out-of-order segment ->|
+                //
+                // |<- new before->|    |<- new front overlap ->|    |<- new end overlap ->|    |<- new after ->|
+                //                                   |<- new duplicate ->|
+                //                            |<- new completely encompassing ->|
+                //
+                if new_start < stored_start {
+                    // The new segment starts before the start of this out-of-order segment.
+                    if new_end < stored_start {
+                        // The new segment comes completely before this out-of-order segment.
+                        // Since the out-of-order store is sorted, we don't need to check for overlap with any more.
+                        action_index = index;
+                        break;
+                    }
+                    // The end of the new segment overlaps with the start of this out-of-order segment.
+                    if stored_end < new_end {
+                        // The new segment ends after the end of this out-of-order segment.  In other words, the new
+                        // segment completely encompasses the out-of-order segment.
+
+                        // Set flags to remove the currently stored segment and re-run the insertion loop, as the
+                        // new segment may completely encompass even more segments.
+                        another_pass_neeeded = true;
+                        action_index = index;
+                        break;
+                    }
+                    // We have some data overlap between the new segment and the front of the out-of-order segment.
+                    // Trim the end of the new segment and stop checking for out-of-order overlap.
+                    let excess: u32 = u32::from(new_end - stored_start) + 1;
+                    new_end = new_end - SeqNumber::from(excess);
+                    buf.trim(excess as usize);
                     break;
+                } else {
+                    // The new segment starts at or after the start of this out-of-order segment.
+                    // This is the stored_start <= new_start case.
+                    if new_end <= stored_end {
+                        // And the new segment ends at or before this out-of-order segment.
+                        // The new segment's data is a complete duplicate of this out-of-order segment's data.
+                        // Just drop the new segment.
+                        return;
+                    }
+                    if stored_end < new_start {
+                        // The new segment comes entirely after this out-of-order segment.
+                        // Continue to check the next out-of-order segment for potential overlap.
+                        continue;
+                    }
+                    // We have some data overlap between the new segment and the end of the out-of-order segment.
+                    // Adjust the beginning of the new segment and continue on to check the next out-of-order segment.
+                    let duplicate: u32 = u32::from(stored_end - new_start);
+                    new_start = new_start + SeqNumber::from(duplicate);
+                    buf.adjust(duplicate as usize);
+                    continue;
                 }
             }
-            if insert_index < out_of_order.len() {
-                out_of_order[insert_index] = (seq_no, buf);
-            } else {
-                out_of_order.push_back((seq_no, buf));
+
+            if another_pass_neeeded {
+                // The new segment completely encompassed an existing segment, which we will now remove.
+                out_of_order.remove(action_index);
             }
-
-            // ToDo: There is a bug here.  We should send an ACK when we drop a segment.
-            return Err(Fail::new(EBADMSG, "out of order segment (reordered)"));
         }
 
-        // Check if we've already received this data (i.e. new segment contains duplicate data).
-        // ToDo: There is a bug here.  The new segment could contain both old *and* new data.  Current code throws it
-        // all away.  We need to check if any part of the new segment falls within our receive window.
-        if seq_no < recv_seq_no {
-            // ToDo: There is a bug here.  We should send an ACK if we drop the segment.
-            return Err(Fail::new(EBADMSG, "out of order segment (duplicate)"));
+        // Insert the new segment into the correct position.
+        out_of_order.insert(action_index, (new_start, buf));
+
+        // If the out-of-order store now contains too many entries, delete the later entries.
+        // ToDo: The out-of-order store is already limited (in size) by our receive window, while the below check
+        // imposes a limit on the number of entries.  Do we need this?  Presumably for attack mitigation?
+        while out_of_order.len() > MAX_OUT_OF_ORDER {
+            out_of_order.pop_back();
         }
+    }
 
-        // If we get here, the new segment begins with the sequence number we're expecting.
-        // ToDo: Since this is the "good" case, we should have a fast-path check for it first above, instead of falling
-        // through to it (performance improvement).
+    // This routine takes an incoming in-order TCP segment and adds the data to the user's receive queue.  If the new
+    // segment fills a "hole" in the receive sequence number space allowing previously stored out-of-order data to now
+    // be received, it receives that too.
+    //
+    // This routine also updates receive_next to reflect any data now considered "received".
+    //
+    // Returns true if a previously out-of-order segment containing a FIN has now been received.
+    //
+    pub fn receive_data(&self, seg_start: SeqNumber, buf: RT::Buf) -> bool {
+        let recv_next: SeqNumber = self.receiver.receive_next.get();
 
-        let unread_bytes: usize = self.receiver.size();
-
-        // This appears to drop segments if their total contents would exceed the receive window.
-        // ToDo: There is a bug here.  The segment could also contain some data that fits within the window.  We should
-        // still accept the data that fits within the window.
-        // ToDo: We should restructure this to convert usize things to known (fixed) sizes, not the other way around.
-        if unread_bytes + buf.len() > self.receive_buffer_size as usize {
-            // ToDo: There is a bug here.  We should send an ACK if we drop the segment.
-            return Err(Fail::new(ENOMEM, "full receive window"));
-        }
+        // This routine should only be called with in-order segment data.
+        debug_assert_eq!(seg_start, recv_next);
 
         // Push the new segment data onto the end of the receive queue.
-        let mut recv_seq_no: SeqNumber = recv_seq_no + SeqNumber::from(buf.len() as u32);
+        let mut recv_next: SeqNumber = recv_next + SeqNumber::from(buf.len() as u32);
         self.receiver.push(buf);
 
         // Okay, we've successfully received some new data.  Check if any of the formerly out-of-order data waiting in
         // the out-of-order queue is now in-order.  If so, we can move it to the receive queue.
+        let mut added_out_of_order: bool = false;
         let mut out_of_order = self.out_of_order.borrow_mut();
         while !out_of_order.is_empty() {
             if let Some(stored_entry) = out_of_order.front() {
-                if stored_entry.0 == recv_seq_no {
+                if stored_entry.0 == recv_next {
                     // Move this entry's buffer from the out-of-order store to the receive queue.
                     // This data is now considered to be "received" by TCP, and included in our RCV.NXT calculation.
-                    info!("Recovering out-of-order packet at {}", recv_seq_no);
+                    info!("Recovering out-of-order packet at {}", recv_next);
                     if let Some(temp) = out_of_order.pop_front() {
-                        recv_seq_no = recv_seq_no + SeqNumber::from(temp.1.len() as u32);
+                        recv_next = recv_next + SeqNumber::from(temp.1.len() as u32);
                         self.receiver.push(temp.1);
+                        added_out_of_order = true;
                     }
                 } else {
                     // Since our out-of-order list is sorted, we can stop when the next segment is not in sequence.
@@ -906,32 +1005,33 @@ impl<RT: Runtime> ControlBlock<RT> {
             }
         }
 
-        // ToDo: Review recent change to update control block copy of recv_seq_no upon each push to the receiver.
+        // ToDo: Review recent change to update control block copy of recv_next upon each push to the receiver.
         // When receiving a retransmitted segment that fills a "hole" in the receive space, thus allowing a number
-        // (potentially large number) of out-of-order segments to be added, we'll be modifying the TCB copy of the
-        // recv_seq_no many times.  Since this potentially wakes a waker, we might want to wait until we've added all
-        // the segments before we update the value.
+        // (potentially large number) of out-of-order segments to be added, we'll be modifying the TCB copy of
+        // recv_next many times.
         // Anyhow that recent change removes the need for the following two lines:
-        // Update our receive sequence number (i.e. RCV_NXT) appropriately.
-        // self.recv_seq_no.set(recv_seq_no);
+        // Update our receive sequence number (i.e. RCV.NXT) appropriately.
+        // self.receive_next.set(recv_next);
 
-        // This appears to be checking if something is waiting on this Receiver, and if so, wakes that thing up.
+        // This appears to be checking if something is waiting on the receive queue, and if so, wakes that thing up.
+        // Note: unlike updating receive_next (see above comment) we only do this once (i.e. outside the while loop).
         // ToDo: Verify that this is the right place and time to do this.
         if let Some(w) = self.waker.borrow_mut().take() {
             w.wake()
         }
 
-        // ToDo: How do we handle when the other side is in PERSIST state here?
-        // ToDo: Fix above comment - there is no such thing as a PERSIST state in TCP.  Presumably, this comment means
-        // to ask "how do we handle the situation where the other side is sending us zero window probes because it has
-        // data to send and no open window to send into?".  The answer is: we should ACK zero-window probes.
-
-        // Schedule an ACK for this receive (if one isn't already).
-        // ToDo: Another bug.  If the delayed ACK timer is already running, we should cancel it and ACK immediately.
-        if self.ack_deadline.get().is_none() {
-            self.ack_deadline.set(Some(now + self.ack_delay_timeout));
+        // This is a lot of effort just to check the FIN sequence number is correct in debug builds.
+        // ToDo: Consider changing all this to just "return added_out_of_order && self.out_of_order.get().is_some()".
+        if added_out_of_order {
+            match self.out_of_order_fin.get() {
+                Some(fin) => {
+                    debug_assert_eq!(fin, recv_next);
+                    return true;
+                },
+                _ => (),
+            }
         }
 
-        Ok(())
+        return false;
     }
 }
