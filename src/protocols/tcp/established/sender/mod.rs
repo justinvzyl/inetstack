@@ -122,7 +122,7 @@ impl<RT: Runtime> Sender<RT> {
             send_window: WatchedValue::new(send_window),
             send_window_last_update_seq: Cell::new(seq_no),
             send_window_last_update_ack: Cell::new(seq_no),
-        
+
             window_scale,
             mss,
 
