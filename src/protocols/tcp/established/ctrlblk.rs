@@ -1024,6 +1024,6 @@ impl<RT: Runtime> ControlBlock<RT> {
             }
         }
 
-        false;
+        false
     }
 }
