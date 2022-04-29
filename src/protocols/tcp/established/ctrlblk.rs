@@ -600,10 +600,7 @@ impl<RT: Runtime> ControlBlock<RT> {
 
         // We can only process in-order data (or FIN).  Check for out-of-order segment.
         if seg_start != receive_next {
-<<<<<<< HEAD
-=======
             debug!("Received out-of-order segment");
->>>>>>> brian-wip
             // This segment is out-of-order.  If it carries data, and/or a FIN, we should store it for later processing
             // after the "hole" in the sequence number space has been filled.
             if seg_len > 0 {
@@ -998,11 +995,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                 if stored_entry.0 == recv_next {
                     // Move this entry's buffer from the out-of-order store to the receive queue.
                     // This data is now considered to be "received" by TCP, and included in our RCV.NXT calculation.
-<<<<<<< HEAD
-                    info!("Recovering out-of-order packet at {}", recv_next);
-=======
                     debug!("Recovering out-of-order packet at {}", recv_next);
->>>>>>> brian-wip
                     if let Some(temp) = out_of_order.pop_front() {
                         recv_next = recv_next + SeqNumber::from(temp.1.len() as u32);
                         self.receiver.push(temp.1);
@@ -1031,11 +1024,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         }
 
         // This is a lot of effort just to check the FIN sequence number is correct in debug builds.
-<<<<<<< HEAD
-        // ToDo: Consider changing all this to just "return added_out_of_order && self.out_of_order.get().is_some()".
-=======
         // ToDo: Consider changing all this to "return added_out_of_order && self.out_of_order_fin.get().is_some()".
->>>>>>> brian-wip
         if added_out_of_order {
             match self.out_of_order_fin.get() {
                 Some(fin) => {
