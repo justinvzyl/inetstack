@@ -500,11 +500,14 @@ impl<RT: Runtime> Catnip<RT> {
         let (header, payload) = Ethernet2Header::parse(bytes)?;
         debug!("Engine received {:?}", header);
         if self.rt.local_link_addr() != header.dst_addr() && !header.dst_addr().is_broadcast() {
-            return Err(Fail::new(EINVAL, "physical destination address mismatch"));
+            // ToDo: Add support for is_multicast() to MacAddress type.  Then remove following trace and restore return.
+            trace!("Need to add && !header.dst_addr().is_multicast()");
+            //return Err(Fail::new(EINVAL, "physical destination address mismatch"));
         }
         match header.ether_type() {
             EtherType2::Arp => self.arp.receive(payload),
             EtherType2::Ipv4 => self.ipv4.receive(payload),
+            EtherType2::Ipv6 => Ok(()),  // Ignore for now.
         }
     }
 

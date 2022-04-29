@@ -11,6 +11,7 @@ use ::std::convert::TryFrom;
 pub enum EtherType2 {
     Arp = 0x806,
     Ipv4 = 0x800,
+    Ipv6 = 0x86dd,
 }
 
 impl TryFrom<u16> for EtherType2 {

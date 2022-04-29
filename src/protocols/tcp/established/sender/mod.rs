@@ -256,6 +256,7 @@ impl<RT: Runtime> Sender<RT> {
                         header.fin = true;
                         buf_len = 1;
                     }
+                    trace!("Send immediate");
                     cb.emit(header, buf.clone(), remote_link_addr);
 
                     // Update SND.NXT.
@@ -291,6 +292,7 @@ impl<RT: Runtime> Sender<RT> {
         }
 
         // Slow path: Delegating sending the data to background processing.
+        trace!("Queueing Send for background processing");
         self.unsent_queue.borrow_mut().push_back(buf);
         self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
 
