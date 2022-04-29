@@ -39,6 +39,7 @@ pub struct UnackedSegment<RT: Runtime> {
 const UNSENT_QUEUE_CUTOFF: usize = 1024;
 
 // ToDo: Consider moving retransmit timer and congestion control fields out of this structure.
+// ToDo: Make all public fields in this structure private.
 pub struct Sender<RT: Runtime> {
     //
     // Send Sequence Space:
@@ -47,8 +48,8 @@ pub struct Sender<RT: Runtime> {
     //                     |                                                    |
     //                send_unacked               send_next         send_unacked + send window
     //                     v                         v                          v
-    // ... ----------------|-------------------------|--------------------------|------------------------------
-    //       acknowledged  |      unacknowledged     |      allowed to send     | future sequence number space
+    // ... ----------------|-------------------------|--------------------------|--------------------------------
+    //       acknowledged  |      unacknowledged     |     allowed to send      |  future sequence number space
     //
     // Note: In RFC 793 terminology, send_unacked is SND.UNA, send_next is SND.NXT, and "send window" is SND.WND.
     //

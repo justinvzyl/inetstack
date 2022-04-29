@@ -109,6 +109,7 @@ impl<RT: Runtime> Receiver<RT> {
 }
 
 /// Transmission control block for representing our TCP connection.
+// ToDo: Make all public fields in this structure private.
 pub struct ControlBlock<RT: Runtime> {
     local: Ipv4Endpoint,
     remote: Ipv4Endpoint,
@@ -530,7 +531,6 @@ impl<RT: Runtime> ControlBlock<RT> {
         if send_unacknowledged < header.ack_num {
             if header.ack_num <= send_next {
                 // This segment acknowledges new data (possibly and/or FIN).
-                //
                 let bytes_acknowledged: u32 = (header.ack_num - send_unacknowledged).into();
 
                 // Remove the now acknowledged data from the unacknowledged queue.
@@ -544,13 +544,11 @@ impl<RT: Runtime> ControlBlock<RT> {
 
                 if header.ack_num == send_next {
                     // This segment acknowledges everything we've sent so far (i.e. nothing is currently outstanding).
-                    //
 
                     // Since we no longer have anything outstanding, we can turn off the retransmit timer.
                     self.sender.retransmit_deadline.set(None);
 
                     // Some states require additional processing.
-                    //
                     match self.state.get() {
                         State::Established => (),  // Common case.  Nothing more to do.
                         State::FinWait1 => {
@@ -566,7 +564,6 @@ impl<RT: Runtime> ControlBlock<RT> {
                             // were just waiting for all of our sent data (including FIN) to be ACK'd, so now that it
                             // is, we can delete our state (we maintained it in case we needed to retransmit something,
                             // but we had already sent everything we're ever going to send (incl. FIN) at least once).
-                            //
                             self.state.set(State::Closed);
 
                             // ToDo: Delete the ControlBlock.
@@ -645,7 +642,6 @@ impl<RT: Runtime> ControlBlock<RT> {
             // ToDo: Signal the user "connection closing" and return any pending Receive requests.
 
             // Advance RCV.NXT over the FIN.
-            //
             self.receiver.receive_next.set(self.receiver.receive_next.get() + SeqNumber::from(1));
 
             match self.state.get() {
@@ -656,7 +652,6 @@ impl<RT: Runtime> ControlBlock<RT> {
                     // has been ACK'd, we'd be in FIN-WAIT-2 here as a result of processing that ACK (see ACK handling
                     // above) and will enter TIME-WAIT in the FIN-WAIT-2 case below.  So we can skip that clause and go
                     // straight to "otherwise enter the CLOSING state".
-                    //
                     self.state.set(State::Closing);
                 },
                 State::FinWait2 => {
@@ -701,7 +696,6 @@ impl<RT: Runtime> ControlBlock<RT> {
     ///
     pub fn close(&self) -> Result<(), Fail> {
         // Check to see if close has already been called, as we should only do this once.
-        //
         if self.user_is_done_sending.get() {
             // Review: Should we return an error here instead?  RFC 793 recommends a "connection closing" error.
             return Ok(());
@@ -710,16 +704,13 @@ impl<RT: Runtime> ControlBlock<RT> {
         // In the normal case, we'll be in either ESTABLISHED or CLOSE_WAIT here (depending upon whether we've received
         // a FIN from our peer yet).  Queue up a FIN to be sent, and attempt to send it immediately (if possible).  We
         // only change state to FIN-WAIT-1 or LAST_ACK after we've actually been able to send the FIN.
-        //
         debug_assert!((self.state.get() == State::Established) || (self.state.get() == State::CloseWait));
 
         // Send a FIN.
-        //
         let fin_buf: RT::Buf = Buffer::empty();
         self.send(fin_buf).expect("send failed");
 
         // Remember that the user has called close.
-        //
         self.user_is_done_sending.set(true);
 
         Ok(())
@@ -849,7 +840,6 @@ impl<RT: Runtime> ControlBlock<RT> {
         //  if self.receiver.reader_next.get() == self.receiver.receive_next.get() {
         // But that will think data is available to be read once we've received a FIN, because FINs consume sequence
         // number space.  Now we call is_empty() on the receive queue instead.
-        //
         if self.receiver.recv_queue.borrow().is_empty() {
             *self.waker.borrow_mut() = Some(ctx.waker().clone());
             return Poll::Pending;
@@ -883,7 +873,6 @@ impl<RT: Runtime> ControlBlock<RT> {
 
             // Find the new segment's place in the out-of-order store.
             // The out-of-order store is sorted by starting sequence number, and contains no duplicate data.
-            //
             action_index = out_of_order.len();
             for index in 0..out_of_order.len() {
                 let stored_segment: &(SeqNumber, RT::Buf) = &out_of_order[index];
@@ -1035,6 +1024,6 @@ impl<RT: Runtime> ControlBlock<RT> {
             }
         }
 
-        return false;
+        false;
     }
 }
