@@ -49,6 +49,7 @@ impl<RT: Runtime> Engine<RT> {
         match header.ether_type() {
             EtherType2::Arp => self.arp.receive(payload),
             EtherType2::Ipv4 => self.ipv4.receive(payload),
+            EtherType2::Ipv6 => Ok(()),  // Ignore for now.
         }
     }
 
