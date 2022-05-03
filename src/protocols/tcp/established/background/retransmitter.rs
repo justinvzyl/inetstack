@@ -10,6 +10,7 @@ use ::futures::{
 use ::runtime::{fail::Fail, network::types::MacAddress, Runtime};
 use ::std::{rc::Rc, time::{Duration, Instant}};
 
+#[derive(Debug, Eq, PartialEq)]
 pub enum RetransmitCause {
     TimeOut,
     FastRetransmit,
@@ -21,11 +22,22 @@ async fn retransmit<RT: Runtime>(
 ) -> Result<(), Fail> {
     // ToDo: Handle retransmission of FIN.
 
+    // ToDo: Fix this routine.  It is currently trashing our unacknowledged queue state.  It shouldn't remove any
+    // unacknowledged data from the unacknowledged queue, as retransmiting data doesn't magically make it acknowledged.
+    // Any sent data, whether sent once or multiple times, must remain on the unacknowledged queue until it is ACKed.
+
     // Pop unack'ed segment.
     let mut segment = match cb.pop_unacked_segment() {
         Some(s) => s,
         None => {
+            // We shouldn't enter the retransmit routine with an empty unacknowledged queue.  So maybe we should assert
+            // here?  But this is relatively benign if it happens, and could be the result of a race-condition or a
+            // mismanaged retransmission timer, so asserting would be over-reacting.
             warn!("Retransmission with empty unacknowledged queue");
+            if cause == RetransmitCause::TimeOut {
+                // Need to cancel the expired timer here, or we could infinite loop.
+                cb.set_retransmit_deadline(None);
+            }
             return Ok(());
         }
     };
@@ -84,9 +96,12 @@ pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, F
             _ = rtx_deadline_changed => continue,
             _ = rtx_fast_retransmit_changed => continue,
             _ = rtx_future => {
+                trace!("Retransmission Timer Expired");
                 let (send_unacknowledged, _) = cb.get_send_unacked();
                 cb.congestion_ctrl_on_rto(send_unacknowledged);
-                retransmit(RetransmitCause::TimeOut, &cb).await?;
+                // ToDo: Fix retransmit routine, uncomment next line and delete subsequent line.
+                // retransmit(RetransmitCause::TimeOut, &cb).await?;
+                cb.set_retransmit_deadline(None);
             },
         }
     }

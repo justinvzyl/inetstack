@@ -7,7 +7,7 @@ mod rto;
 use self::{congestion_ctrl as cc, rto::RtoCalculator};
 use super::ControlBlock;
 use crate::protocols::tcp::{segment::TcpHeader, SeqNumber};
-use ::libc::{EBADMSG, EBUSY, EINVAL, ENOBUFS};
+use ::libc::{EBUSY, EINVAL};
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
@@ -16,7 +16,7 @@ use ::runtime::{
 };
 use ::std::{
     boxed::Box,
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::VecDeque,
     convert::TryInto,
     fmt,
@@ -38,6 +38,8 @@ pub struct UnackedSegment<RT: Runtime> {
 /// not segments) and rejecting send requests that exceed that, or by limiting the user's send buffer allocations.
 const UNSENT_QUEUE_CUTOFF: usize = 1024;
 
+// ToDo: Consider moving retransmit timer and congestion control fields out of this structure.
+// ToDo: Make all public fields in this structure private.
 pub struct Sender<RT: Runtime> {
     //
     // Send Sequence Space:
@@ -46,14 +48,14 @@ pub struct Sender<RT: Runtime> {
     //                     |                                                    |
     //                send_unacked               send_next         send_unacked + send window
     //                     v                         v                          v
-    // ... ----------------|-------------------------|--------------------------|------------------------------
-    //       acknowledged  |      unacknowledged     |      allowed to send     | future sequence number space
+    // ... ----------------|-------------------------|--------------------------|--------------------------------
+    //       acknowledged  |      unacknowledged     |     allowed to send      |  future sequence number space
     //
     // Note: In RFC 793 terminology, send_unacked is SND.UNA, send_next is SND.NXT, and "send window" is SND.WND.
     //
 
     // Sequence Number of the oldest byte of unacknowledged sent data.  In RFC 793 terms, this is SND.UNA.
-    send_unacked: WatchedValue<SeqNumber>,
+    pub send_unacked: WatchedValue<SeqNumber>,
 
     // Queue of unacknowledged sent data.  RFC 793 calls this the "retransmission queue".
     unacked_queue: RefCell<VecDeque<UnackedSegment<RT>>>,
@@ -69,6 +71,8 @@ pub struct Sender<RT: Runtime> {
 
     // Available window to send into, as advertised by our peer.  In RFC 793 terms, this is SND.WND.
     send_window: WatchedValue<u32>,
+    send_window_last_update_seq: Cell<SeqNumber>,  // SND.WL1
+    send_window_last_update_ack: Cell<SeqNumber>,  // SND.WL2
 
     // RFC 1323: Number of bits to shift advertised window, defaults to zero.
     window_scale: u8,
@@ -77,12 +81,12 @@ pub struct Sender<RT: Runtime> {
     // ToDo: Revisit this once we support path MTU discovery.
     mss: usize,
 
-    retransmit_deadline: WatchedValue<Option<Instant>>,
+    pub retransmit_deadline: WatchedValue<Option<Instant>>,
 
     // Retransmission Timeout (RTO) calculator.
-    rto: RefCell<RtoCalculator>,
+    pub rto: RefCell<RtoCalculator>,
 
-    congestion_ctrl: Box<dyn cc::CongestionControl<RT>>,
+    pub congestion_ctrl: Box<dyn cc::CongestionControl<RT>>,
 }
 
 impl<RT: Runtime> fmt::Debug for Sender<RT> {
@@ -117,6 +121,9 @@ impl<RT: Runtime> Sender<RT> {
             unsent_seq_no: WatchedValue::new(seq_no),
 
             send_window: WatchedValue::new(send_window),
+            send_window_last_update_seq: Cell::new(seq_no),
+            send_window_last_update_ack: Cell::new(seq_no),
+
             window_scale,
             mss,
 
@@ -246,11 +253,11 @@ impl<RT: Runtime> Sender<RT> {
                     header.seq_num = send_next;
                     if buf_len == 0 {
                         // This buffer is the end-of-send marker.
-                        debug_assert!(cb.user_is_done_sending.get());
                         // Set FIN and adjust sequence number consumption accordingly.
                         header.fin = true;
                         buf_len = 1;
                     }
+                    trace!("Send immediate");
                     cb.emit(header, buf.clone(), remote_link_addr);
 
                     // Update SND.NXT.
@@ -286,76 +293,54 @@ impl<RT: Runtime> Sender<RT> {
         }
 
         // Slow path: Delegating sending the data to background processing.
+        trace!("Queueing Send for background processing");
         self.unsent_queue.borrow_mut().push_back(buf);
         self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
 
         Ok(())
     }
 
-    // Process an "acceptable" acknowledgement received from our peer.
-    // ToDo: Rename this to something more meaningful.  Or maybe move this back into mainline receive?
-    pub fn remote_ack(&self, seg_ack: SeqNumber, now: Instant) -> Result<(), Fail> {
-        // ToDo: What we're supposed to do here:
-        // This acknowledges new data, so update SND.UNA = SEG.ACK
-        //  + remove acknowledged data from the retransmission queue,
-        //  + report any fully acknowledged buffers to the user (do we have an API to do this?),
-        //  + manage the retransmission timer,
-        //  + update the send window.
-        //
-
-        let send_unacked: SeqNumber = self.send_unacked.get();
-        let send_next: SeqNumber = self.send_next.get();
-
-        let bytes_outstanding: u32 = (send_next - send_unacked).into();
-        let bytes_acknowledged: u32 = (seg_ack - send_unacked).into();
-
-        if bytes_acknowledged > bytes_outstanding {
-            return Err(Fail::new(EBADMSG, "ACK is outside of send window"));
-        }
-
-        // Inform congestion control about this ACK.
-        let rto: Duration = self.current_rto();
-        self.congestion_ctrl
-            .on_ack_received(rto, send_unacked, send_next, seg_ack);
-        if bytes_acknowledged == 0 {
-            return Ok(());
-        }
-
-        // Manage the retransmit timer.
-        if seg_ack == send_next {
-            // If we've acknowledged all sent data, turn off the retransmit timer.
-            self.retransmit_deadline.set(None);
-        } else {
-            // Otherwise, set it to the current RTO.
-            // ToDo: This looks wrong.  Why extend the deadline here?
-            let deadline: Instant = now + self.rto.borrow().estimate();
-            self.retransmit_deadline.set(Some(deadline));
-        }
-
-        // Remove now acknowledged data from the unacked queue and advance SND.UNA.
-        // TODO: Do acks need to be on segment boundaries? How does this interact with repacketization?
-        // Answer: No, ACKs need not be on segment boundaries.  We need to handle this properly.
+    // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
+    //
+    pub fn remove_acknowledged_data(&self, bytes_acknowledged: u32, now: Instant) {
         let mut bytes_remaining: usize = bytes_acknowledged as usize;
-        while let Some(segment) = self.unacked_queue.borrow_mut().pop_front() {
-            if segment.bytes.len() > bytes_remaining {
-                // TODO: We need to close the connection in this case.
-                return Err(Fail::new(EBADMSG, "ACK isn't on segment boundary"));
-            }
-            bytes_remaining -= segment.bytes.len();
 
-            // Add sample for RTO if not a retransmission
-            // TODO: TCP timestamp support.
-            if let Some(initial_tx) = segment.initial_tx {
-                self.rto.borrow_mut().add_sample(now - initial_tx);
+        while bytes_remaining != 0 {
+            if let Some(segment) = self.unacked_queue.borrow_mut().front_mut() {
+
+                // Add sample for RTO if we have an initial transmit time.
+                // Note that in the case of repacketization, an ack for the first byte is enough for the time sample.
+                // ToDo: TCP timestamp support.
+                if let Some(initial_tx) = segment.initial_tx {
+                    self.rto.borrow_mut().add_sample(now - initial_tx);
+                }
+
+                if segment.bytes.len() > bytes_remaining {
+                    // Only some of the data in this segment has been acked.  Remove just the acked amount.
+                    segment.bytes.adjust(bytes_remaining);
+                    segment.initial_tx = None;
+
+                    // Leave this segment on the unacknowledged queue.
+                    break;
+                }
+
+                if segment.bytes.len() == 0 {
+                    // This buffer is the end-of-send marker.  So we should only have one byte of acknowledged sequence
+                    // space remaining (corresponding to our FIN).
+                    debug_assert_eq!(bytes_remaining, 1);
+                    bytes_remaining = 0;
+                }
+
+                bytes_remaining -= segment.bytes.len();
+
+            } else {
+                debug_assert!(false);  // Shouldn't have bytes_remaining with no segments remaining in unacked_queue.
             }
-            if bytes_remaining == 0 {
-                break;
-            }
+
+            // Remove this segment from the unacknowledged queue.
+            // ToDo: Mark the send operation associated with this buffer as complete, so the user can reuse the buffer.
+            self.unacked_queue.borrow_mut().pop_front();
         }
-        self.send_unacked
-            .modify(|b| b + SeqNumber::from(bytes_acknowledged));
-
-        Ok(())
     }
 
     pub fn pop_one_unsent_byte(&self) -> Option<RT::Buf> {
@@ -395,19 +380,23 @@ impl<RT: Runtime> Sender<RT> {
         Some(unsent_queue.front()?.len())
     }
 
-    pub fn update_remote_window(&self, send_window_hdr: u16) -> Result<(), Fail> {
-        // TODO: Is this the right check?  No - Remove this check, it should never fail if window_scale is legit.
-        let send_window: u32 = (send_window_hdr as u32)
-            .checked_shl(self.window_scale as u32)
-            .ok_or(Fail::new(ENOBUFS, "window size overlow"))?;
+    // Update our send window to the value advertised by our peer.
+    //
+    pub fn update_send_window(&self, header: &TcpHeader) {
+        // Check that the ACK we're using to update the window isn't older than the last one used to update it.
+        if self.send_window_last_update_seq.get() < header.seq_num ||
+            (self.send_window_last_update_seq.get() == header.seq_num &&
+             self.send_window_last_update_ack.get() <= header.ack_num) {
+                // Update our send window.
+                self.send_window.set((header.window_size as u32) << self.window_scale);
+                self.send_window_last_update_seq.set(header.seq_num);
+                self.send_window_last_update_ack.set(header.ack_num);
+        }
 
         debug!(
             "Updating window size -> {} (hdr {}, scale {})",
-            send_window, send_window_hdr, self.window_scale
+            self.send_window.get(), header.window_size, self.window_scale
         );
-        self.send_window.set(send_window);
-
-        Ok(())
     }
 
     pub fn remote_mss(&self) -> usize {

@@ -58,7 +58,7 @@ fn send_data(
     bytes: Bytes,
 ) -> (Bytes, usize) {
     trace!(
-        "====> push: {:?} -> {:?}",
+        "send_data ====> push: {:?} -> {:?}",
         sender.rt().local_ipv4_addr(),
         receiver.rt().local_ipv4_addr()
     );
@@ -87,7 +87,7 @@ fn send_data(
     }
     .unwrap();
 
-    trace!("====> push completed");
+    trace!("send_data ====> push completed");
 
     (bytes, bufsize)
 }
@@ -102,7 +102,7 @@ fn recv_data(
     bytes: Bytes,
 ) {
     trace!(
-        "====> pop: {:?} -> {:?}",
+        "recv_data ====> pop: {:?} -> {:?}",
         sender.rt().local_ipv4_addr(),
         receiver.rt().local_ipv4_addr()
     );
@@ -118,7 +118,7 @@ fn recv_data(
     }
     .unwrap();
 
-    trace!("====> pop completed");
+    trace!("recv_data ====> pop completed");
 }
 
 //=============================================================================
@@ -130,7 +130,7 @@ fn recv_pure_ack(
     ack_num: SeqNumber,
 ) {
     trace!(
-        "====> ack: {:?} -> {:?}",
+        "recv_pure_ack ====> ack: {:?} -> {:?}",
         sender.rt().local_ipv4_addr(),
         receiver.rt().local_ipv4_addr()
     );
@@ -150,7 +150,7 @@ fn recv_pure_ack(
         );
         receiver.receive(bytes).unwrap();
     }
-    trace!("====> ack completed");
+    trace!("recv_pure_ack ====> ack completed");
 }
 
 //=============================================================================
@@ -184,7 +184,7 @@ fn send_recv(
     // Pop data.
     recv_data(ctx, server, client, server_fd, bytes.clone());
 
-    // Pop pure ACK
+    // Pop pure ACK.
     recv_pure_ack(
         now,
         server,
