@@ -547,6 +547,8 @@ impl<RT: Runtime> Catnip<RT> {
                         if let Err(e) = self.do_receive(pkt) {
                             warn!("Dropped packet: {:?}", e);
                         }
+                        // TODO: This is a workaround for https://github.com/demikernel/catnip/issues/149.
+                        self.rt.poll();
                     }
                 }
             }
