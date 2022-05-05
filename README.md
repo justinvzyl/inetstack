@@ -1,8 +1,8 @@
-Catnip
-=======
+Demikernel's TCP/UDP Stack
+===========================
 
-[![Build](https://github.com/demikernel/catnip/actions/workflows/build.yml/badge.svg)](https://github.com/demikernel/catnip/actions/workflows/build.yml)
-[![Test](https://github.com/demikernel/catnip/actions/workflows/test.yml/badge.svg)](https://github.com/demikernel/catnip/actions/workflows/test.yml)
+[![Build](https://github.com/demikernel/inetstack/actions/workflows/build.yml/badge.svg)](https://github.com/demikernel/inetstack/actions/workflows/build.yml)
+[![Test](https://github.com/demikernel/inetstack/actions/workflows/test.yml/badge.svg)](https://github.com/demikernel/inetstack/actions/workflows/test.yml)
 
 _Catnip_ is a TCP/IP stack that focuses on being an embeddable, low-latency
 solution for user-space networking.
@@ -19,7 +19,8 @@ Building and Running
 ```
 export WORKDIR=$HOME                                  # Change this to whatever you want.
 cd $WORKDIR                                           # Switch to working directory.
-git clone https://github.com/demikernel/catnip.git    # Clone.
+git clone https://github.com/demikernel/inetstack.git # Clone.
+cd $WORKDIR/inetstack                                 # Switch to repository's source tree.
 ```
 
 **2. Install Prerequisites**
@@ -27,16 +28,14 @@ git clone https://github.com/demikernel/catnip.git    # Clone.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust toolchain.
 ```
 
-**3. Build Catnip**
+**3. Build**
 ```
-cd $WORKDIR/catnip    # Switch to working directory.
-cargo build           # Build catnip.
+make
 ```
 
-**4. Run Regression Tests**
+**4. Run Regression Tests (Optional)**
 ```
-cd $WORKDIR/catnip               # Switch to working directory.
-cargo test -- --test-threads 1   # Run with a single-thread.
+make test
 ```
 
 Code of Conduct

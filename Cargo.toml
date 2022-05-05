@@ -1,10 +1,10 @@
 [package]
-name = "catnip"
+name = "inetstack"
 version = "0.8.0"
 authors = [ "Microsoft Corporation" ]
 description = "Fast User-Space TCP/UDP Stack"
 homepage = "https://aka.ms/demikernel"
-repository = "https://github.com/demikernel/catnip"
+repository = "https://github.com/demikernel/inetstack"
 readme = "README.md"
 license-file = "LICENSE.txt"
 edition = "2018"

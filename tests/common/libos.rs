@@ -6,7 +6,7 @@
 //==============================================================================
 
 use super::runtime::DummyRuntime;
-use ::catnip::Catnip;
+use ::inetstack::InetStack;
 use ::crossbeam_channel::{Receiver, Sender};
 use ::runtime::{
     logging,
@@ -33,11 +33,11 @@ impl DummyLibOS {
         tx: Sender<Bytes>,
         rx: Receiver<Bytes>,
         arp: HashMap<Ipv4Addr, MacAddress>,
-    ) -> Catnip<DummyRuntime> {
+    ) -> InetStack<DummyRuntime> {
         let now: Instant = Instant::now();
         let rt: DummyRuntime = DummyRuntime::new(now, link_addr, ipv4_addr, rx, tx, arp);
         logging::initialize();
-        Catnip::new(rt).unwrap()
+        InetStack::new(rt).unwrap()
     }
 
     /// Cooks a buffer.
