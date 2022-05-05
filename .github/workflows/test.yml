@@ -83,7 +83,7 @@ jobs:
   run-demikernel0:
     name: Demikernel 0
     needs: [build-demikernel0]
-    uses: demikernel/catnip/.github/workflows/run.yml@dev
+    uses: demikernel/inetstack/.github/workflows/run.yml@dev
     secrets:
       host: ${{ secrets.CATNAP_HOSTNAME_A }}
       port: ${{ secrets.PORTNUM }}
@@ -94,7 +94,7 @@ jobs:
   run-demikernel1:
     name: Demikernel 1
     needs: [build-demikernel1]
-    uses: demikernel/catnip/.github/workflows/run.yml@dev
+    uses: demikernel/inetstack/.github/workflows/run.yml@dev
     secrets:
       host: ${{ secrets.CATNAP_HOSTNAME_B }}
       port: ${{ secrets.PORTNUM }}

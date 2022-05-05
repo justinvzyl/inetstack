@@ -58,7 +58,7 @@ pub mod protocols;
 const TIMER_RESOLUTION: usize = 64;
 const MAX_RECV_ITERS: usize = 2;
 
-pub struct Catnip<RT: Runtime> {
+pub struct InetStack<RT: Runtime> {
     arp: ArpPeer<RT>,
     ipv4: Peer<RT>,
     file_table: IoQueueTable,
@@ -66,7 +66,7 @@ pub struct Catnip<RT: Runtime> {
     ts_iters: usize,
 }
 
-impl<RT: Runtime> Catnip<RT> {
+impl<RT: Runtime> InetStack<RT> {
     pub fn new(rt: RT) -> Result<Self, Fail> {
         let now = rt.now();
         let file_table = IoQueueTable::new();
@@ -111,7 +111,7 @@ impl<RT: Runtime> Catnip<RT> {
         _protocol: c_int,
     ) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::socket");
+        timer!("inetstack::socket");
         trace!(
             "socket(): domain={:?} type={:?} protocol={:?}",
             domain,
@@ -157,7 +157,7 @@ impl<RT: Runtime> Catnip<RT> {
     ///
     pub fn bind(&mut self, qd: QDesc, local: Ipv4Endpoint) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::bind");
+        timer!("inetstack::bind");
         trace!("bind(): qd={:?} local={:?}", qd, local);
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
@@ -187,7 +187,7 @@ impl<RT: Runtime> Catnip<RT> {
     ///
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::listen");
+        timer!("inetstack::listen");
         trace!("listen(): qd={:?} backlog={:?}", qd, backlog);
         if backlog == 0 {
             return Err(Fail::new(EINVAL, "invalid backlog length"));
@@ -215,7 +215,7 @@ impl<RT: Runtime> Catnip<RT> {
     ///
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::accept");
+        timer!("inetstack::accept");
         trace!("accept(): {:?}", qd);
 
         // Search for target queue descriptor.
@@ -252,7 +252,7 @@ impl<RT: Runtime> Catnip<RT> {
     ///
     pub fn connect(&mut self, qd: QDesc, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::connect");
+        timer!("inetstack::connect");
         trace!("connect(): qd={:?} remote={:?}", qd, remote);
         let future = match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
@@ -279,7 +279,7 @@ impl<RT: Runtime> Catnip<RT> {
     ///
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::close");
+        timer!("inetstack::close");
         trace!("close(): qd={:?}", qd);
 
         match self.file_table.get(qd) {
@@ -312,7 +312,7 @@ impl<RT: Runtime> Catnip<RT> {
     /// TODO: Move this function to demikernel repo once we have a common buffer representation across all libOSes.
     pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::push2");
+        timer!("inetstack::push2");
         trace!("push2(): qd={:?}", qd);
 
         // Convert raw data to a buffer representation.
@@ -357,7 +357,7 @@ impl<RT: Runtime> Catnip<RT> {
         remote: Ipv4Endpoint,
     ) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::pushto2");
+        timer!("inetstack::pushto2");
         trace!("pushto2(): qd={:?}", qd);
 
         // Convert raw data to a buffer representation.
@@ -377,7 +377,7 @@ impl<RT: Runtime> Catnip<RT> {
     /// allocated by the application.
     pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::pop");
+        timer!("inetstack::pop");
 
         trace!("pop(): qd={:?}", qd);
 
@@ -400,7 +400,7 @@ impl<RT: Runtime> Catnip<RT> {
     /// Waits for an operation to complete.
     pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<RT::Buf>), Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::wait2");
+        timer!("inetstack::wait2");
         trace!("wait2(): qt={:?}", qt);
 
         // Retrieve associated schedule handle.
@@ -426,7 +426,7 @@ impl<RT: Runtime> Catnip<RT> {
         qts: &[QToken],
     ) -> Result<(usize, QDesc, OperationResult<RT::Buf>), Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::wait_any2");
+        timer!("inetstack::wait_any2");
         trace!("wait_any2(): qts={:?}", qts);
 
         loop {
@@ -496,7 +496,7 @@ impl<RT: Runtime> Catnip<RT> {
     /// and inform the correct task that its data has arrived.
     fn do_receive(&mut self, bytes: RT::Buf) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::engine::receive");
+        timer!("inetstack::engine::receive");
         let (header, payload) = Ethernet2Header::parse(bytes)?;
         debug!("Engine received {:?}", header);
         if self.rt.local_link_addr() != header.dst_addr() && !header.dst_addr().is_broadcast() {
@@ -516,28 +516,28 @@ impl<RT: Runtime> Catnip<RT> {
     /// route to the correct protocol.
     pub fn poll_bg_work(&mut self) {
         #[cfg(feature = "profiler")]
-        timer!("catnip::poll_bg_work");
+        timer!("inetstack::poll_bg_work");
         {
             #[cfg(feature = "profiler")]
-            timer!("catnip::poll_bg_work::poll");
+            timer!("inetstack::poll_bg_work::poll");
             self.rt.poll();
         }
 
         {
             #[cfg(feature = "profiler")]
-            timer!("catnip::poll_bg_work::for");
+            timer!("inetstack::poll_bg_work::for");
 
             for _ in 0..MAX_RECV_ITERS {
                 let batch = {
                     #[cfg(feature = "profiler")]
-                    timer!("catnip::poll_bg_work::for::receive");
+                    timer!("inetstack::poll_bg_work::for::receive");
 
                     self.rt.receive()
                 };
 
                 {
                     #[cfg(feature = "profiler")]
-                    timer!("catnip::poll_bg_work::for::for");
+                    timer!("inetstack::poll_bg_work::for::for");
 
                     if batch.is_empty() {
                         break;
@@ -547,7 +547,7 @@ impl<RT: Runtime> Catnip<RT> {
                         if let Err(e) = self.do_receive(pkt) {
                             warn!("Dropped packet: {:?}", e);
                         }
-                        // TODO: This is a workaround for https://github.com/demikernel/catnip/issues/149.
+                        // TODO: This is a workaround for https://github.com/demikernel/inetstack/issues/149.
                         self.rt.poll();
                     }
                 }

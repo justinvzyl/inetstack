@@ -432,7 +432,7 @@ impl TcpHeader {
         }
     }
 
-    // TODO: Review the use of usize here (and everywhere in catnip, really).
+    // TODO: Review the use of usize here (and everywhere in inetstack, really).
     pub fn compute_size(&self) -> usize {
         let mut size = MIN_TCP_HEADER_SIZE;
         for i in 0..self.num_options {
