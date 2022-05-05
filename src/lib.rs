@@ -29,7 +29,7 @@ use crate::{
         Peer,
     },
 };
-use ::catwalk::{FutureResult, SchedulerHandle};
+use ::scheduler::{FutureResult, SchedulerHandle};
 use ::libc::{c_int, EBADF, EINVAL, ENOTSUP};
 use ::runtime::{fail::Fail, memory::Buffer, queue::IoQueueTable, QDesc, QToken, QType, Runtime};
 use ::std::{any::Any, convert::TryFrom, time::Instant};

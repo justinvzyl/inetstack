@@ -16,7 +16,7 @@ use crate::{
         },
     },
 };
-use ::catwalk::SchedulerHandle;
+use ::scheduler::SchedulerHandle;
 use ::futures::FutureExt;
 use ::libc::{EBADMSG, ECONNREFUSED, ETIMEDOUT};
 use ::runtime::{fail::Fail, memory::Buffer, Runtime};

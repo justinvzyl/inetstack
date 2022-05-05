@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::protocols::{tcp::operations::TcpOperation, udp::UdpOperation};
-use ::catwalk::SchedulerFuture;
+use ::scheduler::SchedulerFuture;
 use ::futures::Future;
 use ::runtime::Runtime;
 use ::std::{

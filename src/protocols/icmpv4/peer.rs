@@ -12,7 +12,7 @@ use crate::{
     },
 };
 use ::byteorder::{ByteOrder, NetworkEndian};
-use ::catwalk::SchedulerHandle;
+use ::scheduler::SchedulerHandle;
 use ::futures::{
     channel::{
         mpsc,
