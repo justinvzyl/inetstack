@@ -20,7 +20,7 @@ use crate::{
         ipv4::Ipv4Header,
     },
 };
-use ::catwalk::SchedulerHandle;
+use ::scheduler::SchedulerHandle;
 use ::futures::FutureExt;
 use ::libc::{EADDRINUSE, EBADF, ENOTCONN};
 use ::runtime::{

@@ -13,7 +13,7 @@ use self::background::background;
 use crate::futures::FutureOperation;
 use crate::protocols::ipv4::Ipv4Endpoint;
 use crate::protocols::tcp::segment::TcpHeader;
-use ::catwalk::SchedulerHandle;
+use ::scheduler::SchedulerHandle;
 use ::futures::{channel::mpsc, FutureExt};
 use ::runtime::{fail::Fail, QDesc, Runtime};
 use ::std::{

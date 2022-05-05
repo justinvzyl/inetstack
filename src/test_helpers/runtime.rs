@@ -3,7 +3,6 @@
 
 use crate::{futures::operation::FutureOperation, test_helpers::Engine};
 use ::arrayvec::ArrayVec;
-use ::catwalk::{Scheduler, SchedulerFuture, SchedulerHandle};
 use ::futures::FutureExt;
 use ::rand::{
     distributions::{Distribution, Standard},
@@ -27,6 +26,7 @@ use ::runtime::{
     utils::UtilsRuntime,
     Runtime,
 };
+use ::scheduler::{Scheduler, SchedulerFuture, SchedulerHandle};
 use ::std::{
     cell::RefCell,
     collections::VecDeque,
@@ -230,14 +230,21 @@ impl SchedulerRuntime for TestRuntime {
     }
 
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
-        self.scheduler
+        match self
+            .scheduler
             .insert(FutureOperation::Background::<TestRuntime>(
                 future.boxed_local(),
-            ))
+            )) {
+            Some(handle) => handle,
+            None => panic!("could not insert future in scheduling queue"),
+        }
     }
 
     fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        self.scheduler.insert(future)
+        match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => panic!("could not insert future in scheduling queue"),
+        }
     }
 
     fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {

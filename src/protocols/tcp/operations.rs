@@ -3,7 +3,7 @@
 
 use super::peer::{Inner, TcpPeer};
 use crate::operations::OperationResult;
-use ::catwalk::FutureResult;
+use ::scheduler::FutureResult;
 use ::runtime::{fail::Fail, QDesc, Runtime};
 use ::std::{
     cell::RefCell,

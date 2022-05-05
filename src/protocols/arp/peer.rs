@@ -6,7 +6,7 @@ use crate::{
     futures::{FutureOperation, UtilityMethods},
     protocols::ethernet2::{EtherType2, Ethernet2Header},
 };
-use ::catwalk::SchedulerHandle;
+use ::scheduler::SchedulerHandle;
 use ::futures::{
     channel::oneshot::{channel, Receiver, Sender},
     FutureExt,
