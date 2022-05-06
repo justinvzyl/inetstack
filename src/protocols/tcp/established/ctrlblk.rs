@@ -2,9 +2,8 @@
 // Licensed under the MIT license.
 
 use super::{
-    sender::congestion_ctrl,
-    sender::Sender,
-    sender::{congestion_ctrl::CongestionControlConstructor, UnackedSegment},
+    congestion_ctrl::{self, CongestionControlConstructor},
+    sender::{Sender, UnackedSegment},
 };
 use crate::protocols::{
     arp::ArpPeer,
