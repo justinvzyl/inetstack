@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 mod background;
-pub mod congestion_ctrl;
+pub mod congestion_control;
 mod ctrlblk;
 mod sender;
 

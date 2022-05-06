@@ -4,7 +4,7 @@
 mod rto;
 
 use self::rto::RtoCalculator;
-use super::{congestion_ctrl, ControlBlock};
+use super::{congestion_control, ControlBlock};
 use crate::protocols::tcp::{segment::TcpHeader, SeqNumber};
 use ::libc::{EBUSY, EINVAL};
 use ::runtime::{
@@ -85,7 +85,7 @@ pub struct Sender<RT: Runtime> {
     // Retransmission Timeout (RTO) calculator.
     pub rto: RefCell<RtoCalculator>,
 
-    pub congestion_ctrl: Box<dyn congestion_ctrl::CongestionControl<RT>>,
+    pub congestion_ctrl: Box<dyn congestion_control::CongestionControl<RT>>,
 }
 
 impl<RT: Runtime> fmt::Debug for Sender<RT> {
@@ -109,8 +109,8 @@ impl<RT: Runtime> Sender<RT> {
         send_window: u32,
         window_scale: u8,
         mss: usize,
-        cc_constructor: congestion_ctrl::CongestionControlConstructor<RT>,
-        congestion_control_options: Option<congestion_ctrl::Options>,
+        cc_constructor: congestion_control::CongestionControlConstructor<RT>,
+        congestion_control_options: Option<congestion_control::Options>,
     ) -> Self {
         Self {
             send_unacked: WatchedValue::new(seq_no),

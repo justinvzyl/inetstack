@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use super::{
-    congestion_ctrl::{self, CongestionControlConstructor},
+    congestion_control::{self, CongestionControlConstructor},
     sender::{Sender, UnackedSegment},
 };
 use crate::protocols::{
@@ -176,7 +176,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         sender_window_scale: u8,
         sender_mss: usize,
         sender_cc_constructor: CongestionControlConstructor<RT>,
-        sender_congestion_control_options: Option<congestion_ctrl::Options>,
+        sender_congestion_control_options: Option<congestion_control::Options>,
     ) -> Self {
         let sender = Sender::new(
             sender_seq_no,

@@ -10,7 +10,7 @@ use crate::{
         ip::IpProtocol,
         ipv4::{Ipv4Endpoint, Ipv4Header},
         tcp::{
-            established::congestion_ctrl::{self, CongestionControl},
+            established::congestion_control::{self, CongestionControl},
             segment::{TcpHeader, TcpOptions2, TcpSegment},
         },
     },
@@ -215,7 +215,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             tx_window_size,
             remote_window_scale,
             mss,
-            congestion_ctrl::None::new,
+            congestion_control::None::new,
             None,
         );
         self.set_result(Ok(cb));
