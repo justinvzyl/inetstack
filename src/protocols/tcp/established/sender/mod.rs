@@ -222,11 +222,11 @@ impl<RT: Runtime> Sender<RT> {
             let in_flight_after_send: u32 = sent_data + buf_len;
 
             // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
-            cb.congestion_ctrl_on_cwnd_check_before_send();
-            let cwnd: u32 = cb.congestion_ctrl_get_cwnd();
+            cb.congestion_control_on_cwnd_check_before_send();
+            let cwnd: u32 = cb.congestion_control_get_cwnd();
 
             // The limited transmit algorithm can increase the effective size of cwnd by up to 2MSS.
-            let effective_cwnd: u32 = cwnd + cb.congestion_ctrl_get_limited_transmit_cwnd_increase();
+            let effective_cwnd: u32 = cwnd + cb.congestion_control_get_limited_transmit_cwnd_increase();
 
             let win_sz: u32 = self.send_window.get();
 
@@ -238,7 +238,7 @@ impl<RT: Runtime> Sender<RT> {
                     // This hook is primarily intended to record the last time we sent data, so we can later tell if
                     // the connection has been idle.
                     let rto: Duration = self.current_rto();
-                    cb.congestion_ctrl_on_send(rto, sent_data);
+                    cb.congestion_control_on_send(rto, sent_data);
 
                     // Prepare the segment and send it.
                     let mut header: TcpHeader = cb.tcp_header();

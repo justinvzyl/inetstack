@@ -229,39 +229,39 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.send(buf, self)
     }
 
-    pub fn congestion_ctrl_watch_retransmit_now_flag(&self) -> (bool, WatchFuture<bool>) {
+    pub fn congestion_control_watch_retransmit_now_flag(&self) -> (bool, WatchFuture<bool>) {
         self.cc.watch_retransmit_now_flag()
     }
 
-    pub fn congestion_ctrl_on_fast_retransmit(&self) {
+    pub fn congestion_control_on_fast_retransmit(&self) {
         self.cc.on_fast_retransmit()
     }
 
-    pub fn congestion_ctrl_on_rto(&self, send_unacknowledged: SeqNumber) {
+    pub fn congestion_control_on_rto(&self, send_unacknowledged: SeqNumber) {
         self.cc.on_rto(send_unacknowledged)
     }
 
-    pub fn congestion_ctrl_on_send(&self, rto: Duration, num_sent_bytes: u32) {
+    pub fn congestion_control_on_send(&self, rto: Duration, num_sent_bytes: u32) {
         self.cc.on_send(rto, num_sent_bytes)
     }
 
-    pub fn congestion_ctrl_on_cwnd_check_before_send(&self) {
+    pub fn congestion_control_on_cwnd_check_before_send(&self) {
         self.cc.on_cwnd_check_before_send()
     }
 
-    pub fn congestion_ctrl_get_cwnd(&self) -> u32 {
+    pub fn congestion_control_get_cwnd(&self) -> u32 {
         self.cc.get_cwnd()
     }
 
-    pub fn congestion_ctrl_watch_cwnd(&self) -> (u32, WatchFuture<u32>) {
+    pub fn congestion_control_watch_cwnd(&self) -> (u32, WatchFuture<u32>) {
         self.cc.watch_cwnd()
     }
 
-    pub fn congestion_ctrl_get_limited_transmit_cwnd_increase(&self) -> u32 {
+    pub fn congestion_control_get_limited_transmit_cwnd_increase(&self) -> u32 {
         self.cc.get_limited_transmit_cwnd_increase()
     }
 
-    pub fn congestion_ctrl_watch_limited_transmit_cwnd_increase(&self) -> (u32, WatchFuture<u32>) {
+    pub fn congestion_control_watch_limited_transmit_cwnd_increase(&self) -> (u32, WatchFuture<u32>) {
         self.cc.watch_limited_transmit_cwnd_increase()
     }
 
