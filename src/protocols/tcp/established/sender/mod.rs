@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-pub mod congestion_ctrl;
 mod rto;
 
-use self::{congestion_ctrl as cc, rto::RtoCalculator};
+use self::rto::RtoCalculator;
 use super::ControlBlock;
 use crate::protocols::tcp::{segment::TcpHeader, SeqNumber};
 use ::libc::{EBUSY, EINVAL};
@@ -15,7 +14,6 @@ use ::runtime::{
     Runtime,
 };
 use ::std::{
-    boxed::Box,
     cell::{Cell, RefCell},
     collections::VecDeque,
     convert::TryInto,
@@ -85,8 +83,6 @@ pub struct Sender<RT: Runtime> {
 
     // Retransmission Timeout (RTO) calculator.
     pub rto: RefCell<RtoCalculator>,
-
-    pub congestion_ctrl: Box<dyn cc::CongestionControl<RT>>,
 }
 
 impl<RT: Runtime> fmt::Debug for Sender<RT> {
@@ -110,8 +106,6 @@ impl<RT: Runtime> Sender<RT> {
         send_window: u32,
         window_scale: u8,
         mss: usize,
-        cc_constructor: cc::CongestionControlConstructor<RT>,
-        congestion_control_options: Option<cc::Options>,
     ) -> Self {
         Self {
             send_unacked: WatchedValue::new(seq_no),
@@ -129,8 +123,6 @@ impl<RT: Runtime> Sender<RT> {
 
             retransmit_deadline: WatchedValue::new(None),
             rto: RefCell::new(RtoCalculator::new()),
-
-            congestion_ctrl: cc_constructor(mss, seq_no, congestion_control_options),
         }
     }
 
@@ -230,11 +222,11 @@ impl<RT: Runtime> Sender<RT> {
             let in_flight_after_send: u32 = sent_data + buf_len;
 
             // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
-            self.congestion_ctrl.on_cwnd_check_before_send();
-            let cwnd: u32 = self.congestion_ctrl.get_cwnd();
+            cb.congestion_control_on_cwnd_check_before_send();
+            let cwnd: u32 = cb.congestion_control_get_cwnd();
 
             // The limited transmit algorithm can increase the effective size of cwnd by up to 2MSS.
-            let effective_cwnd: u32 = cwnd + self.congestion_ctrl.get_limited_transmit_cwnd_increase();
+            let effective_cwnd: u32 = cwnd + cb.congestion_control_get_limited_transmit_cwnd_increase();
 
             let win_sz: u32 = self.send_window.get();
 
@@ -246,7 +238,7 @@ impl<RT: Runtime> Sender<RT> {
                     // This hook is primarily intended to record the last time we sent data, so we can later tell if
                     // the connection has been idle.
                     let rto: Duration = self.current_rto();
-                    self.congestion_ctrl.on_send(rto, sent_data);
+                    cb.congestion_control_on_send(rto, sent_data);
 
                     // Prepare the segment and send it.
                     let mut header: TcpHeader = cb.tcp_header();
@@ -405,33 +397,5 @@ impl<RT: Runtime> Sender<RT> {
 
     pub fn current_rto(&self) -> Duration {
         self.rto.borrow().estimate()
-    }
-
-    pub fn congestion_ctrl_watch_retransmit_now_flag(&self) -> (bool, WatchFuture<bool>) {
-        self.congestion_ctrl.watch_retransmit_now_flag()
-    }
-
-    pub fn congestion_ctrl_on_fast_retransmit(&self) {
-        self.congestion_ctrl.on_fast_retransmit()
-    }
-
-    pub fn congestion_ctrl_on_rto(&self, send_unacked: SeqNumber) {
-        self.congestion_ctrl.on_rto(send_unacked)
-    }
-
-    pub fn congestion_ctrl_on_send(&self, rto: Duration, num_sent_bytes: u32) {
-        self.congestion_ctrl.on_send(rto, num_sent_bytes)
-    }
-
-    pub fn congestion_ctrl_on_cwnd_check_before_send(&self) {
-        self.congestion_ctrl.on_cwnd_check_before_send()
-    }
-
-    pub fn congestion_ctrl_watch_cwnd(&self) -> (u32, WatchFuture<u32>) {
-        self.congestion_ctrl.watch_cwnd()
-    }
-
-    pub fn congestion_ctrl_watch_limited_transmit_cwnd_increase(&self) -> (u32, WatchFuture<u32>) {
-        self.congestion_ctrl.watch_limited_transmit_cwnd_increase()
     }
 }

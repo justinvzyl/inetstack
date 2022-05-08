@@ -2,9 +2,8 @@
 // Licensed under the MIT license.
 
 use super::{
-    sender::congestion_ctrl,
-    sender::Sender,
-    sender::{congestion_ctrl::CongestionControlConstructor, UnackedSegment},
+    congestion_control::{self, CongestionControlConstructor},
+    sender::{Sender, UnackedSegment},
 };
 use crate::protocols::{
     arp::ArpPeer,
@@ -158,6 +157,10 @@ pub struct ControlBlock<RT: Runtime> {
 
     // Whether the user has called close.
     pub user_is_done_sending: Cell<bool>,
+
+    // Congestion control trait implementation we're currently using.
+    // ToDo: Consider switching this to a static implementation to avoid V-table call overhead.
+    cc: Box<dyn congestion_control::CongestionControl<RT>>,
 }
 
 //==============================================================================
@@ -176,16 +179,14 @@ impl<RT: Runtime> ControlBlock<RT> {
         sender_window_size: u32,
         sender_window_scale: u8,
         sender_mss: usize,
-        sender_cc_constructor: CongestionControlConstructor<RT>,
-        sender_congestion_control_options: Option<congestion_ctrl::Options>,
+        cc_constructor: CongestionControlConstructor<RT>,
+        congestion_control_options: Option<congestion_control::Options>,
     ) -> Self {
         let sender = Sender::new(
             sender_seq_no,
             sender_window_size,
             sender_window_scale,
             sender_mss,
-            sender_cc_constructor,
-            sender_congestion_control_options,
         );
         Self {
             local,
@@ -203,6 +204,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             out_of_order_fin: Cell::new(Option::None),
             receiver: Receiver::new(receiver_seq_no, receiver_seq_no),
             user_is_done_sending: Cell::new(false),
+            cc: cc_constructor(sender_mss, sender_seq_no, congestion_control_options),
         }
     }
 
@@ -227,33 +229,40 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.send(buf, self)
     }
 
-    pub fn congestion_ctrl_watch_retransmit_now_flag(&self) -> (bool, WatchFuture<bool>) {
-        self.sender.congestion_ctrl_watch_retransmit_now_flag()
+    pub fn congestion_control_watch_retransmit_now_flag(&self) -> (bool, WatchFuture<bool>) {
+        self.cc.watch_retransmit_now_flag()
     }
 
-    pub fn congestion_ctrl_on_fast_retransmit(&self) {
-        self.sender.congestion_ctrl_on_fast_retransmit()
+    pub fn congestion_control_on_fast_retransmit(&self) {
+        self.cc.on_fast_retransmit()
     }
 
-    pub fn congestion_ctrl_on_rto(&self, send_unacknowledged: SeqNumber) {
-        self.sender.congestion_ctrl_on_rto(send_unacknowledged)
+    pub fn congestion_control_on_rto(&self, send_unacknowledged: SeqNumber) {
+        self.cc.on_rto(send_unacknowledged)
     }
 
-    pub fn congestion_ctrl_on_send(&self, rto: Duration, num_sent_bytes: u32) {
-        self.sender.congestion_ctrl_on_send(rto, num_sent_bytes)
+    pub fn congestion_control_on_send(&self, rto: Duration, num_sent_bytes: u32) {
+        self.cc.on_send(rto, num_sent_bytes)
     }
 
-    pub fn congestion_ctrl_on_cwnd_check_before_send(&self) {
-        self.sender.congestion_ctrl_on_cwnd_check_before_send()
+    pub fn congestion_control_on_cwnd_check_before_send(&self) {
+        self.cc.on_cwnd_check_before_send()
     }
 
-    pub fn congestion_ctrl_watch_cwnd(&self) -> (u32, WatchFuture<u32>) {
-        self.sender.congestion_ctrl_watch_cwnd()
+    pub fn congestion_control_get_cwnd(&self) -> u32 {
+        self.cc.get_cwnd()
     }
 
-    pub fn congestion_ctrl_watch_limited_transmit_cwnd_increase(&self) -> (u32, WatchFuture<u32>) {
-        self.sender
-            .congestion_ctrl_watch_limited_transmit_cwnd_increase()
+    pub fn congestion_control_watch_cwnd(&self) -> (u32, WatchFuture<u32>) {
+        self.cc.watch_cwnd()
+    }
+
+    pub fn congestion_control_get_limited_transmit_cwnd_increase(&self) -> u32 {
+        self.cc.get_limited_transmit_cwnd_increase()
+    }
+
+    pub fn congestion_control_watch_limited_transmit_cwnd_increase(&self) -> (u32, WatchFuture<u32>) {
+        self.cc.watch_limited_transmit_cwnd_increase()
     }
 
     pub fn get_mss(&self) -> usize {
@@ -522,7 +531,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         // ToDo: Restructure this call into congestion control to either integrate it directly or make it more fine-
         // grained.  It currently duplicates the new/duplicate ack check itself internally, which is inefficient.
         // We should either make separate calls for each case or integrate those cases directly.
-        self.sender.congestion_ctrl.on_ack_received(
+        self.cc.on_ack_received(
             self.sender.current_rto(),
             send_unacknowledged,
             send_next,

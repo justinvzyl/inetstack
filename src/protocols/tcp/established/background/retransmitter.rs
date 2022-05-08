@@ -84,9 +84,9 @@ pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, F
 
         // Pin future for fast retransmission.
         let (rtx_fast_retransmit, rtx_fast_retransmit_changed) =
-            cb.congestion_ctrl_watch_retransmit_now_flag();
+            cb.congestion_control_watch_retransmit_now_flag();
         if rtx_fast_retransmit {
-            cb.congestion_ctrl_on_fast_retransmit();
+            cb.congestion_control_on_fast_retransmit();
             retransmit(RetransmitCause::FastRetransmit, &cb).await?;
             continue;
         }
@@ -98,7 +98,7 @@ pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, F
             _ = rtx_future => {
                 trace!("Retransmission Timer Expired");
                 let (send_unacknowledged, _) = cb.get_send_unacked();
-                cb.congestion_ctrl_on_rto(send_unacknowledged);
+                cb.congestion_control_on_rto(send_unacknowledged);
                 // ToDo: Fix retransmit routine, uncomment next line and delete subsequent line.
                 // retransmit(RetransmitCause::TimeOut, &cb).await?;
                 cb.set_retransmit_deadline(None);

@@ -74,12 +74,12 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         futures::pin_mut!(send_unacked_changed);
 
         // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
-        cb.congestion_ctrl_on_cwnd_check_before_send();
-        let (cwnd, cwnd_changed) = cb.congestion_ctrl_watch_cwnd();
+        cb.congestion_control_on_cwnd_check_before_send();
+        let (cwnd, cwnd_changed) = cb.congestion_control_watch_cwnd();
         futures::pin_mut!(cwnd_changed);
 
         // The limited transmit algorithm may increase the effective size of cwnd by up to 2 * mss.
-        let (ltci, ltci_changed) = cb.congestion_ctrl_watch_limited_transmit_cwnd_increase();
+        let (ltci, ltci_changed) = cb.congestion_control_watch_limited_transmit_cwnd_increase();
         futures::pin_mut!(ltci_changed);
 
         let effective_cwnd: u32 = cwnd + ltci;
@@ -118,7 +118,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let mut segment_data_len: u32 = segment_data.len() as u32;
 
         let rto: Duration = cb.rto_current();
-        cb.congestion_ctrl_on_send(rto, sent_data);
+        cb.congestion_control_on_send(rto, sent_data);
 
         // Prepare the segment and send it.
         let mut header: TcpHeader = cb.tcp_header();

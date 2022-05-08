@@ -2,12 +2,12 @@
 // Licensed under the MIT license.
 
 mod background;
+pub mod congestion_control;
 mod ctrlblk;
 mod sender;
 
 pub use self::ctrlblk::ControlBlock;
 pub use self::ctrlblk::State;
-pub use self::sender::congestion_ctrl as cc;
 
 use self::background::background;
 use crate::futures::FutureOperation;

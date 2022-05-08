@@ -15,6 +15,6 @@ mod sequence_number;
 mod tests;
 
 pub use self::{
-    established::cc, peer::TcpPeer, segment::MAX_TCP_HEADER_SIZE, segment::MIN_TCP_HEADER_SIZE,
+    established::congestion_control, peer::TcpPeer, segment::MAX_TCP_HEADER_SIZE, segment::MIN_TCP_HEADER_SIZE,
     sequence_number::SeqNumber,
 };
