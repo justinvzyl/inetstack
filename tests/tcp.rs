@@ -10,15 +10,39 @@ mod common;
 //==============================================================================
 
 use crate::common::{
-    arp, libos::*, runtime::DummyRuntime, ALICE_IPV4, ALICE_MAC, BOB_IPV4, BOB_MAC, PORT_BASE,
+    arp,
+    libos::*,
+    runtime::DummyRuntime,
+    ALICE_IPV4,
+    ALICE_MAC,
+    BOB_IPV4,
+    BOB_MAC,
+    PORT_BASE,
 };
-use ::inetstack::{operations::OperationResult, protocols::ipv4::Ipv4Endpoint, InetStack};
-use ::crossbeam_channel::{self, Receiver, Sender};
-use ::runtime::{fail::Fail, memory::Bytes, network::types::Port16, QDesc, QToken};
+use ::crossbeam_channel::{
+    self,
+    Receiver,
+    Sender,
+};
+use ::inetstack::{
+    operations::OperationResult,
+    protocols::ipv4::Ipv4Endpoint,
+    InetStack,
+};
+use ::runtime::{
+    fail::Fail,
+    memory::Bytes,
+    network::types::Port16,
+    QDesc,
+    QToken,
+};
 use ::std::{
     convert::TryFrom,
     net::Ipv4Addr,
-    thread::{self, JoinHandle},
+    thread::{
+        self,
+        JoinHandle,
+    },
 };
 
 //==============================================================================
@@ -58,8 +82,7 @@ fn do_tcp_establish_connection(port: u16) {
     let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> =
-            DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         let port: Port16 = Port16::try_from(port).unwrap();
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
@@ -91,8 +114,7 @@ fn do_tcp_establish_connection(port: u16) {
     });
 
     let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> =
-            DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: Port16 = Port16::try_from(port).unwrap();
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
@@ -135,8 +157,7 @@ fn do_tcp_push_remote(port: u16) {
     let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> =
-            DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         let port: Port16 = Port16::try_from(port).unwrap();
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
@@ -178,8 +199,7 @@ fn do_tcp_push_remote(port: u16) {
     });
 
     let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> =
-            DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: Port16 = Port16::try_from(port).unwrap();
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
@@ -391,8 +411,7 @@ fn do_tcp_bad_connect(port: u16) {
     let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> =
-            DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
         let port: Port16 = Port16::try_from(port).unwrap();
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
@@ -415,7 +434,7 @@ fn do_tcp_bad_connect(port: u16) {
             Ok(_) => (),
             Err(_) => {
                 panic!("close() on passive socket has failed")
-            }
+            },
         };
         match libos.close(sockfd) {
             Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
@@ -424,8 +443,7 @@ fn do_tcp_bad_connect(port: u16) {
     });
 
     let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> =
-            DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: Port16 = Port16::try_from(port).unwrap();
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);

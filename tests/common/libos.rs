@@ -6,14 +6,24 @@
 //==============================================================================
 
 use super::runtime::DummyRuntime;
+use ::crossbeam_channel::{
+    Receiver,
+    Sender,
+};
 use ::inetstack::InetStack;
-use ::crossbeam_channel::{Receiver, Sender};
 use ::runtime::{
     logging,
-    memory::{Bytes, BytesMut},
+    memory::{
+        Bytes,
+        BytesMut,
+    },
     network::types::MacAddress,
 };
-use ::std::{collections::HashMap, net::Ipv4Addr, time::Instant};
+use ::std::{
+    collections::HashMap,
+    net::Ipv4Addr,
+    time::Instant,
+};
 
 //==============================================================================
 // Structures
