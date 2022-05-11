@@ -24,15 +24,38 @@ use crate::{
     operations::OperationResult,
     protocols::{
         arp::ArpPeer,
-        ethernet2::{EtherType2, Ethernet2Header},
+        ethernet2::{
+            EtherType2,
+            Ethernet2Header,
+        },
         ipv4::Ipv4Endpoint,
         Peer,
     },
 };
-use ::scheduler::{FutureResult, SchedulerHandle};
-use ::libc::{c_int, EBADF, EINVAL, ENOTSUP};
-use ::runtime::{fail::Fail, memory::Buffer, queue::IoQueueTable, QDesc, QToken, QType, Runtime};
-use ::std::{any::Any, convert::TryFrom, time::Instant};
+use ::libc::{
+    c_int,
+    EBADF,
+    EINVAL,
+    ENOTSUP,
+};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    queue::IoQueueTable,
+    QDesc,
+    QToken,
+    QType,
+    Runtime,
+};
+use ::scheduler::{
+    FutureResult,
+    SchedulerHandle,
+};
+use ::std::{
+    any::Any,
+    convert::TryFrom,
+    time::Instant,
+};
 use protocols::udp::UdpOperation;
 
 #[cfg(feature = "profiler")]
@@ -104,12 +127,7 @@ impl<RT: Runtime> InetStack<RT> {
     /// Upon successful completion, a file descriptor for the newly created
     /// socket is returned. Upon failure, `Fail` is returned instead.
     ///
-    pub fn socket(
-        &mut self,
-        domain: c_int,
-        socket_type: c_int,
-        _protocol: c_int,
-    ) -> Result<QDesc, Fail> {
+    pub fn socket(&mut self, domain: c_int, socket_type: c_int, _protocol: c_int) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::socket");
         trace!(
@@ -130,7 +148,7 @@ impl<RT: Runtime> InetStack<RT> {
                 } else {
                     Ok(qd)
                 }
-            }
+            },
             libc::SOCK_DGRAM => {
                 let qd: QDesc = self.file_table.alloc(QType::UdpSocket.into());
                 if let Err(e) = self.ipv4.udp.do_socket(qd) {
@@ -139,7 +157,7 @@ impl<RT: Runtime> InetStack<RT> {
                 } else {
                     Ok(qd)
                 }
-            }
+            },
             _ => Err(Fail::new(ENOTSUP, "socket type not supported")),
         }
     }
@@ -225,11 +243,10 @@ impl<RT: Runtime> InetStack<RT> {
                 // It does, so allocate a new queue descriptor and issue accept operation.
                 Ok(QType::TcpSocket) => {
                     let new_qd: QDesc = self.file_table.alloc(QType::TcpSocket.into());
-                    let future: FutureOperation<RT> =
-                        FutureOperation::from(self.ipv4.tcp.do_accept(qd, new_qd));
+                    let future: FutureOperation<RT> = FutureOperation::from(self.ipv4.tcp.do_accept(qd, new_qd));
                     let handle: SchedulerHandle = self.rt.schedule(future);
                     Ok(handle.into_raw().into())
-                }
+                },
                 // This queue descriptor does not concern a TCP socket.
                 _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
             },
@@ -256,9 +273,7 @@ impl<RT: Runtime> InetStack<RT> {
         trace!("connect(): qd={:?} remote={:?}", qd, remote);
         let future = match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
-                Ok(QType::TcpSocket) => {
-                    Ok(FutureOperation::from(self.ipv4.tcp.connect(qd, remote)))
-                }
+                Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.connect(qd, remote))),
                 _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
             _ => Err(Fail::new(EBADF, "bad queue descriptor")),
@@ -330,18 +345,13 @@ impl<RT: Runtime> InetStack<RT> {
 
     /// Pushes a buffer to a UDP socket.
     /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
-    pub fn do_pushto(
-        &mut self,
-        qd: QDesc,
-        buf: RT::Buf,
-        to: Ipv4Endpoint,
-    ) -> Result<FutureOperation<RT>, Fail> {
+    pub fn do_pushto(&mut self, qd: QDesc, buf: RT::Buf, to: Ipv4Endpoint) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::UdpSocket) => {
                     let udp_op = UdpOperation::Pushto(qd, self.ipv4.udp.do_pushto(qd, buf, to));
                     Ok(FutureOperation::Udp(udp_op))
-                }
+                },
                 _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
             _ => Err(Fail::new(EBADF, "bad queue descriptor")),
@@ -350,12 +360,7 @@ impl<RT: Runtime> InetStack<RT> {
 
     /// Pushes raw data to a UDP socket.
     /// TODO: Move this function to demikernel repo once we have a common buffer representation across all libOSes.
-    pub fn pushto2(
-        &mut self,
-        qd: QDesc,
-        data: &[u8],
-        remote: Ipv4Endpoint,
-    ) -> Result<QToken, Fail> {
+    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: Ipv4Endpoint) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::pushto2");
         trace!("pushto2(): qd={:?}", qd);
@@ -385,10 +390,9 @@ impl<RT: Runtime> InetStack<RT> {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.pop(qd))),
                 Ok(QType::UdpSocket) => {
-                    let udp_op =
-                        UdpOperation::Pop(FutureResult::new(self.ipv4.udp.do_pop(qd), None));
+                    let udp_op = UdpOperation::Pop(FutureResult::new(self.ipv4.udp.do_pop(qd), None));
                     Ok(FutureOperation::Udp(udp_op))
-                }
+                },
                 _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
             _ => Err(Fail::new(EBADF, "bad queue descriptor")),
@@ -421,10 +425,7 @@ impl<RT: Runtime> InetStack<RT> {
     }
 
     /// Waits for any operation to complete.
-    pub fn wait_any2(
-        &mut self,
-        qts: &[QToken],
-    ) -> Result<(usize, QDesc, OperationResult<RT::Buf>), Fail> {
+    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult<RT::Buf>), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::wait_any2");
         trace!("wait_any2(): qts={:?}", qts);
@@ -461,14 +462,12 @@ impl<RT: Runtime> InetStack<RT> {
     /// This function will panic if the specified future had not completed or is _background_ future.
     pub fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult<RT::Buf>) {
         let boxed_future: Box<dyn Any> = self.rt.take(handle).as_any();
-        let boxed_concrete_type: FutureOperation<RT> = *boxed_future
-            .downcast::<FutureOperation<RT>>()
-            .expect("Wrong type!");
+        let boxed_concrete_type: FutureOperation<RT> =
+            *boxed_future.downcast::<FutureOperation<RT>>().expect("Wrong type!");
 
         match boxed_concrete_type {
             FutureOperation::Tcp(f) => {
-                let (qd, new_qd, qr): (QDesc, Option<QDesc>, OperationResult<RT::Buf>) =
-                    f.expect_result();
+                let (qd, new_qd, qr): (QDesc, Option<QDesc>, OperationResult<RT::Buf>) = f.expect_result();
 
                 // Handle accept failures.
                 if let Some(new_qd) = new_qd {
@@ -476,18 +475,18 @@ impl<RT: Runtime> InetStack<RT> {
                         // Operation failed, so release queue descriptor.
                         OperationResult::Failed(_) => {
                             self.file_table.free(new_qd);
-                        }
+                        },
                         // Operation succeeded.
                         _ => (),
                     }
                 }
 
                 (qd, qr)
-            }
+            },
             FutureOperation::Udp(f) => f.get_result(),
             FutureOperation::Background(..) => {
                 panic!("`take_operation` attempted on background task!")
-            }
+            },
         }
     }
 
@@ -507,7 +506,7 @@ impl<RT: Runtime> InetStack<RT> {
         match header.ether_type() {
             EtherType2::Arp => self.arp.receive(payload),
             EtherType2::Ipv4 => self.ipv4.receive(payload),
-            EtherType2::Ipv6 => Ok(()),  // Ignore for now.
+            EtherType2::Ipv6 => Ok(()), // Ignore for now.
         }
     }
 

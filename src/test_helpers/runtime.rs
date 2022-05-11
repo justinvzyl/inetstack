@@ -1,39 +1,66 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{futures::operation::FutureOperation, test_helpers::Engine};
+use crate::{
+    futures::operation::FutureOperation,
+    test_helpers::Engine,
+};
 use ::arrayvec::ArrayVec;
 use ::futures::FutureExt;
 use ::rand::{
-    distributions::{Distribution, Standard},
+    distributions::{
+        Distribution,
+        Standard,
+    },
     rngs::SmallRng,
     seq::SliceRandom,
-    Rng, SeedableRng,
+    Rng,
+    SeedableRng,
 };
 use ::runtime::{
     fail::Fail,
     logging,
-    memory::{Bytes, BytesMut, MemoryRuntime},
+    memory::{
+        Bytes,
+        BytesMut,
+        MemoryRuntime,
+    },
     network::{
-        config::{ArpConfig, TcpConfig, UdpConfig},
+        config::{
+            ArpConfig,
+            TcpConfig,
+            UdpConfig,
+        },
         consts::RECEIVE_BATCH_SIZE,
         types::MacAddress,
-        NetworkRuntime, PacketBuf,
+        NetworkRuntime,
+        PacketBuf,
     },
     task::SchedulerRuntime,
-    timer::{Timer, TimerRc, WaitFuture},
+    timer::{
+        Timer,
+        TimerRc,
+        WaitFuture,
+    },
     types::dmtr_sgarray_t,
     utils::UtilsRuntime,
     Runtime,
 };
-use ::scheduler::{Scheduler, SchedulerFuture, SchedulerHandle};
+use ::scheduler::{
+    Scheduler,
+    SchedulerFuture,
+    SchedulerHandle,
+};
 use ::std::{
     cell::RefCell,
     collections::VecDeque,
     future::Future,
     net::Ipv4Addr,
     rc::Rc,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 //==============================================================================
@@ -214,10 +241,7 @@ impl SchedulerRuntime for TestRuntime {
     fn wait(&self, duration: Duration) -> Self::WaitFuture {
         let inner = self.inner.borrow_mut();
         let now = inner.timer.0.now();
-        inner
-            .timer
-            .0
-            .wait_until(inner.timer.clone(), now + duration)
+        inner.timer.0.wait_until(inner.timer.clone(), now + duration)
     }
 
     fn wait_until(&self, when: Instant) -> Self::WaitFuture {
@@ -232,9 +256,8 @@ impl SchedulerRuntime for TestRuntime {
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
         match self
             .scheduler
-            .insert(FutureOperation::Background::<TestRuntime>(
-                future.boxed_local(),
-            )) {
+            .insert(FutureOperation::Background::<TestRuntime>(future.boxed_local()))
+        {
             Some(handle) => handle,
             None => panic!("could not insert future in scheduling queue"),
         }

@@ -2,17 +2,30 @@
 // Licensed under the MIT license.
 
 use crate::protocols::{
-    ethernet2::Ethernet2Header, ip::IpProtocol, ipv4::Ipv4Header, tcp::SeqNumber,
+    ethernet2::Ethernet2Header,
+    ip::IpProtocol,
+    ipv4::Ipv4Header,
+    tcp::SeqNumber,
 };
-use ::byteorder::{ByteOrder, NetworkEndian, ReadBytesExt};
+use ::byteorder::{
+    ByteOrder,
+    NetworkEndian,
+    ReadBytesExt,
+};
 use ::libc::EBADMSG;
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
-    network::{types::Port16, PacketBuf},
+    network::{
+        types::Port16,
+        PacketBuf,
+    },
 };
 use ::std::{
-    convert::{TryFrom, TryInto},
+    convert::{
+        TryFrom,
+        TryInto,
+    },
     io::Cursor,
 };
 
@@ -31,9 +44,7 @@ pub struct TcpSegment<T: Buffer> {
 
 impl<T: Buffer> PacketBuf<T> for TcpSegment<T> {
     fn header_size(&self) -> usize {
-        self.ethernet2_hdr.compute_size()
-            + self.ipv4_hdr.compute_size()
-            + self.tcp_hdr.compute_size()
+        self.ethernet2_hdr.compute_size() + self.ipv4_hdr.compute_size() + self.tcp_hdr.compute_size()
     }
 
     fn body_size(&self) -> usize {
@@ -51,10 +62,8 @@ impl<T: Buffer> PacketBuf<T> for TcpSegment<T> {
         cur_pos += eth_hdr_size;
 
         let ipv4_payload_len = tcp_hdr_size + self.data.len();
-        self.ipv4_hdr.serialize(
-            &mut buf[cur_pos..(cur_pos + ipv4_hdr_size)],
-            ipv4_payload_len,
-        );
+        self.ipv4_hdr
+            .serialize(&mut buf[cur_pos..(cur_pos + ipv4_hdr_size)], ipv4_payload_len);
         cur_pos += ipv4_hdr_size;
 
         self.tcp_hdr.serialize(
@@ -111,39 +120,33 @@ impl TcpOptions2 {
             NoOperation => {
                 buf[0] = 1;
                 1
-            }
+            },
             MaximumSegmentSize(mss) => {
                 buf[0] = 2;
                 buf[1] = 4;
                 NetworkEndian::write_u16(&mut buf[2..4], *mss);
                 4
-            }
+            },
             WindowScale(scale) => {
                 buf[0] = 3;
                 buf[1] = 3;
                 buf[2] = *scale;
                 3
-            }
+            },
             SelectiveAcknowlegementPermitted => {
                 buf[0] = 4;
                 buf[1] = 2;
                 2
-            }
+            },
             SelectiveAcknowlegement { num_sacks, sacks } => {
                 buf[0] = 5;
                 buf[1] = 2 + 8 * *num_sacks as u8;
                 for i in 0..*num_sacks {
-                    NetworkEndian::write_u32(
-                        &mut buf[(2 + 8 * i)..(2 + 8 * i + 4)],
-                        sacks[i].begin.into(),
-                    );
-                    NetworkEndian::write_u32(
-                        &mut buf[(2 + 8 * i + 4)..(2 + 8 * i + 8)],
-                        sacks[i].end.into(),
-                    );
+                    NetworkEndian::write_u32(&mut buf[(2 + 8 * i)..(2 + 8 * i + 4)], sacks[i].begin.into());
+                    NetworkEndian::write_u32(&mut buf[(2 + 8 * i + 4)..(2 + 8 * i + 8)], sacks[i].end.into());
                 }
                 2 + 8 * num_sacks
-            }
+            },
             Timestamp {
                 sender_timestamp,
                 echo_timestamp,
@@ -153,7 +156,7 @@ impl TcpOptions2 {
                 NetworkEndian::write_u32(&mut buf[2..6], *sender_timestamp);
                 NetworkEndian::write_u32(&mut buf[6..10], *echo_timestamp);
                 10
-            }
+            },
         }
     }
 }
@@ -280,7 +283,7 @@ impl TcpHeader {
                         }
                         let mss = option_rdr.read_u16::<NetworkEndian>()?;
                         TcpOptions2::MaximumSegmentSize(mss)
-                    }
+                    },
                     3 => {
                         let option_length = option_rdr.read_u8()?;
                         if option_length != 3 {
@@ -288,14 +291,14 @@ impl TcpHeader {
                         }
                         let window_scale = option_rdr.read_u8()?;
                         TcpOptions2::WindowScale(window_scale)
-                    }
+                    },
                     4 => {
                         let option_length = option_rdr.read_u8()?;
                         if option_length != 2 {
                             return Err(Fail::new(EBADMSG, "SACK permitted size was not 2"));
                         }
                         TcpOptions2::SelectiveAcknowlegementPermitted
-                    }
+                    },
                     5 => {
                         let option_length = option_rdr.read_u8()?;
                         let num_sacks = match option_length {
@@ -311,7 +314,7 @@ impl TcpHeader {
                             s.end = SeqNumber::from(option_rdr.read_u32::<NetworkEndian>()?);
                         }
                         TcpOptions2::SelectiveAcknowlegement { num_sacks, sacks }
-                    }
+                    },
                     8 => {
                         let option_length = option_rdr.read_u8()?;
                         if option_length != 10 {
@@ -323,7 +326,7 @@ impl TcpHeader {
                             sender_timestamp,
                             echo_timestamp,
                         }
-                    }
+                    },
                     _ => return Err(Fail::new(EBADMSG, "invalid TCP option")),
                 };
                 if num_options >= option_list.len() {
@@ -358,15 +361,8 @@ impl TcpHeader {
         Ok((header, buf))
     }
 
-    pub fn serialize(
-        &self,
-        buf: &mut [u8],
-        ipv4_hdr: &Ipv4Header,
-        data: &[u8],
-        tx_checksum_offload: bool,
-    ) {
-        let fixed_buf: &mut [u8; MIN_TCP_HEADER_SIZE] =
-            (&mut buf[..MIN_TCP_HEADER_SIZE]).try_into().unwrap();
+    pub fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8], tx_checksum_offload: bool) {
+        let fixed_buf: &mut [u8; MIN_TCP_HEADER_SIZE] = (&mut buf[..MIN_TCP_HEADER_SIZE]).try_into().unwrap();
         NetworkEndian::write_u16(&mut fixed_buf[0..2], self.src_port.into());
         NetworkEndian::write_u16(&mut fixed_buf[2..4], self.dst_port.into());
         NetworkEndian::write_u32(&mut fixed_buf[4..8], self.seq_num.into());
@@ -478,8 +474,7 @@ fn tcp_checksum(ipv4_header: &Ipv4Header, header: &[u8], data: &[u8]) -> u16 {
     // 4) TCP segment length (2 bytes)
     state += (header.len() + data.len()) as u32;
 
-    let fixed_header: &[u8; MIN_TCP_HEADER_SIZE] =
-        header[..MIN_TCP_HEADER_SIZE].try_into().unwrap();
+    let fixed_header: &[u8; MIN_TCP_HEADER_SIZE] = header[..MIN_TCP_HEADER_SIZE].try_into().unwrap();
 
     // Continue to the TCP header. First, for the fixed length parts, we have...
     // 1) Source port (2 bytes)

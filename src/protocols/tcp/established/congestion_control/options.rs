@@ -64,8 +64,6 @@ impl Options {
 
 impl Default for Options {
     fn default() -> Self {
-        Self {
-            inner: HashMap::new(),
-        }
+        Self { inner: HashMap::new() }
     }
 }

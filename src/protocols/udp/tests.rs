@@ -1,16 +1,33 @@
 // // Copyright (c) Microsoft Corporation.
 // // Licensed under the MIT license.
 
-use crate::{protocols::ipv4::Ipv4Endpoint, test_helpers};
-use ::futures::task::{noop_waker_ref, Context};
-use ::libc::{EADDRINUSE, EBADF, ENOTCONN};
-use ::runtime::{memory::BytesMut, network::types::Port16, QDesc};
+use crate::{
+    protocols::ipv4::Ipv4Endpoint,
+    test_helpers,
+};
+use ::futures::task::{
+    noop_waker_ref,
+    Context,
+};
+use ::libc::{
+    EADDRINUSE,
+    EBADF,
+    ENOTCONN,
+};
+use ::runtime::{
+    memory::BytesMut,
+    network::types::Port16,
+    QDesc,
+};
 use ::std::{
     convert::TryFrom,
     future::Future,
     pin::Pin,
     task::Poll,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 //==============================================================================
@@ -297,11 +314,8 @@ fn udp_loop2_ping_pong() {
         // Receive data from Alice.
         bob.receive(alice.rt().pop_frame()).unwrap();
         let mut pop_future = bob.udp_pop(bob_fd);
-        let (remote_addr, received_buf_a) = match Future::poll(Pin::new(&mut pop_future), &mut ctx)
-        {
-            Poll::Ready(Ok((Some(remote_addr), received_buf_a))) => {
-                Ok((remote_addr, received_buf_a))
-            }
+        let (remote_addr, received_buf_a) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
+            Poll::Ready(Ok((Some(remote_addr), received_buf_a))) => Ok((remote_addr, received_buf_a)),
             _ => Err(()),
         }
         .unwrap();
@@ -320,11 +334,8 @@ fn udp_loop2_ping_pong() {
         // Receive data from Bob.
         alice.receive(bob.rt().pop_frame()).unwrap();
         let mut pop_future = alice.udp_pop(alice_fd);
-        let (remote_addr, received_buf_b) = match Future::poll(Pin::new(&mut pop_future), &mut ctx)
-        {
-            Poll::Ready(Ok((Some(remote_addr), received_buf_b))) => {
-                Ok((remote_addr, received_buf_b))
-            }
+        let (remote_addr, received_buf_b) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
+            Poll::Ready(Ok((Some(remote_addr), received_buf_b))) => Ok((remote_addr, received_buf_b)),
             _ => Err(()),
         }
         .unwrap();

@@ -12,6 +12,9 @@ mod tests;
 //==============================================================================
 
 pub use self::{
-    datagram::{Ipv4Header, IPV4_HEADER_DEFAULT_SIZE},
+    datagram::{
+        Ipv4Header,
+        IPV4_HEADER_DEFAULT_SIZE,
+    },
     endpoint::Ipv4Endpoint,
 };

@@ -6,13 +6,22 @@ mod none;
 mod options;
 
 use crate::protocols::tcp::SeqNumber;
-use ::runtime::{watched::WatchFuture, Runtime};
-use ::std::{fmt::Debug, time::Duration};
+use ::runtime::{
+    watched::WatchFuture,
+    Runtime,
+};
+use ::std::{
+    fmt::Debug,
+    time::Duration,
+};
 
 pub use self::{
     cubic::Cubic,
     none::None,
-    options::{OptionValue, Options},
+    options::{
+        OptionValue,
+        Options,
+    },
 };
 
 pub trait SlowStartCongestionAvoidance<RT: Runtime> {
@@ -26,13 +35,7 @@ pub trait SlowStartCongestionAvoidance<RT: Runtime> {
     // Called immediately before the cwnd check is performed before data is sent.
     fn on_cwnd_check_before_send(&self) {}
 
-    fn on_ack_received(
-        &self,
-        _rto: Duration,
-        _send_unacked: SeqNumber,
-        _send_next: SeqNumber,
-        _ack_seq_no: SeqNumber,
-    ) {
+    fn on_ack_received(&self, _rto: Duration, _send_unacked: SeqNumber, _send_next: SeqNumber, _ack_seq_no: SeqNumber) {
     }
 
     // Called immediately before retransmit after RTO.
@@ -75,11 +78,7 @@ where
 pub trait CongestionControl<RT: Runtime>:
     SlowStartCongestionAvoidance<RT> + FastRetransmitRecovery<RT> + LimitedTransmit<RT> + Debug
 {
-    fn new(
-        mss: usize,
-        seq_no: SeqNumber,
-        options: Option<options::Options>,
-    ) -> Box<dyn CongestionControl<RT>>
+    fn new(mss: usize, seq_no: SeqNumber, options: Option<options::Options>) -> Box<dyn CongestionControl<RT>>
     where
         Self: Sized;
 }

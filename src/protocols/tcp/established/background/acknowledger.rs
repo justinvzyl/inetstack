@@ -3,10 +3,16 @@
 
 use super::ControlBlock;
 use ::futures::{
-    future::{self, Either},
+    future::{
+        self,
+        Either,
+    },
     FutureExt,
 };
-use ::runtime::{fail::Fail, Runtime};
+use ::runtime::{
+    fail::Fail,
+    Runtime,
+};
 use std::rc::Rc;
 
 pub async fn acknowledger<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {

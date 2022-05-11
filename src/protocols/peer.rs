@@ -2,11 +2,24 @@
 // Licensed under the MIT license.
 
 use crate::protocols::{
-    arp::ArpPeer, icmpv4::Icmpv4Peer, ip::IpProtocol, ipv4::Ipv4Header, tcp::TcpPeer, udp::UdpPeer,
+    arp::ArpPeer,
+    icmpv4::Icmpv4Peer,
+    ip::IpProtocol,
+    ipv4::Ipv4Header,
+    tcp::TcpPeer,
+    udp::UdpPeer,
 };
 use ::libc::ENOTCONN;
-use ::runtime::{fail::Fail, network::types::MacAddress, Runtime};
-use ::std::{future::Future, net::Ipv4Addr, time::Duration};
+use ::runtime::{
+    fail::Fail,
+    network::types::MacAddress,
+    Runtime,
+};
+use ::std::{
+    future::Future,
+    net::Ipv4Addr,
+    time::Duration,
+};
 
 #[cfg(test)]
 use runtime::QDesc;
@@ -32,20 +45,13 @@ impl<RT: Runtime> Peer<RT> {
         );
         let icmpv4 = Icmpv4Peer::new(rt.clone(), arp.clone());
         let tcp = TcpPeer::new(rt.clone(), arp);
-        Peer {
-            rt,
-            icmpv4,
-            tcp,
-            udp,
-        }
+        Peer { rt, icmpv4, tcp, udp }
     }
 
     pub fn receive(&mut self, buf: RT::Buf) -> Result<(), Fail> {
         let (header, payload) = Ipv4Header::parse(buf)?;
         debug!("Ipv4 received {:?}", header);
-        if header.get_dest_addr() != self.rt.local_ipv4_addr()
-            && !header.get_dest_addr().is_broadcast()
-        {
+        if header.get_dest_addr() != self.rt.local_ipv4_addr() && !header.get_dest_addr().is_broadcast() {
             return Err(Fail::new(ENOTCONN, "invalid destination address"));
         }
         match header.get_protocol() {

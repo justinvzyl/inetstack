@@ -6,19 +6,35 @@ pub mod congestion_control;
 mod ctrlblk;
 mod sender;
 
-pub use self::ctrlblk::ControlBlock;
-pub use self::ctrlblk::State;
+pub use self::ctrlblk::{
+    ControlBlock,
+    State,
+};
 
 use self::background::background;
-use crate::futures::FutureOperation;
-use crate::protocols::ipv4::Ipv4Endpoint;
-use crate::protocols::tcp::segment::TcpHeader;
+use crate::{
+    futures::FutureOperation,
+    protocols::{
+        ipv4::Ipv4Endpoint,
+        tcp::segment::TcpHeader,
+    },
+};
+use ::futures::{
+    channel::mpsc,
+    FutureExt,
+};
+use ::runtime::{
+    fail::Fail,
+    QDesc,
+    Runtime,
+};
 use ::scheduler::SchedulerHandle;
-use ::futures::{channel::mpsc, FutureExt};
-use ::runtime::{fail::Fail, QDesc, Runtime};
 use ::std::{
     rc::Rc,
-    task::{Context, Poll},
+    task::{
+        Context,
+        Poll,
+    },
     time::Duration,
 };
 
@@ -29,16 +45,10 @@ pub struct EstablishedSocket<RT: Runtime> {
 }
 
 impl<RT: Runtime> EstablishedSocket<RT> {
-    pub fn new(
-        cb: ControlBlock<RT>,
-        fd: QDesc,
-        dead_socket_tx: mpsc::UnboundedSender<QDesc>,
-    ) -> Self {
+    pub fn new(cb: ControlBlock<RT>, fd: QDesc, dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> Self {
         let cb = Rc::new(cb);
         let future = background(cb.clone(), fd, dead_socket_tx);
-        let handle: SchedulerHandle = cb
-            .rt()
-            .spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle: SchedulerHandle = cb.rt().spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         Self {
             cb: cb.clone(),
             background_work: handle,

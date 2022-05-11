@@ -2,7 +2,10 @@
 // Licensed under the MIT license.
 
 use float_duration::FloatDuration;
-use std::{cmp, time::Duration};
+use std::{
+    cmp,
+    time::Duration,
+};
 
 // RFC6298
 #[derive(Debug)]
@@ -52,10 +55,7 @@ impl RtoCalculator {
     fn update_rto(&mut self, new_rto: f64) {
         const UBOUND_SEC: f64 = 60.0f64;
         const LBOUND_SEC: f64 = 0.100f64;
-        self.rto = match (
-            new_rto.partial_cmp(&LBOUND_SEC),
-            new_rto.partial_cmp(&UBOUND_SEC),
-        ) {
+        self.rto = match (new_rto.partial_cmp(&LBOUND_SEC), new_rto.partial_cmp(&UBOUND_SEC)) {
             (Some(cmp::Ordering::Less), _) => LBOUND_SEC,
             (_, Some(cmp::Ordering::Greater)) => UBOUND_SEC,
             (None, _) | (_, None) => panic!("NaN RTO: {:?}", new_rto),

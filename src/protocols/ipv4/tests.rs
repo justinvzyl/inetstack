@@ -6,11 +6,23 @@
 //==============================================================================
 
 use crate::{
-    protocols::{ip::IpProtocol, ipv4::Ipv4Header},
-    test_helpers::{ALICE_IPV4, BOB_IPV4},
+    protocols::{
+        ip::IpProtocol,
+        ipv4::Ipv4Header,
+    },
+    test_helpers::{
+        ALICE_IPV4,
+        BOB_IPV4,
+    },
 };
-use ::byteorder::{ByteOrder, NetworkEndian};
-use ::runtime::memory::{Buffer, Bytes};
+use ::byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
+use ::runtime::memory::{
+    Buffer,
+    Bytes,
+};
 
 //==============================================================================
 // Helper Functions
@@ -114,7 +126,7 @@ fn test_ipv4_header_parse_good() {
             assert_eq!(ipv4_hdr.get_protocol(), IpProtocol::UDP);
             assert_eq!(datagram.len(), PAYLOAD_SIZE);
             assert_eq!(datagram, data_bytes);
-        }
+        },
         Err(e) => assert!(false, "{:?}", e),
     }
 }
@@ -153,12 +165,8 @@ fn test_ipv4_header_parse_invalid_version() {
         // Do it.
         let buf_bytes: Bytes = Bytes::from_slice(&buf);
         match Ipv4Header::parse(buf_bytes) {
-            Ok(_) => assert!(
-                false,
-                "parsed ipv4_header with invalid version={:?}",
-                version
-            ),
-            Err(_) => {}
+            Ok(_) => assert!(false, "parsed ipv4_header with invalid version={:?}", version),
+            Err(_) => {},
         };
     }
 }
@@ -194,7 +202,7 @@ fn test_ipv4_header_parse_invalid_ihl() {
         let buf_bytes: Bytes = Bytes::from_slice(&buf);
         match Ipv4Header::parse(buf_bytes) {
             Ok(_) => assert!(false, "parsed ipv4 header with invalid ihl={:?}", ihl),
-            Err(_) => {}
+            Err(_) => {},
         };
     }
 }
@@ -229,12 +237,8 @@ fn test_ipv4_header_parse_invalid_total_length() {
         // Do it.
         let buf_bytes: Bytes = Bytes::from_slice(&buf);
         match Ipv4Header::parse(buf_bytes) {
-            Ok(_) => assert!(
-                false,
-                "parsed ipv4 header with invalid total_length={:?}",
-                total_length
-            ),
-            Err(_) => {}
+            Ok(_) => assert!(false, "parsed ipv4 header with invalid total_length={:?}", total_length),
+            Err(_) => {},
         };
     }
 }
@@ -274,7 +278,7 @@ fn test_ipv4_header_parse_invalid_fragmentation() {
             "parsed ipv4 header with invalid fragment_flags={:?}",
             fragment_flags
         ),
-        Err(_) => {}
+        Err(_) => {},
     };
 }
 
@@ -309,7 +313,7 @@ fn test_ipv4_header_parse_invalid_ttl() {
     let buf_bytes: Bytes = Bytes::from_slice(&buf);
     match Ipv4Header::parse(buf_bytes) {
         Ok(_) => assert!(false, "parsed ipv4 header with invalid ttl={:?}", ttl),
-        Err(_) => {}
+        Err(_) => {},
     };
 }
 
@@ -343,12 +347,8 @@ fn test_ipv4_header_parse_invalid_protocol() {
         // Do it.
         let buf_bytes: Bytes = Bytes::from_slice(&buf);
         match Ipv4Header::parse(buf_bytes) {
-            Ok(_) => assert!(
-                false,
-                "parsed ipv4 header with invalid protocol={:?}",
-                protocol
-            ),
-            Err(_) => {}
+            Ok(_) => assert!(false, "parsed ipv4 header with invalid protocol={:?}", protocol),
+            Err(_) => {},
         };
     }
 }
@@ -388,7 +388,7 @@ fn test_ipv4_header_parse_invalid_header_checksum() {
             "parsed ipv4 header with invalid header checksum={:?}",
             hdr_checksum
         ),
-        Err(_) => {}
+        Err(_) => {},
     };
 }
 
@@ -428,12 +428,8 @@ fn test_ipv4_header_parse_unsupported_ihl() {
         // Do it.
         let buf_bytes: Bytes = Bytes::from_slice(&buf);
         match Ipv4Header::parse(buf_bytes) {
-            Ok(_) => assert!(
-                false,
-                "parsed ipv4 header with ihl={:?}. Do we support it now?",
-                ihl
-            ),
-            Err(_) => {}
+            Ok(_) => assert!(false, "parsed ipv4 header with ihl={:?}. Do we support it now?", ihl),
+            Err(_) => {},
         };
     }
 }
@@ -470,12 +466,8 @@ fn test_ipv4_header_parse_unsupported_dscp() {
         // Do it.
         let buf_bytes: Bytes = Bytes::from_slice(&buf);
         match Ipv4Header::parse(buf_bytes) {
-            Ok(_) => assert!(
-                false,
-                "parsed ipv4 header with dscp={:?}. Do we support it now?",
-                dscp
-            ),
-            Err(_) => {}
+            Ok(_) => assert!(false, "parsed ipv4 header with dscp={:?}. Do we support it now?", dscp),
+            Err(_) => {},
         };
     }
 }
@@ -512,12 +504,8 @@ fn test_ipv4_header_parse_unsupported_ecn() {
         // Do it.
         let buf_bytes: Bytes = Bytes::from_slice(&buf);
         match Ipv4Header::parse(buf_bytes) {
-            Ok(_) => assert!(
-                false,
-                "parsed ipv4 header with ecn={:?}. Do we support it now?",
-                ecn
-            ),
-            Err(_) => {}
+            Ok(_) => assert!(false, "parsed ipv4 header with ecn={:?}. Do we support it now?", ecn),
+            Err(_) => {},
         };
     }
 }
@@ -559,7 +547,7 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
             "parsed ipv4 header with fragment_id={:?}. Do we support it now?",
             fragment_id,
         ),
-        Err(_) => {}
+        Err(_) => {},
     };
 
     // Fragmented packets are unsupported.
@@ -589,7 +577,7 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
             "parsed ipv4 header with fragment_offset={:?}. Do we support it now?",
             fragment_offset,
         ),
-        Err(_) => {}
+        Err(_) => {},
     };
 
     // Iterate over unsupported values for fragment flags.
@@ -619,7 +607,7 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
                 "parsed ipv4 header with fragment_flags={:?}. Do we support it now?",
                 fragment_flags
             ),
-            Err(_) => {}
+            Err(_) => {},
         };
     }
 }
@@ -665,9 +653,9 @@ fn test_ipv4_header_parse_unsupported_protocol() {
                         "parsed ipv4 header with protocol={:?}. Do we support it now?",
                         protocol,
                     ),
-                    Err(_) => {}
+                    Err(_) => {},
                 };
-            }
+            },
         };
     }
 }

@@ -4,11 +4,24 @@
 use super::ControlBlock;
 use crate::protocols::tcp::segment::TcpHeader;
 use ::futures::{
-    future::{self, Either},
+    future::{
+        self,
+        Either,
+    },
     FutureExt,
 };
-use ::runtime::{fail::Fail, network::types::MacAddress, Runtime};
-use ::std::{rc::Rc, time::{Duration, Instant}};
+use ::runtime::{
+    fail::Fail,
+    network::types::MacAddress,
+    Runtime,
+};
+use ::std::{
+    rc::Rc,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum RetransmitCause {
@@ -16,10 +29,7 @@ pub enum RetransmitCause {
     FastRetransmit,
 }
 
-async fn retransmit<RT: Runtime>(
-    cause: RetransmitCause,
-    cb: &Rc<ControlBlock<RT>>,
-) -> Result<(), Fail> {
+async fn retransmit<RT: Runtime>(cause: RetransmitCause, cb: &Rc<ControlBlock<RT>>) -> Result<(), Fail> {
     // ToDo: Handle retransmission of FIN.
 
     // ToDo: Fix this routine.  It is currently trashing our unacknowledged queue state.  It shouldn't remove any
@@ -39,7 +49,7 @@ async fn retransmit<RT: Runtime>(
                 cb.set_retransmit_deadline(None);
             }
             return Ok(());
-        }
+        },
     };
 
     // TODO: Repacketization - we should send a full MSS.
@@ -83,8 +93,7 @@ pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, F
         futures::pin_mut!(rtx_future);
 
         // Pin future for fast retransmission.
-        let (rtx_fast_retransmit, rtx_fast_retransmit_changed) =
-            cb.congestion_control_watch_retransmit_now_flag();
+        let (rtx_fast_retransmit, rtx_fast_retransmit_changed) = cb.congestion_control_watch_retransmit_now_flag();
         if rtx_fast_retransmit {
             cb.congestion_control_on_fast_retransmit();
             retransmit(RetransmitCause::FastRetransmit, &cb).await?;

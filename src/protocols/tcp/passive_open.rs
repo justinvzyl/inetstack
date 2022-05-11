@@ -1,32 +1,65 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{constants::FALLBACK_MSS, established::ControlBlock, isn_generator::IsnGenerator};
+use super::{
+    constants::FALLBACK_MSS,
+    established::ControlBlock,
+    isn_generator::IsnGenerator,
+};
 use crate::{
     futures::FutureOperation,
     protocols::{
         arp::ArpPeer,
-        ethernet2::{EtherType2, Ethernet2Header},
+        ethernet2::{
+            EtherType2,
+            Ethernet2Header,
+        },
         ip::IpProtocol,
-        ipv4::{Ipv4Endpoint, Ipv4Header},
+        ipv4::{
+            Ipv4Endpoint,
+            Ipv4Header,
+        },
         tcp::{
-            established::{congestion_control, congestion_control::CongestionControl},
-            segment::{TcpHeader, TcpOptions2, TcpSegment},
+            established::{
+                congestion_control,
+                congestion_control::CongestionControl,
+            },
+            segment::{
+                TcpHeader,
+                TcpOptions2,
+                TcpSegment,
+            },
             SeqNumber,
         },
     },
 };
-use ::scheduler::SchedulerHandle;
 use ::futures::FutureExt;
-use ::libc::{EBADMSG, ECONNREFUSED, ETIMEDOUT};
-use ::runtime::{fail::Fail, memory::Buffer, Runtime};
+use ::libc::{
+    EBADMSG,
+    ECONNREFUSED,
+    ETIMEDOUT,
+};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    Runtime,
+};
+use ::scheduler::SchedulerHandle;
 use ::std::{
     cell::RefCell,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{
+        HashMap,
+        HashSet,
+        VecDeque,
+    },
     convert::TryInto,
     future::Future,
     rc::Rc,
-    task::{Context, Poll, Waker},
+    task::{
+        Context,
+        Poll,
+        Waker,
+    },
     time::Duration,
 };
 
@@ -69,7 +102,7 @@ impl<RT: Runtime> ReadySockets<RT> {
             None => {
                 self.waker.replace(ctx.waker().clone());
                 return Poll::Pending;
-            }
+            },
         };
         if let Ok(ref cb) = r {
             assert!(self.endpoints.remove(&cb.get_remote()));
@@ -207,9 +240,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
             self.arp.clone(),
             self.ready.clone(),
         );
-        let handle: SchedulerHandle = self
-            .rt
-            .spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle: SchedulerHandle = self.rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
@@ -218,11 +249,11 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 TcpOptions2::WindowScale(w) => {
                     info!("Received window scale: {:?}", w);
                     remote_window_scale = Some(*w);
-                }
+                },
                 TcpOptions2::MaximumSegmentSize(m) => {
                     info!("Received advertised MSS: {}", m);
                     mss = *m as usize;
-                }
+                },
                 _ => continue,
             }
         }
@@ -258,7 +289,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                     Err(e) => {
                         warn!("ARP query failed: {:?}", e);
                         continue;
-                    }
+                    },
                 };
                 let mut tcp_hdr = TcpHeader::new(local.get_port(), remote.get_port());
                 tcp_hdr.syn = true;
@@ -272,23 +303,12 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 info!("Advertising MSS: {}", mss);
 
                 tcp_hdr.push_option(TcpOptions2::WindowScale(tcp_options.get_window_scale()));
-                info!(
-                    "Advertising window scale: {}",
-                    tcp_options.get_window_scale()
-                );
+                info!("Advertising window scale: {}", tcp_options.get_window_scale());
 
                 debug!("Sending SYN+ACK: {:?}", tcp_hdr);
                 let segment = TcpSegment {
-                    ethernet2_hdr: Ethernet2Header::new(
-                        remote_link_addr,
-                        rt.local_link_addr(),
-                        EtherType2::Ipv4,
-                    ),
-                    ipv4_hdr: Ipv4Header::new(
-                        local.get_address(),
-                        remote.get_address(),
-                        IpProtocol::TCP,
-                    ),
+                    ethernet2_hdr: Ethernet2Header::new(remote_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
+                    ipv4_hdr: Ipv4Header::new(local.get_address(), remote.get_address(), IpProtocol::TCP),
                     tcp_hdr,
                     data: RT::Buf::empty(),
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
@@ -296,9 +316,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 rt.transmit(segment);
                 rt.wait(handshake_timeout).await;
             }
-            ready
-                .borrow_mut()
-                .push_err(Fail::new(ETIMEDOUT, "handshake timeout"));
+            ready.borrow_mut().push_err(Fail::new(ETIMEDOUT, "handshake timeout"));
         }
     }
 }

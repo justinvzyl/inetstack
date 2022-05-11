@@ -5,12 +5,24 @@
 // Imports
 //==============================================================================
 
-use crate::protocols::ip::IpProtocol;
-use crate::protocols::ipv4::Ipv4Header;
-use ::byteorder::{ByteOrder, NetworkEndian};
+use crate::protocols::{
+    ip::IpProtocol,
+    ipv4::Ipv4Header,
+};
+use ::byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use ::libc::EBADMSG;
-use ::runtime::{fail::Fail, memory::Buffer, network::types::Port16};
-use ::std::convert::{TryFrom, TryInto};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    network::types::Port16,
+};
+use ::std::convert::{
+    TryFrom,
+    TryInto,
+};
 
 //==============================================================================
 // Constants
@@ -40,10 +52,7 @@ pub struct UdpHeader {
 impl UdpHeader {
     /// Creates a UDP header.
     pub fn new(src_port: Option<Port16>, dest_port: Port16) -> Self {
-        Self {
-            src_port,
-            dest_port,
-        }
+        Self { src_port, dest_port }
     }
 
     /// Returns the source port stored in the target UDP header.
@@ -74,8 +83,7 @@ impl UdpHeader {
 
         // Deserialize buffer.
         let hdr_buf: &[u8] = &buf[..UDP_HEADER_SIZE];
-        let src_port: Option<Port16> =
-            Port16::try_from(NetworkEndian::read_u16(&hdr_buf[0..2])).ok();
+        let src_port: Option<Port16> = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[0..2])).ok();
         let dest_port: Port16 = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
         let length: usize = NetworkEndian::read_u16(&hdr_buf[4..6]) as usize;
         if length != buf.len() {
@@ -96,11 +104,7 @@ impl UdpHeader {
     }
 
     /// Parses a buffer into a UDP header.
-    pub fn parse<T: Buffer>(
-        ipv4_hdr: &Ipv4Header,
-        buf: T,
-        checksum_offload: bool,
-    ) -> Result<(Self, T), Fail> {
+    pub fn parse<T: Buffer>(ipv4_hdr: &Ipv4Header, buf: T, checksum_offload: bool) -> Result<(Self, T), Fail> {
         match Self::parse_from_slice(ipv4_hdr, &buf[..], checksum_offload) {
             Ok((udp_hdr, bytes)) => Ok((udp_hdr, T::from_slice(bytes))),
             Err(e) => Err(e),
@@ -108,21 +112,11 @@ impl UdpHeader {
     }
 
     /// Serializes the target UDP header.
-    pub fn serialize(
-        &self,
-        buf: &mut [u8],
-        ipv4_hdr: &Ipv4Header,
-        data: &[u8],
-        checksum_offload: bool,
-    ) {
-        let fixed_buf: &mut [u8; UDP_HEADER_SIZE] =
-            (&mut buf[..UDP_HEADER_SIZE]).try_into().unwrap();
+    pub fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8], checksum_offload: bool) {
+        let fixed_buf: &mut [u8; UDP_HEADER_SIZE] = (&mut buf[..UDP_HEADER_SIZE]).try_into().unwrap();
 
         // Write source port. If not present, write zeros.
-        NetworkEndian::write_u16(
-            &mut fixed_buf[0..2],
-            self.src_port.map(|p| p.into()).unwrap_or(0),
-        );
+        NetworkEndian::write_u16(&mut fixed_buf[0..2], self.src_port.map(|p| p.into()).unwrap_or(0));
 
         // Write destination port.
         NetworkEndian::write_u16(&mut fixed_buf[2..4], self.dest_port.into());
@@ -268,10 +262,10 @@ mod test {
                 assert_eq!(udp_hdr.src_port(), Some(src_port));
                 assert_eq!(udp_hdr.dest_port(), dest_port);
                 assert_eq!(buf.len(), 8);
-            }
+            },
             Err(e) => {
                 assert!(false, "{:?}", e);
-            }
+            },
         }
     }
 }

@@ -2,9 +2,15 @@
 // Licensed under the MIT license.
 
 use super::protocol::Icmpv4Type2;
-use ::byteorder::{ByteOrder, NetworkEndian};
+use ::byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use ::libc::EBADMSG;
-use ::runtime::{fail::Fail, memory::Buffer};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+};
 use ::std::convert::TryInto;
 
 /// Size of ICMPv4 Headers (in bytes)
@@ -58,8 +64,7 @@ impl Icmpv4Header {
     }
 
     pub fn serialize(&self, buf: &mut [u8]) {
-        let buf: &mut [u8; ICMPV4_HEADER_SIZE] =
-            (&mut buf[..ICMPV4_HEADER_SIZE]).try_into().unwrap();
+        let buf: &mut [u8; ICMPV4_HEADER_SIZE] = (&mut buf[..ICMPV4_HEADER_SIZE]).try_into().unwrap();
         let (type_byte, rest_of_header) = self.protocol.serialize();
         buf[0] = type_byte;
         buf[1] = self.code;

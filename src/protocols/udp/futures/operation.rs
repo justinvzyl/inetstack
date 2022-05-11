@@ -5,13 +5,23 @@
 // Imports
 //==============================================================================
 
-use crate::{operations::OperationResult, protocols::udp::UdpPopFuture};
+use crate::{
+    operations::OperationResult,
+    protocols::udp::UdpPopFuture,
+};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    QDesc,
+};
 use ::scheduler::FutureResult;
-use ::runtime::{fail::Fail, memory::Buffer, QDesc};
 use ::std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{
+        Context,
+        Poll,
+    },
 };
 
 //==============================================================================

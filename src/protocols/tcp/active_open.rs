@@ -1,30 +1,58 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{constants::FALLBACK_MSS, established::ControlBlock, SeqNumber};
+use super::{
+    constants::FALLBACK_MSS,
+    established::ControlBlock,
+    SeqNumber,
+};
 use crate::{
     futures::FutureOperation,
     protocols::{
         arp::ArpPeer,
-        ethernet2::{EtherType2, Ethernet2Header},
+        ethernet2::{
+            EtherType2,
+            Ethernet2Header,
+        },
         ip::IpProtocol,
-        ipv4::{Ipv4Endpoint, Ipv4Header},
+        ipv4::{
+            Ipv4Endpoint,
+            Ipv4Header,
+        },
         tcp::{
-            established::congestion_control::{self, CongestionControl},
-            segment::{TcpHeader, TcpOptions2, TcpSegment},
+            established::congestion_control::{
+                self,
+                CongestionControl,
+            },
+            segment::{
+                TcpHeader,
+                TcpOptions2,
+                TcpSegment,
+            },
         },
     },
 };
-use ::scheduler::SchedulerHandle;
 use ::futures::FutureExt;
-use ::libc::{ECONNREFUSED, ETIMEDOUT};
-use ::runtime::{fail::Fail, memory::Buffer, Runtime};
+use ::libc::{
+    ECONNREFUSED,
+    ETIMEDOUT,
+};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    Runtime,
+};
+use ::scheduler::SchedulerHandle;
 use ::std::{
     cell::RefCell,
     convert::TryInto,
     future::Future,
     rc::Rc,
-    task::{Context, Poll, Waker},
+    task::{
+        Context,
+        Poll,
+        Waker,
+    },
 };
 
 struct ConnectResult<RT: Runtime> {
@@ -47,29 +75,15 @@ pub struct ActiveOpenSocket<RT: Runtime> {
 }
 
 impl<RT: Runtime> ActiveOpenSocket<RT> {
-    pub fn new(
-        local_isn: SeqNumber,
-        local: Ipv4Endpoint,
-        remote: Ipv4Endpoint,
-        rt: RT,
-        arp: ArpPeer<RT>,
-    ) -> Self {
+    pub fn new(local_isn: SeqNumber, local: Ipv4Endpoint, remote: Ipv4Endpoint, rt: RT, arp: ArpPeer<RT>) -> Self {
         let result = ConnectResult {
             waker: None,
             result: None,
         };
         let result = Rc::new(RefCell::new(result));
 
-        let future = Self::background(
-            local_isn,
-            local,
-            remote,
-            rt.clone(),
-            arp.clone(),
-            result.clone(),
-        );
-        let handle: SchedulerHandle =
-            rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let future = Self::background(local_isn, local, remote, rt.clone(), arp.clone(), result.clone());
+        let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
 
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
         Self {
@@ -90,7 +104,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             None => {
                 r.waker.replace(context.waker().clone());
                 Poll::Pending
-            }
+            },
             Some(r) => Poll::Ready(r),
         }
     }
@@ -141,16 +155,8 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         debug!("Sending ACK: {:?}", tcp_hdr);
 
         let segment = TcpSegment {
-            ethernet2_hdr: Ethernet2Header::new(
-                remote_link_addr,
-                self.rt.local_link_addr(),
-                EtherType2::Ipv4,
-            ),
-            ipv4_hdr: Ipv4Header::new(
-                self.local.get_address(),
-                self.remote.get_address(),
-                IpProtocol::TCP,
-            ),
+            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
+            ipv4_hdr: Ipv4Header::new(self.local.get_address(), self.remote.get_address(), IpProtocol::TCP),
             tcp_hdr,
             data: RT::Buf::empty(),
             tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
@@ -164,11 +170,11 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                 TcpOptions2::WindowScale(w) => {
                     info!("Received window scale: {}", w);
                     remote_window_scale = Some(*w);
-                }
+                },
                 TcpOptions2::MaximumSegmentSize(m) => {
                     info!("Received advertised MSS: {}", m);
                     mss = *m as usize;
-                }
+                },
                 _ => continue,
             }
         }
@@ -193,10 +199,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             .try_into()
             .expect("TODO: Window size overflow");
 
-        info!(
-            "Window sizes: local {}, remote {}",
-            rx_window_size, tx_window_size
-        );
+        info!("Window sizes: local {}, remote {}", rx_window_size, tx_window_size);
         info!(
             "Window scale: local {}, remote {}",
             local_window_scale, remote_window_scale
@@ -240,7 +243,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                     Err(e) => {
                         warn!("ARP query failed: {:?}", e);
                         continue;
-                    }
+                    },
                 };
 
                 let mut tcp_hdr = TcpHeader::new(local.get_port(), remote.get_port());
@@ -253,23 +256,12 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                 info!("Advertising MSS: {}", mss);
 
                 tcp_hdr.push_option(TcpOptions2::WindowScale(tcp_options.get_window_scale()));
-                info!(
-                    "Advertising window scale: {}",
-                    tcp_options.get_window_scale()
-                );
+                info!("Advertising window scale: {}", tcp_options.get_window_scale());
 
                 debug!("Sending SYN {:?}", tcp_hdr);
                 let segment = TcpSegment {
-                    ethernet2_hdr: Ethernet2Header::new(
-                        remote_link_addr,
-                        rt.local_link_addr(),
-                        EtherType2::Ipv4,
-                    ),
-                    ipv4_hdr: Ipv4Header::new(
-                        local.get_address(),
-                        remote.get_address(),
-                        IpProtocol::TCP,
-                    ),
+                    ethernet2_hdr: Ethernet2Header::new(remote_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
+                    ipv4_hdr: Ipv4Header::new(local.get_address(), remote.get_address(), IpProtocol::TCP),
                     tcp_hdr,
                     data: RT::Buf::empty(),
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
@@ -281,8 +273,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             if let Some(w) = r.waker.take() {
                 w.wake()
             }
-            r.result
-                .replace(Err(Fail::new(ETIMEDOUT, "handshake timeout")));
+            r.result.replace(Err(Fail::new(ETIMEDOUT, "handshake timeout")));
         }
     }
 }

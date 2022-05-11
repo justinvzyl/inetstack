@@ -5,20 +5,35 @@ mod rto;
 
 use self::rto::RtoCalculator;
 use super::ControlBlock;
-use crate::protocols::tcp::{segment::TcpHeader, SeqNumber};
-use ::libc::{EBUSY, EINVAL};
+use crate::protocols::tcp::{
+    segment::TcpHeader,
+    SeqNumber,
+};
+use ::libc::{
+    EBUSY,
+    EINVAL,
+};
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
-    watched::{WatchFuture, WatchedValue},
+    watched::{
+        WatchFuture,
+        WatchedValue,
+    },
     Runtime,
 };
 use ::std::{
-    cell::{Cell, RefCell},
+    cell::{
+        Cell,
+        RefCell,
+    },
     collections::VecDeque,
     convert::TryInto,
     fmt,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 // Structure of entries on our unacknowledged queue.
@@ -69,8 +84,8 @@ pub struct Sender<RT: Runtime> {
 
     // Available window to send into, as advertised by our peer.  In RFC 793 terms, this is SND.WND.
     send_window: WatchedValue<u32>,
-    send_window_last_update_seq: Cell<SeqNumber>,  // SND.WL1
-    send_window_last_update_ack: Cell<SeqNumber>,  // SND.WL2
+    send_window_last_update_seq: Cell<SeqNumber>, // SND.WL1
+    send_window_last_update_ack: Cell<SeqNumber>, // SND.WL2
 
     // RFC 1323: Number of bits to shift advertised window, defaults to zero.
     window_scale: u8,
@@ -101,12 +116,7 @@ impl<RT: Runtime> fmt::Debug for Sender<RT> {
 }
 
 impl<RT: Runtime> Sender<RT> {
-    pub fn new(
-        seq_no: SeqNumber,
-        send_window: u32,
-        window_scale: u8,
-        mss: usize,
-    ) -> Self {
+    pub fn new(seq_no: SeqNumber, send_window: u32, window_scale: u8, mss: usize) -> Self {
         Self {
             send_unacked: WatchedValue::new(seq_no),
             unacked_queue: RefCell::new(VecDeque::new()),
@@ -190,7 +200,10 @@ impl<RT: Runtime> Sender<RT> {
         //
         // Review: Move this check up the stack (i.e. closer to the user)?
         //
-        let mut buf_len: u32 = buf.len().try_into().map_err(|_| Fail::new(EINVAL, "buffer too large"))?;
+        let mut buf_len: u32 = buf
+            .len()
+            .try_into()
+            .map_err(|_| Fail::new(EINVAL, "buffer too large"))?;
 
         // ToDo: What we should do here:
         //
@@ -210,7 +223,6 @@ impl<RT: Runtime> Sender<RT> {
 
         // Check for unsent data.
         if self.unsent_queue.borrow().is_empty() {
-
             // No unsent data queued up, so we can try to send this new buffer immediately.
 
             // Calculate amount of data in flight (SND.NXT - SND.UNA).
@@ -230,10 +242,7 @@ impl<RT: Runtime> Sender<RT> {
 
             let win_sz: u32 = self.send_window.get();
 
-            if win_sz > 0
-                && win_sz >= in_flight_after_send
-                && effective_cwnd >= in_flight_after_send
-            {
+            if win_sz > 0 && win_sz >= in_flight_after_send && effective_cwnd >= in_flight_after_send {
                 if let Some(remote_link_addr) = cb.arp().try_query(cb.get_remote().get_address()) {
                     // This hook is primarily intended to record the last time we sent data, so we can later tell if
                     // the connection has been idle.
@@ -299,7 +308,6 @@ impl<RT: Runtime> Sender<RT> {
 
         while bytes_remaining != 0 {
             if let Some(segment) = self.unacked_queue.borrow_mut().front_mut() {
-
                 // Add sample for RTO if we have an initial transmit time.
                 // Note that in the case of repacketization, an ack for the first byte is enough for the time sample.
                 // ToDo: TCP timestamp support.
@@ -324,9 +332,8 @@ impl<RT: Runtime> Sender<RT> {
                 }
 
                 bytes_remaining -= segment.bytes.len();
-
             } else {
-                debug_assert!(false);  // Shouldn't have bytes_remaining with no segments remaining in unacked_queue.
+                debug_assert!(false); // Shouldn't have bytes_remaining with no segments remaining in unacked_queue.
             }
 
             // Remove this segment from the unacknowledged queue.
@@ -376,18 +383,21 @@ impl<RT: Runtime> Sender<RT> {
     //
     pub fn update_send_window(&self, header: &TcpHeader) {
         // Check that the ACK we're using to update the window isn't older than the last one used to update it.
-        if self.send_window_last_update_seq.get() < header.seq_num ||
-            (self.send_window_last_update_seq.get() == header.seq_num &&
-             self.send_window_last_update_ack.get() <= header.ack_num) {
-                // Update our send window.
-                self.send_window.set((header.window_size as u32) << self.window_scale);
-                self.send_window_last_update_seq.set(header.seq_num);
-                self.send_window_last_update_ack.set(header.ack_num);
+        if self.send_window_last_update_seq.get() < header.seq_num
+            || (self.send_window_last_update_seq.get() == header.seq_num
+                && self.send_window_last_update_ack.get() <= header.ack_num)
+        {
+            // Update our send window.
+            self.send_window.set((header.window_size as u32) << self.window_scale);
+            self.send_window_last_update_seq.set(header.seq_num);
+            self.send_window_last_update_ack.set(header.ack_num);
         }
 
         debug!(
             "Updating window size -> {} (hdr {}, scale {})",
-            self.send_window.get(), header.window_size, self.window_scale
+            self.send_window.get(),
+            header.window_size,
+            self.window_scale
         );
     }
 

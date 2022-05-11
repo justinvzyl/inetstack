@@ -3,26 +3,52 @@
 
 use crate::{
     protocols::{
-        ethernet2::{EtherType2, Ethernet2Header},
-        ipv4::{Ipv4Endpoint, Ipv4Header},
+        ethernet2::{
+            EtherType2,
+            Ethernet2Header,
+        },
+        ipv4::{
+            Ipv4Endpoint,
+            Ipv4Header,
+        },
         tcp::{
-            operations::{AcceptFuture, ConnectFuture},
-            segment::{TcpHeader, TcpSegment},
+            operations::{
+                AcceptFuture,
+                ConnectFuture,
+            },
+            segment::{
+                TcpHeader,
+                TcpSegment,
+            },
             SeqNumber,
         },
     },
-    test_helpers::Engine,
-    test_helpers::{self, TestRuntime},
+    test_helpers::{
+        self,
+        Engine,
+        TestRuntime,
+    },
 };
 use ::futures::task::noop_waker_ref;
-use ::libc::{EBADMSG, ETIMEDOUT};
+use ::libc::{
+    EBADMSG,
+    ETIMEDOUT,
+};
 use ::runtime::{
-    memory::Buffer,
-    memory::{Bytes, BytesMut, MemoryRuntime},
+    memory::{
+        Buffer,
+        Bytes,
+        BytesMut,
+        MemoryRuntime,
+    },
     network::{
-        types::MacAddress,
-        types::{Ipv4Addr, Port16},
-        NetworkRuntime, PacketBuf,
+        types::{
+            Ipv4Addr,
+            MacAddress,
+            Port16,
+        },
+        NetworkRuntime,
+        PacketBuf,
     },
     task::SchedulerRuntime,
     QDesc,
@@ -31,8 +57,14 @@ use ::std::{
     convert::TryFrom,
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
-    time::{Duration, Instant},
+    task::{
+        Context,
+        Poll,
+    },
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 //=============================================================================
@@ -479,8 +511,7 @@ pub fn connection_setup(
     listen_addr: Ipv4Endpoint,
 ) -> (QDesc, QDesc) {
     // Server: LISTEN state at T(0).
-    let mut accept_future: AcceptFuture<TestRuntime> =
-        connection_setup_closed_listen(server, listen_addr);
+    let mut accept_future: AcceptFuture<TestRuntime> = connection_setup_closed_listen(server, listen_addr);
 
     // T(0) -> T(1)
     advance_clock(Some(server), Some(client), now);
@@ -564,12 +595,6 @@ fn test_good_connect() {
     let mut server = test_helpers::new_bob2(now);
     let mut client = test_helpers::new_alice2(now);
 
-    let (_, _): (QDesc, QDesc) = connection_setup(
-        &mut ctx,
-        &mut now,
-        &mut server,
-        &mut client,
-        listen_port,
-        listen_addr,
-    );
+    let (_, _): (QDesc, QDesc) =
+        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 }

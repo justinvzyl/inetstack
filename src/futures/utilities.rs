@@ -2,7 +2,10 @@
 // Licensed under the MIT license.
 
 use ::async_trait::async_trait;
-use ::futures::{future::FusedFuture, FutureExt};
+use ::futures::{
+    future::FusedFuture,
+    FutureExt,
+};
 use ::runtime::fail::Fail;
 use ::std::future::Future;
 

@@ -57,7 +57,6 @@ fn export() {
 
     // Check if address resolutions are in the map that was exported.
     assert!(
-        map.get_key_value(&test_helpers::ALICE_IPV4)
-            == Some((&test_helpers::ALICE_IPV4, &test_helpers::ALICE_MAC))
+        map.get_key_value(&test_helpers::ALICE_IPV4) == Some((&test_helpers::ALICE_IPV4, &test_helpers::ALICE_MAC))
     );
 }

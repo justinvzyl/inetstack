@@ -8,4 +8,7 @@ mod pop;
 // Exports
 //==============================================================================
 
-pub use self::{operation::UdpOperation, pop::UdpPopFuture};
+pub use self::{
+    operation::UdpOperation,
+    pop::UdpPopFuture,
+};

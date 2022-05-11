@@ -2,7 +2,10 @@
 // Licensed under the MIT license.
 
 use super::HashTtlCache;
-use std::time::{Duration, Instant};
+use std::time::{
+    Duration,
+    Instant,
+};
 
 /// Tests that objects with an explicit TTL get evicted at the right time.
 #[test]

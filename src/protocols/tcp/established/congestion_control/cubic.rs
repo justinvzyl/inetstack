@@ -10,20 +10,32 @@
 // ToDo: Review if fast retransmit should be mixed in with congestion control or not.
 
 use super::{
-    CongestionControl, FastRetransmitRecovery, LimitedTransmit, Options,
+    CongestionControl,
+    FastRetransmitRecovery,
+    LimitedTransmit,
+    Options,
     SlowStartCongestionAvoidance,
 };
 use crate::protocols::tcp::SeqNumber;
 use ::runtime::{
-    watched::{WatchFuture, WatchedValue},
+    watched::{
+        WatchFuture,
+        WatchedValue,
+    },
     Runtime,
 };
 use ::std::{
     cell::Cell,
-    cmp::{max, min},
+    cmp::{
+        max,
+        min,
+    },
     convert::TryInto,
     fmt::Debug,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 #[derive(Debug)]
@@ -33,18 +45,18 @@ pub struct Cubic {
     pub ca_start: Cell<Instant>, // The time we started the current congestion avoidance.
     pub cwnd: WatchedValue<u32>, // Congestion window: Max number of bytes that may be in flight ot prevent congestion.
     pub fast_convergence: bool, // Should we employ the fast convergence algorithm (Only recommended if there are multiple CUBIC streams on the same network, in which case we'll cede capacity to new ones faster).
-    pub initial_cwnd: u32, // The initial value of cwnd, which gets used if the connection ever resets.
+    pub initial_cwnd: u32,      // The initial value of cwnd, which gets used if the connection ever resets.
     pub last_send_time: Cell<Instant>, // The moment at which we last sent data.
     pub last_congestion_was_rto: Cell<bool>, // A flag for whether the last congestion event was detected by RTO.
     pub retransmitted_packets_in_flight: Cell<u32>, // A flag for if there is currently a retransmitted packet in flight.
-    pub rtt_at_last_send: Cell<Duration>, // The RTT at the moment we last sent data.
+    pub rtt_at_last_send: Cell<Duration>,           // The RTT at the moment we last sent data.
     pub ssthresh: Cell<u32>, // The size of cwnd at which we will change from using slow start to congestion avoidance.
     pub w_max: Cell<u32>,    // The size of cwnd before the previous congestion event.
 
     // Fast Recovery / Fast Retransmit State
     pub duplicate_ack_count: Cell<u32>, // The number of consecutive duplicate ACKs we've received.
     pub fast_retransmit_now: WatchedValue<bool>, // Flag to cause the retransmitter to retransmit a segment now.
-    pub in_fast_recovery: Cell<bool>, // Are we currently in the `fast recovery` algorithm.
+    pub in_fast_recovery: Cell<bool>,   // Are we currently in the `fast recovery` algorithm.
     pub prev_ack_seq_no: Cell<SeqNumber>, // The previous highest ACK sequence number.
     pub recover: Cell<SeqNumber>, // If we receive dup ACKs with sequence numbers greater than this we'll attempt fast recovery.
 
@@ -52,11 +64,7 @@ pub struct Cubic {
 }
 
 impl<RT: Runtime> CongestionControl<RT> for Cubic {
-    fn new(
-        mss: usize,
-        seq_no: SeqNumber,
-        options: Option<Options>,
-    ) -> Box<dyn CongestionControl<RT>> {
+    fn new(mss: usize, seq_no: SeqNumber, options: Option<Options>) -> Box<dyn CongestionControl<RT>> {
         let mss: u32 = mss.try_into().unwrap();
         // The initial value of cwnd is set according to RFC5681, section 3.1, page 7.
         let initial_cwnd: u32 = match mss {
@@ -94,10 +102,9 @@ impl<RT: Runtime> CongestionControl<RT> for Cubic {
 }
 
 impl Cubic {
+    const BETA_CUBIC: f32 = 0.7;
     // Cubic const parameters.
     const C: f32 = 0.4;
-    const BETA_CUBIC: f32 = 0.7;
-
     const DUP_ACK_THRESHOLD: u32 = 3;
 
     fn fast_convergence(&self) {
@@ -106,8 +113,7 @@ impl Cubic {
         let cwnd: u32 = self.cwnd.get();
 
         if (cwnd / self.mss) < self.w_max.get() / self.mss {
-            self.w_max
-                .set((cwnd as f32 * (1. + Self::BETA_CUBIC) / 2.) as u32);
+            self.w_max.set((cwnd as f32 * (1. + Self::BETA_CUBIC) / 2.) as u32);
         } else {
             self.w_max.set(cwnd);
         }
@@ -117,8 +123,7 @@ impl Cubic {
         let duplicate_ack_count: u32 = self.duplicate_ack_count.get() + 1;
         self.duplicate_ack_count.set(duplicate_ack_count);
         if duplicate_ack_count < Self::DUP_ACK_THRESHOLD {
-            self.limited_transmit_cwnd_increase
-                .modify(|ltci| ltci + self.mss);
+            self.limited_transmit_cwnd_increase.modify(|ltci| ltci + self.mss);
         }
         duplicate_ack_count
     }
@@ -156,12 +161,7 @@ impl Cubic {
         }
     }
 
-    fn on_ack_received_fast_recovery(
-        &self,
-        send_unacked: SeqNumber,
-        send_next: SeqNumber,
-        ack_seq_no: SeqNumber,
-    ) {
+    fn on_ack_received_fast_recovery(&self, send_unacked: SeqNumber, send_next: SeqNumber, ack_seq_no: SeqNumber) {
         let bytes_outstanding: u32 = (send_next - send_unacked).into();
         let bytes_acknowledged: u32 = (ack_seq_no - send_unacked).into();
         let mss: u32 = self.mss;
@@ -235,9 +235,8 @@ impl Cubic {
                 let cwnd_f32: f32 = cwnd as f32;
                 // Again, do everything in terms of units of MSS.
                 let normalised_cwnd: f32 = cwnd_f32 / mss_f32;
-                let cwnd_inc: f32 = ((self.w_cubic(normalised_w_max, t + rtt, k) - normalised_cwnd)
-                    / normalised_cwnd)
-                    * mss_f32;
+                let cwnd_inc: f32 =
+                    ((self.w_cubic(normalised_w_max, t + rtt, k) - normalised_cwnd) / normalised_cwnd) * mss_f32;
                 self.cwnd.modify(|c| c + cwnd_inc as u32);
             }
         }
@@ -280,6 +279,7 @@ impl<RT: Runtime> SlowStartCongestionAvoidance<RT> for Cubic {
     fn get_cwnd(&self) -> u32 {
         self.cwnd.get()
     }
+
     fn watch_cwnd(&self) -> (u32, WatchFuture<'_, u32>) {
         self.cwnd.watch()
     }
@@ -297,20 +297,11 @@ impl<RT: Runtime> SlowStartCongestionAvoidance<RT> for Cubic {
     fn on_send(&self, rto: Duration, num_bytes_sent: u32) {
         self.last_send_time.set(Instant::now());
         self.rtt_at_last_send.set(rto);
-        self.limited_transmit_cwnd_increase.set_without_notify(
-            self.limited_transmit_cwnd_increase
-                .get()
-                .saturating_sub(num_bytes_sent),
-        );
+        self.limited_transmit_cwnd_increase
+            .set_without_notify(self.limited_transmit_cwnd_increase.get().saturating_sub(num_bytes_sent));
     }
 
-    fn on_ack_received(
-        &self,
-        rto: Duration,
-        send_unacked: SeqNumber,
-        send_next: SeqNumber,
-        ack_seq_no: SeqNumber,
-    ) {
+    fn on_ack_received(&self, rto: Duration, send_unacked: SeqNumber, send_next: SeqNumber, ack_seq_no: SeqNumber) {
         let bytes_acknowledged: u32 = (ack_seq_no - send_unacked).into();
         if bytes_acknowledged == 0 {
             // ACK is a duplicate
@@ -348,6 +339,7 @@ impl<RT: Runtime> FastRetransmitRecovery<RT> for Cubic {
     fn get_retransmit_now_flag(&self) -> bool {
         self.fast_retransmit_now.get()
     }
+
     fn watch_retransmit_now_flag(&self) -> (bool, WatchFuture<'_, bool>) {
         self.fast_retransmit_now.watch()
     }
@@ -364,6 +356,7 @@ impl<RT: Runtime> LimitedTransmit<RT> for Cubic {
     fn get_limited_transmit_cwnd_increase(&self) -> u32 {
         self.limited_transmit_cwnd_increase.get()
     }
+
     fn watch_limited_transmit_cwnd_increase(&self) -> (u32, WatchFuture<'_, u32>) {
         self.limited_transmit_cwnd_increase.watch()
     }

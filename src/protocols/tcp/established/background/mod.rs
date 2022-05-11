@@ -6,13 +6,23 @@ mod retransmitter;
 mod sender;
 
 use self::{
-    acknowledger::acknowledger, retransmitter::retransmitter,
+    acknowledger::acknowledger,
+    retransmitter::retransmitter,
     sender::sender,
 };
-use super::{ControlBlock};
-use ::futures::{channel::mpsc, FutureExt};
-use ::runtime::{QDesc, Runtime};
-use ::std::{future::Future, rc::Rc};
+use super::ControlBlock;
+use ::futures::{
+    channel::mpsc,
+    FutureExt,
+};
+use ::runtime::{
+    QDesc,
+    Runtime,
+};
+use ::std::{
+    future::Future,
+    rc::Rc,
+};
 
 pub type BackgroundFuture<RT> = impl Future<Output = ()>;
 

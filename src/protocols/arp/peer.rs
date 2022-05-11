@@ -1,26 +1,56 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{cache::ArpCache, packet::ArpHeader, packet::ArpMessage, packet::ArpOperation};
-use crate::{
-    futures::{FutureOperation, UtilityMethods},
-    protocols::ethernet2::{EtherType2, Ethernet2Header},
+use super::{
+    cache::ArpCache,
+    packet::{
+        ArpHeader,
+        ArpMessage,
+        ArpOperation,
+    },
 };
-use ::scheduler::SchedulerHandle;
+use crate::{
+    futures::{
+        FutureOperation,
+        UtilityMethods,
+    },
+    protocols::ethernet2::{
+        EtherType2,
+        Ethernet2Header,
+    },
+};
 use ::futures::{
-    channel::oneshot::{channel, Receiver, Sender},
+    channel::oneshot::{
+        channel,
+        Receiver,
+        Sender,
+    },
     FutureExt,
 };
-use ::libc::{EBADMSG, ETIMEDOUT};
-use ::runtime::network::NetworkRuntime;
-use ::runtime::{fail::Fail, network::config::ArpConfig, network::types::MacAddress, Runtime};
+use ::libc::{
+    EBADMSG,
+    ETIMEDOUT,
+};
+use ::runtime::{
+    fail::Fail,
+    network::{
+        config::ArpConfig,
+        types::MacAddress,
+        NetworkRuntime,
+    },
+    Runtime,
+};
+use ::scheduler::SchedulerHandle;
 use ::std::{
     cell::RefCell,
     collections::HashMap,
     future::Future,
     net::Ipv4Addr,
     rc::Rc,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 //==============================================================================
@@ -53,8 +83,7 @@ impl<RT: Runtime> ArpPeer<RT> {
         )));
 
         let future = Self::background(rt.clone(), cache.clone());
-        let handle: SchedulerHandle =
-            rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         let peer = ArpPeer {
             rt,
             cache,
@@ -122,16 +151,8 @@ impl<RT: Runtime> ArpPeer<RT> {
         // > hardware address field of the entry with the new
         // > information in the packet and set Merge_flag to true.
         let merge_flag = {
-            if self
-                .cache
-                .borrow()
-                .get(header.get_sender_protocol_addr())
-                .is_some()
-            {
-                self.do_insert(
-                    header.get_sender_protocol_addr(),
-                    header.get_sender_hardware_addr(),
-                );
+            if self.cache.borrow().get(header.get_sender_protocol_addr()).is_some() {
+                self.do_insert(header.get_sender_protocol_addr(), header.get_sender_hardware_addr());
                 true
             } else {
                 false
@@ -152,10 +173,7 @@ impl<RT: Runtime> ArpPeer<RT> {
         // > sender protocol address, sender hardware address> to
         // > the translation table.
         if !merge_flag {
-            self.do_insert(
-                header.get_sender_protocol_addr(),
-                header.get_sender_hardware_addr(),
-            );
+            self.do_insert(header.get_sender_protocol_addr(), header.get_sender_hardware_addr());
         }
 
         match header.get_operation() {
@@ -180,19 +198,18 @@ impl<RT: Runtime> ArpPeer<RT> {
                 debug!("Responding {:?}", reply);
                 self.rt.transmit(reply);
                 Ok(())
-            }
+            },
             ArpOperation::Reply => {
                 debug!(
                     "reply from `{}/{}`",
                     header.get_sender_protocol_addr(),
                     header.get_sender_hardware_addr()
                 );
-                self.cache.borrow_mut().insert(
-                    header.get_sender_protocol_addr(),
-                    header.get_sender_hardware_addr(),
-                );
+                self.cache
+                    .borrow_mut()
+                    .insert(header.get_sender_protocol_addr(), header.get_sender_hardware_addr());
                 Ok(())
-            }
+            },
         }
     }
 
@@ -210,11 +227,7 @@ impl<RT: Runtime> ArpPeer<RT> {
                 return Ok(link_addr);
             }
             let msg = ArpMessage::new(
-                Ethernet2Header::new(
-                    MacAddress::broadcast(),
-                    rt.local_link_addr(),
-                    EtherType2::Arp,
-                ),
+                Ethernet2Header::new(MacAddress::broadcast(), rt.local_link_addr(), EtherType2::Arp),
                 ArpHeader::new(
                     ArpOperation::Request,
                     rt.local_link_addr(),
@@ -237,10 +250,10 @@ impl<RT: Runtime> ArpPeer<RT> {
                         Ok(link_addr) => {
                             debug!("ARP result available ({})", link_addr);
                             return Ok(link_addr);
-                        }
+                        },
                         Err(_) => {
                             warn!("ARP request timeout; attempt {}.", i + 1);
-                        }
+                        },
                     }
                 }
                 Err(Fail::new(ETIMEDOUT, "ARP query timeout"))

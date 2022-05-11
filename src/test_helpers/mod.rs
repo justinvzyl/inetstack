@@ -8,13 +8,20 @@ pub use self::runtime::TestRuntime;
 pub use engine::Engine;
 
 use ::runtime::network::{
-    config::{ArpConfig, TcpConfig, UdpConfig},
+    config::{
+        ArpConfig,
+        TcpConfig,
+        UdpConfig,
+    },
     types::MacAddress,
 };
 use ::std::{
     collections::HashMap,
     net::Ipv4Addr,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 //==============================================================================
@@ -71,15 +78,7 @@ pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
-    let rt = TestRuntime::new(
-        "bob",
-        now,
-        arp_options,
-        udp_options,
-        tcp_options,
-        BOB_MAC,
-        BOB_IPV4,
-    );
+    let rt = TestRuntime::new("bob", now, arp_options, udp_options, tcp_options, BOB_MAC, BOB_IPV4);
     Engine::new(rt).unwrap()
 }
 
@@ -121,15 +120,7 @@ pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
-    let rt = TestRuntime::new(
-        "bob",
-        now,
-        arp_options,
-        udp_options,
-        tcp_options,
-        BOB_MAC,
-        BOB_IPV4,
-    );
+    let rt = TestRuntime::new("bob", now, arp_options, udp_options, tcp_options, BOB_MAC, BOB_IPV4);
     Engine::new(rt).unwrap()
 }
 

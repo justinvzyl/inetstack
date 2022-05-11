@@ -6,32 +6,70 @@
 //==============================================================================
 
 use super::{
-    active_open::ActiveOpenSocket, established::EstablishedSocket, isn_generator::IsnGenerator,
+    active_open::ActiveOpenSocket,
+    established::EstablishedSocket,
+    isn_generator::IsnGenerator,
     passive_open::PassiveSocket,
 };
 use crate::protocols::{
     arp::ArpPeer,
-    ethernet2::{EtherType2, Ethernet2Header},
-    ip::EphemeralPorts,
-    ip::IpProtocol,
-    ipv4::{Ipv4Endpoint, Ipv4Header},
+    ethernet2::{
+        EtherType2,
+        Ethernet2Header,
+    },
+    ip::{
+        EphemeralPorts,
+        IpProtocol,
+    },
+    ipv4::{
+        Ipv4Endpoint,
+        Ipv4Header,
+    },
     tcp::{
         established::ControlBlock,
-        operations::{AcceptFuture, ConnectFuture, ConnectFutureState, PopFuture, PushFuture},
-        segment::{TcpHeader, TcpSegment},
+        operations::{
+            AcceptFuture,
+            ConnectFuture,
+            ConnectFutureState,
+            PopFuture,
+            PushFuture,
+        },
+        segment::{
+            TcpHeader,
+            TcpSegment,
+        },
     },
 };
 use ::futures::channel::mpsc;
 use ::libc::{
-    EADDRNOTAVAIL, EAGAIN, EBADF, EBADMSG, EBUSY, EINPROGRESS, EINVAL, ENOTCONN, ENOTSUP,
+    EADDRNOTAVAIL,
+    EAGAIN,
+    EBADF,
+    EBADMSG,
+    EBUSY,
+    EINPROGRESS,
+    EINVAL,
+    ENOTCONN,
+    ENOTSUP,
     EOPNOTSUPP,
 };
-use ::runtime::{fail::Fail, memory::Buffer, QDesc, Runtime};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    QDesc,
+    Runtime,
+};
 use ::std::{
-    cell::{RefCell, RefMut},
+    cell::{
+        RefCell,
+        RefMut,
+    },
     collections::HashMap,
     rc::Rc,
-    task::{Context, Poll},
+    task::{
+        Context,
+        Poll,
+    },
     time::Duration,
 };
 
@@ -43,20 +81,10 @@ use perftools::timer;
 //==============================================================================
 
 enum Socket {
-    Inactive {
-        local: Option<Ipv4Endpoint>,
-    },
-    Listening {
-        local: Ipv4Endpoint,
-    },
-    Connecting {
-        local: Ipv4Endpoint,
-        remote: Ipv4Endpoint,
-    },
-    Established {
-        local: Ipv4Endpoint,
-        remote: Ipv4Endpoint,
-    },
+    Inactive { local: Option<Ipv4Endpoint> },
+    Listening { local: Ipv4Endpoint },
+    Connecting { local: Ipv4Endpoint, remote: Ipv4Endpoint },
+    Established { local: Ipv4Endpoint, remote: Ipv4Endpoint },
 }
 
 //==============================================================================
@@ -106,7 +134,7 @@ impl<RT: Runtime> TcpPeer<RT> {
                 let socket: Socket = Socket::Inactive { local: None };
                 inner.sockets.insert(qd, socket);
                 Ok(())
-            }
+            },
             true => return Err(Fail::new(EBUSY, "queue descriptor in use")),
         }
     }
@@ -120,7 +148,7 @@ impl<RT: Runtime> TcpPeer<RT> {
             Some(Socket::Inactive { ref mut local }) => {
                 *local = Some(addr);
                 Ok(())
-            }
+            },
             _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
         }
     }
@@ -152,12 +180,7 @@ impl<RT: Runtime> TcpPeer<RT> {
     }
 
     /// Handles an incoming connection.
-    pub fn poll_accept(
-        &self,
-        qd: QDesc,
-        new_qd: QDesc,
-        ctx: &mut Context,
-    ) -> Poll<Result<QDesc, Fail>> {
+    pub fn poll_accept(&self, qd: QDesc, new_qd: QDesc, ctx: &mut Context) -> Poll<Result<QDesc, Fail>> {
         let mut inner_: RefMut<Inner<RT>> = self.inner.borrow_mut();
         let inner: &mut Inner<RT> = &mut *inner_;
 
@@ -167,19 +190,14 @@ impl<RT: Runtime> TcpPeer<RT> {
             None => return Poll::Ready(Err(Fail::new(EBADF, "bad file descriptor"))),
         };
 
-        let passive: &mut PassiveSocket<RT> = inner
-            .passive
-            .get_mut(local)
-            .expect("sockets/local inconsistency");
+        let passive: &mut PassiveSocket<RT> = inner.passive.get_mut(local).expect("sockets/local inconsistency");
         let cb: ControlBlock<RT> = match passive.poll_accept(ctx) {
             Poll::Pending => return Poll::Pending,
             Poll::Ready(Ok(e)) => e,
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
         };
-        let established: EstablishedSocket<RT> =
-            EstablishedSocket::new(cb, new_qd, inner.dead_socket_tx.clone());
-        let key: (Ipv4Endpoint, Ipv4Endpoint) =
-            (established.cb.get_local(), established.cb.get_remote());
+        let established: EstablishedSocket<RT> = EstablishedSocket::new(cb, new_qd, inner.dead_socket_tx.clone());
+        let key: (Ipv4Endpoint, Ipv4Endpoint) = (established.cb.get_local(), established.cb.get_remote());
 
         let socket: Socket = Socket::Established {
             local: established.cb.get_local(),
@@ -217,13 +235,7 @@ impl<RT: Runtime> TcpPeer<RT> {
 
             let local_isn = inner.isn_generator.generate(&local, &remote);
             let key = (local, remote);
-            let socket = ActiveOpenSocket::new(
-                local_isn,
-                local,
-                remote,
-                inner.rt.clone(),
-                inner.arp.clone(),
-            );
+            let socket = ActiveOpenSocket::new(local_isn, local, remote, inner.rt.clone(), inner.arp.clone());
             assert!(inner.connecting.insert(key, socket).is_none());
             fd
         };
@@ -242,15 +254,9 @@ impl<RT: Runtime> TcpPeer<RT> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(Socket::Connecting { .. }) => {
-                return Poll::Ready(Err(Fail::new(EINPROGRESS, "socket connecting")))
-            }
-            Some(Socket::Inactive { .. }) => {
-                return Poll::Ready(Err(Fail::new(EBADF, "socket inactive")))
-            }
-            Some(Socket::Listening { .. }) => {
-                return Poll::Ready(Err(Fail::new(ENOTCONN, "socket listening")))
-            }
+            Some(Socket::Connecting { .. }) => return Poll::Ready(Err(Fail::new(EINPROGRESS, "socket connecting"))),
+            Some(Socket::Inactive { .. }) => return Poll::Ready(Err(Fail::new(EBADF, "socket inactive"))),
+            Some(Socket::Listening { .. }) => return Poll::Ready(Err(Fail::new(ENOTCONN, "socket listening"))),
             None => return Poll::Ready(Err(Fail::new(EBADF, "bad queue descriptor"))),
         };
         match inner.established.get(&key) {
@@ -302,14 +308,9 @@ impl<RT: Runtime> TcpPeer<RT> {
                     Some(ref s) => s.close()?,
                     None => return Err(Fail::new(ENOTCONN, "connection not established")),
                 }
-            }
+            },
 
-            Some(..) => {
-                return Err(Fail::new(
-                    ENOTSUP,
-                    "close not implemented for listening sockets",
-                ))
-            }
+            Some(..) => return Err(Fail::new(ENOTSUP, "close not implemented for listening sockets")),
             None => return Err(Fail::new(EBADF, "bad queue descriptor")),
         }
 
@@ -378,8 +379,7 @@ impl<RT: Runtime> Inner<RT> {
 
     fn receive(&mut self, ip_hdr: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
         let tcp_options = self.rt.tcp_options();
-        let (mut tcp_hdr, data) =
-            TcpHeader::parse(ip_hdr, buf, tcp_options.get_rx_checksum_offload())?;
+        let (mut tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, tcp_options.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
         let local = Ipv4Endpoint::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
         let remote = Ipv4Endpoint::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
@@ -425,11 +425,7 @@ impl<RT: Runtime> Inner<RT> {
         tcp_hdr.rst = true;
 
         let segment = TcpSegment {
-            ethernet2_hdr: Ethernet2Header::new(
-                remote_link_addr,
-                self.rt.local_link_addr(),
-                EtherType2::Ipv4,
-            ),
+            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
             ipv4_hdr: Ipv4Header::new(local.get_address(), remote.get_address(), IpProtocol::TCP),
             tcp_hdr,
             data: RT::Buf::empty(),
@@ -440,11 +436,7 @@ impl<RT: Runtime> Inner<RT> {
         Ok(())
     }
 
-    pub(super) fn poll_connect_finished(
-        &mut self,
-        fd: QDesc,
-        context: &mut Context,
-    ) -> Poll<Result<(), Fail>> {
+    pub(super) fn poll_connect_finished(&mut self, fd: QDesc, context: &mut Context) -> Poll<Result<(), Fail>> {
         let key = match self.sockets.get(&fd) {
             Some(Socket::Connecting { local, remote }) => (*local, *remote),
             Some(..) => return Poll::Ready(Err(Fail::new(EAGAIN, "socket not connecting"))),
@@ -467,8 +459,7 @@ impl<RT: Runtime> Inner<RT> {
         let socket = EstablishedSocket::new(cb, fd, self.dead_socket_tx.clone());
         assert!(self.established.insert(key, socket).is_none());
         let (local, remote) = key;
-        self.sockets
-            .insert(fd, Socket::Established { local, remote });
+        self.sockets.insert(fd, Socket::Established { local, remote });
 
         Poll::Ready(Ok(()))
     }

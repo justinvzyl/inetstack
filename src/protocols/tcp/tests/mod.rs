@@ -5,11 +5,20 @@ pub mod established;
 pub mod setup;
 
 use crate::protocols::{
-    ethernet2::{EtherType2, Ethernet2Header},
+    ethernet2::{
+        EtherType2,
+        Ethernet2Header,
+    },
     ipv4::Ipv4Header,
-    tcp::{segment::TcpHeader, SeqNumber},
+    tcp::{
+        segment::TcpHeader,
+        SeqNumber,
+    },
 };
-use ::runtime::{memory::Bytes, network::types::MacAddress};
+use ::runtime::{
+    memory::Bytes,
+    network::types::MacAddress,
+};
 use ::std::net::Ipv4Addr;
 
 //=============================================================================

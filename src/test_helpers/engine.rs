@@ -3,17 +3,35 @@
 
 use crate::protocols::{
     arp::ArpPeer,
-    ethernet2::{EtherType2, Ethernet2Header},
+    ethernet2::{
+        EtherType2,
+        Ethernet2Header,
+    },
     ipv4::Ipv4Endpoint,
-    tcp::operations::{AcceptFuture, ConnectFuture, PopFuture, PushFuture},
+    tcp::operations::{
+        AcceptFuture,
+        ConnectFuture,
+        PopFuture,
+        PushFuture,
+    },
     udp::UdpPopFuture,
     Peer,
 };
 use ::libc::EBADMSG;
 use ::runtime::{
-    fail::Fail, network::types::MacAddress, queue::IoQueueTable, QDesc, QType, Runtime,
+    fail::Fail,
+    network::types::MacAddress,
+    queue::IoQueueTable,
+    QDesc,
+    QType,
+    Runtime,
 };
-use std::{collections::HashMap, future::Future, net::Ipv4Addr, time::Duration};
+use std::{
+    collections::HashMap,
+    future::Future,
+    net::Ipv4Addr,
+    time::Duration,
+};
 
 pub struct Engine<RT: Runtime> {
     rt: RT,
@@ -49,7 +67,7 @@ impl<RT: Runtime> Engine<RT> {
         match header.ether_type() {
             EtherType2::Arp => self.arp.receive(payload),
             EtherType2::Ipv4 => self.ipv4.receive(payload),
-            EtherType2::Ipv6 => Ok(()),  // Ignore for now.
+            EtherType2::Ipv6 => Ok(()), // Ignore for now.
         }
     }
 
@@ -89,11 +107,7 @@ impl<RT: Runtime> Engine<RT> {
         Ok(fd)
     }
 
-    pub fn tcp_connect(
-        &mut self,
-        socket_fd: QDesc,
-        remote_endpoint: Ipv4Endpoint,
-    ) -> ConnectFuture<RT> {
+    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: Ipv4Endpoint) -> ConnectFuture<RT> {
         self.ipv4.tcp.connect(socket_fd, remote_endpoint)
     }
 
