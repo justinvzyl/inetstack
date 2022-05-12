@@ -54,8 +54,7 @@ impl<T> PacketBuf<T> for ArpMessage<T> {
             .serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
         cur_pos += eth_hdr_size;
 
-        self.header
-            .serialize(&mut buf[cur_pos..(cur_pos + arp_pdu_size)]);
+        self.header.serialize(&mut buf[cur_pos..(cur_pos + arp_pdu_size)]);
     }
 
     fn take_body(self) -> Option<T> {

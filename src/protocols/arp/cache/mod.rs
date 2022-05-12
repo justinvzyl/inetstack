@@ -9,7 +9,10 @@ use runtime::network::types::MacAddress;
 use std::{
     collections::HashMap,
     net::Ipv4Addr,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 //==============================================================================
@@ -71,10 +74,7 @@ impl ArpCache {
 
     /// Caches an address resolution.
     pub fn insert(&mut self, ipv4_addr: Ipv4Addr, link_addr: MacAddress) -> Option<MacAddress> {
-        let record = Record {
-            link_addr,
-            ipv4_addr,
-        };
+        let record = Record { link_addr, ipv4_addr };
         self.cache.insert(ipv4_addr, record).map(|r| r.link_addr)
     }
 

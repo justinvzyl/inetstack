@@ -7,8 +7,14 @@ mod header;
 // Imports
 //==============================================================================
 
-use crate::protocols::{ethernet2::Ethernet2Header, ipv4::Ipv4Header};
-use ::runtime::{memory::Buffer, network::PacketBuf};
+use crate::protocols::{
+    ethernet2::Ethernet2Header,
+    ipv4::Ipv4Header,
+};
+use ::runtime::{
+    memory::Buffer,
+    network::PacketBuf,
+};
 
 //==============================================================================
 // Exports
@@ -90,10 +96,8 @@ impl<T: Buffer> PacketBuf<T> for UdpDatagram<T> {
 
         // IPV4 header.
         let ipv4_hdr_size = self.ipv4_hdr.compute_size();
-        self.ipv4_hdr.serialize(
-            &mut buf[cur_pos..(cur_pos + ipv4_hdr_size)],
-            ipv4_payload_len,
-        );
+        self.ipv4_hdr
+            .serialize(&mut buf[cur_pos..(cur_pos + ipv4_hdr_size)], ipv4_payload_len);
         cur_pos += ipv4_hdr_size;
 
         // UDP header.
@@ -119,19 +123,27 @@ impl<T: Buffer> PacketBuf<T> for UdpDatagram<T> {
 mod test {
     use super::*;
     use crate::protocols::{
-        ethernet2::{EtherType2, ETHERNET2_HEADER_SIZE},
+        ethernet2::{
+            EtherType2,
+            ETHERNET2_HEADER_SIZE,
+        },
         ip::IpProtocol,
         ipv4::IPV4_HEADER_DEFAULT_SIZE,
     };
-    use ::runtime::memory::Bytes;
-    use ::runtime::network::types::{Ipv4Addr, MacAddress, Port16};
+    use ::runtime::{
+        memory::Bytes,
+        network::types::{
+            Ipv4Addr,
+            MacAddress,
+            Port16,
+        },
+    };
     use ::std::num::NonZeroU16;
 
     #[test]
     fn test_udp_datagram_header_serialization() {
         // Total header size.
-        const HEADER_SIZE: usize =
-            ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE + UDP_HEADER_SIZE;
+        const HEADER_SIZE: usize = ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE + UDP_HEADER_SIZE;
 
         // Build fake Ethernet2 header.
         let dst_addr: MacAddress = MacAddress::new([0xd, 0xe, 0xa, 0xd, 0x0, 0x0]);

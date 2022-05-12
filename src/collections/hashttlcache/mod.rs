@@ -5,10 +5,15 @@
 mod tests;
 
 use std::{
-    collections::hash_map::Entry as HashMapEntry,
-    collections::HashMap,
+    collections::{
+        hash_map::Entry as HashMapEntry,
+        HashMap,
+    },
     hash::Hash,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 /// # TTL Cache Entry
@@ -93,11 +98,11 @@ where
             HashMapEntry::Occupied(mut o) => {
                 let old_record = o.insert(r);
                 Some(old_record.value)
-            }
+            },
             HashMapEntry::Vacant(e) => {
                 e.insert(r);
                 None
-            }
+            },
         }
     }
 

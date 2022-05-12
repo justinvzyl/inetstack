@@ -2,7 +2,10 @@
 // Licensed under the MIT license.
 
 use super::Icmpv4Header;
-use crate::protocols::{ethernet2::Ethernet2Header, ipv4::Ipv4Header};
+use crate::protocols::{
+    ethernet2::Ethernet2Header,
+    ipv4::Ipv4Header,
+};
 use ::runtime::network::PacketBuf;
 use ::std::marker::PhantomData;
 
@@ -17,11 +20,7 @@ pub struct Icmpv4Message<T> {
 /// Associated Functions for Icmpv4Message
 impl<T> Icmpv4Message<T> {
     /// Creates an ICMP message.
-    pub fn new(
-        ethernet2_hdr: Ethernet2Header,
-        ipv4_hdr: Ipv4Header,
-        icmpv4_hdr: Icmpv4Header,
-    ) -> Self {
+    pub fn new(ethernet2_hdr: Ethernet2Header, ipv4_hdr: Ipv4Header, icmpv4_hdr: Icmpv4Header) -> Self {
         Self {
             ethernet2_hdr,
             ipv4_hdr,
@@ -52,10 +51,8 @@ impl<T> PacketBuf<T> for Icmpv4Message<T> {
         cur_pos += eth_hdr_size;
 
         let ipv4_payload_len = icmpv4_hdr_size;
-        self.ipv4_hdr.serialize(
-            &mut buf[cur_pos..(cur_pos + ipv4_hdr_size)],
-            ipv4_payload_len,
-        );
+        self.ipv4_hdr
+            .serialize(&mut buf[cur_pos..(cur_pos + ipv4_hdr_size)], ipv4_payload_len);
         cur_pos += ipv4_hdr_size;
 
         self.icmpv4_hdr

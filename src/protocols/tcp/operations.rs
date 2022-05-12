@@ -1,17 +1,27 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::peer::{Inner, TcpPeer};
+use super::peer::{
+    Inner,
+    TcpPeer,
+};
 use crate::operations::OperationResult;
+use ::runtime::{
+    fail::Fail,
+    QDesc,
+    Runtime,
+};
 use ::scheduler::FutureResult;
-use ::runtime::{fail::Fail, QDesc, Runtime};
 use ::std::{
     cell::RefCell,
     fmt,
     future::Future,
     pin::Pin,
     rc::Rc,
-    task::{Context, Poll},
+    task::{
+        Context,
+        Poll,
+    },
 };
 
 pub enum TcpOperation<RT: Runtime> {
@@ -75,11 +85,7 @@ impl<RT: Runtime> TcpOperation<RT> {
             TcpOperation::Accept(FutureResult {
                 future,
                 done: Some(Ok(new_qd)),
-            }) => (
-                future.qd,
-                Some(future.new_qd),
-                OperationResult::Accept(new_qd),
-            ),
+            }) => (future.qd, Some(future.new_qd), OperationResult::Accept(new_qd)),
             TcpOperation::Accept(FutureResult {
                 future,
                 done: Some(Err(e)),
@@ -134,10 +140,7 @@ impl<RT: Runtime> Future for ConnectFuture<RT> {
         let self_ = self.get_mut();
         match self_.state {
             ConnectFutureState::Failed(ref e) => Poll::Ready(Err(e.clone())),
-            ConnectFutureState::InProgress => self_
-                .inner
-                .borrow_mut()
-                .poll_connect_finished(self_.fd, context),
+            ConnectFutureState::InProgress => self_.inner.borrow_mut().poll_connect_finished(self_.fd, context),
         }
     }
 }

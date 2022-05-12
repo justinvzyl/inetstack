@@ -1,11 +1,20 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::protocols::{ipv4::Ipv4Endpoint, tcp::SeqNumber};
+use crate::protocols::{
+    ipv4::Ipv4Endpoint,
+    tcp::SeqNumber,
+};
 #[allow(unused_imports)]
-use crc::{crc32, Hasher32};
+use crc::{
+    crc32,
+    Hasher32,
+};
 #[allow(unused_imports)]
-use std::{hash::Hasher, num::Wrapping};
+use std::{
+    hash::Hasher,
+    num::Wrapping,
+};
 
 #[allow(dead_code)]
 pub struct IsnGenerator {

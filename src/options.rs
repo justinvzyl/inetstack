@@ -1,9 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use ::rand::{thread_rng, Rng};
+use ::rand::{
+    thread_rng,
+    Rng,
+};
 use ::runtime::network::{
-    config::{ArpConfig, TcpConfig, UdpConfig},
+    config::{
+        ArpConfig,
+        TcpConfig,
+        UdpConfig,
+    },
     types::MacAddress,
 };
 use ::std::net::Ipv4Addr;

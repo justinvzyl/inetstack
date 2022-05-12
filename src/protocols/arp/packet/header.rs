@@ -1,11 +1,24 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use ::byteorder::{ByteOrder, NetworkEndian};
-use ::libc::{EBADMSG, ENOTSUP};
+use ::byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
+use ::libc::{
+    EBADMSG,
+    ENOTSUP,
+};
 use ::num_traits::FromPrimitive;
-use ::runtime::{fail::Fail, memory::Buffer, network::types::MacAddress};
-use ::std::{convert::TryInto, net::Ipv4Addr};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    network::types::MacAddress,
+};
+use ::std::{
+    convert::TryInto,
+    net::Ipv4Addr,
+};
 
 const ARP_HTYPE_ETHER2: u16 = 1;
 const ARP_HLEN_ETHER2: u8 = 6;

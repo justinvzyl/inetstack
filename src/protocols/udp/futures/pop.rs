@@ -7,13 +7,24 @@
 
 use crate::protocols::{
     ipv4::Ipv4Endpoint,
-    udp::queue::{SharedQueue, SharedQueueSlot},
+    udp::queue::{
+        SharedQueue,
+        SharedQueueSlot,
+    },
 };
-use ::runtime::{fail::Fail, memory::Buffer, QDesc};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    QDesc,
+};
 use ::std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll, Waker},
+    task::{
+        Context,
+        Poll,
+        Waker,
+    },
 };
 
 //==============================================================================
@@ -61,7 +72,7 @@ impl<T: Buffer> Future for UdpPopFuture<T> {
                 let waker: &Waker = ctx.waker();
                 waker.wake_by_ref();
                 Poll::Pending
-            }
+            },
             Err(e) => Poll::Ready(Err(e)),
         }
     }

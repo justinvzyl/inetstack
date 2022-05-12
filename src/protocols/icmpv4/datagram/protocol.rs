@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use ::byteorder::{ByteOrder, NetworkEndian};
+use ::byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use ::libc::EBADMSG;
 use ::runtime::fail::Fail;
 
@@ -32,7 +35,7 @@ impl Icmpv4Type2 {
                 let id = NetworkEndian::read_u16(&rest_of_header[0..2]);
                 let seq_num = NetworkEndian::read_u16(&rest_of_header[2..4]);
                 Ok(EchoReply { id, seq_num })
-            }
+            },
             3 => Ok(DestinationUnreachable),
             4 => Ok(SourceQuench),
             5 => Ok(RedirectMessage),
@@ -40,7 +43,7 @@ impl Icmpv4Type2 {
                 let id = NetworkEndian::read_u16(&rest_of_header[0..2]);
                 let seq_num = NetworkEndian::read_u16(&rest_of_header[2..4]);
                 Ok(EchoRequest { id, seq_num })
-            }
+            },
             9 => Ok(RouterAdvertisement),
             10 => Ok(RouterSolicitation),
             11 => Ok(TimeExceeded),
@@ -59,7 +62,7 @@ impl Icmpv4Type2 {
                 let [id1, id2] = id.to_be_bytes();
                 let [seq1, seq2] = seq_num.to_be_bytes();
                 (0, [id1, id2, seq1, seq2])
-            }
+            },
             DestinationUnreachable => (3, zero),
             SourceQuench => (4, zero),
             RedirectMessage => (5, zero),
@@ -67,7 +70,7 @@ impl Icmpv4Type2 {
                 let [id1, id2] = id.to_be_bytes();
                 let [seq1, seq2] = seq_num.to_be_bytes();
                 (8, [id1, id2, seq1, seq2])
-            }
+            },
             RouterAdvertisement => (9, zero),
             RouterSolicitation => (10, zero),
             TimeExceeded => (11, zero),

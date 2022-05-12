@@ -4,5 +4,7 @@
 mod ephemeral;
 mod protocol;
 
-pub use self::ephemeral::EphemeralPorts;
-pub use self::protocol::IpProtocol;
+pub use self::{
+    ephemeral::EphemeralPorts,
+    protocol::IpProtocol,
+};

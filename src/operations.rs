@@ -6,7 +6,11 @@
 //==============================================================================
 
 use crate::protocols::ipv4::Ipv4Endpoint;
-use ::runtime::{fail::Fail, memory::Buffer, QDesc};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    QDesc,
+};
 use ::std::fmt;
 
 //==============================================================================

@@ -2,17 +2,31 @@
 // Licensed under the MIT license.
 
 use super::{
-    congestion_control::{self, CongestionControlConstructor},
-    sender::{Sender, UnackedSegment},
+    congestion_control::{
+        self,
+        CongestionControlConstructor,
+    },
+    sender::{
+        Sender,
+        UnackedSegment,
+    },
 };
 use crate::protocols::{
     arp::ArpPeer,
-    ethernet2::{EtherType2, Ethernet2Header},
+    ethernet2::{
+        EtherType2,
+        Ethernet2Header,
+    },
     ip::IpProtocol,
-    ipv4::Ipv4Endpoint,
-    ipv4::Ipv4Header,
+    ipv4::{
+        Ipv4Endpoint,
+        Ipv4Header,
+    },
     tcp::{
-        segment::{TcpHeader, TcpSegment},
+        segment::{
+            TcpHeader,
+            TcpSegment,
+        },
         SeqNumber,
     },
 };
@@ -20,16 +34,29 @@ use ::runtime::{
     fail::Fail,
     memory::Buffer,
     network::types::MacAddress,
-    watched::{WatchFuture, WatchedValue},
+    watched::{
+        WatchFuture,
+        WatchedValue,
+    },
     Runtime,
 };
 use ::std::{
-    cell::{Cell, RefCell},
+    cell::{
+        Cell,
+        RefCell,
+    },
     collections::VecDeque,
     convert::TryInto,
     rc::Rc,
-    task::{Context, Poll, Waker},
-    time::{Duration, Instant},
+    task::{
+        Context,
+        Poll,
+        Waker,
+    },
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 // ToDo: Review this value (and its purpose).  It (2048 segments) of 8 KB jumbo packets would limit the unread data to
@@ -95,7 +122,8 @@ impl<RT: Runtime> Receiver<RT> {
 
     pub fn pop(&self) -> Option<RT::Buf> {
         let buf: RT::Buf = self.recv_queue.borrow_mut().pop_front()?;
-        self.reader_next.set(self.reader_next.get() + SeqNumber::from(buf.len() as u32));
+        self.reader_next
+            .set(self.reader_next.get() + SeqNumber::from(buf.len() as u32));
 
         Some(buf)
     }
@@ -103,7 +131,8 @@ impl<RT: Runtime> Receiver<RT> {
     pub fn push(&self, buf: RT::Buf) {
         let buf_len: u32 = buf.len() as u32;
         self.recv_queue.borrow_mut().push_back(buf);
-        self.receive_next.set(self.receive_next.get() + SeqNumber::from(buf_len as u32));
+        self.receive_next
+            .set(self.receive_next.get() + SeqNumber::from(buf_len as u32));
     }
 }
 
@@ -182,12 +211,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         cc_constructor: CongestionControlConstructor<RT>,
         congestion_control_options: Option<congestion_control::Options>,
     ) -> Self {
-        let sender = Sender::new(
-            sender_seq_no,
-            sender_window_size,
-            sender_window_scale,
-            sender_mss,
-        );
+        let sender = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
         Self {
             local,
             remote,
@@ -535,7 +559,8 @@ impl<RT: Runtime> ControlBlock<RT> {
             self.sender.current_rto(),
             send_unacknowledged,
             send_next,
-            header.ack_num);
+            header.ack_num,
+        );
 
         if send_unacknowledged < header.ack_num {
             if header.ack_num <= send_next {
@@ -559,7 +584,7 @@ impl<RT: Runtime> ControlBlock<RT> {
 
                     // Some states require additional processing.
                     match self.state.get() {
-                        State::Established => (),  // Common case.  Nothing more to do.
+                        State::Established => (), // Common case.  Nothing more to do.
                         State::FinWait1 => {
                             // Our FIN is now ACK'd, so enter FIN-WAIT-2.
                             self.state.set(State::FinWait2);
@@ -651,7 +676,9 @@ impl<RT: Runtime> ControlBlock<RT> {
             // ToDo: Signal the user "connection closing" and return any pending Receive requests.
 
             // Advance RCV.NXT over the FIN.
-            self.receiver.receive_next.set(self.receiver.receive_next.get() + SeqNumber::from(1));
+            self.receiver
+                .receive_next
+                .set(self.receiver.receive_next.get() + SeqNumber::from(1));
 
             match self.state.get() {
                 State::Established => self.state.set(State::CloseWait),
@@ -668,11 +695,11 @@ impl<RT: Runtime> ControlBlock<RT> {
                     self.state.set(State::TimeWait);
                     // ToDo: Start the time-wait timer and turn off the other timers.
                 },
-                State::CloseWait | State::Closing | State::LastAck => (),  // Remain in current state.
+                State::CloseWait | State::Closing | State::LastAck => (), // Remain in current state.
                 State::TimeWait => {
                     // ToDo: Remain in TIME-WAIT.  Restart the 2 MSL time-wait timeout.
                 },
-                state => panic!("Bad TCP state {:?}", state),  // Should never happen.
+                state => panic!("Bad TCP state {:?}", state), // Should never happen.
             }
 
             // Since we consumed the FIN we ACK immediately rather than opportunistically.
@@ -767,16 +794,8 @@ impl<RT: Runtime> ControlBlock<RT> {
         // Prepare description of TCP segment to send.
         // ToDo: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
         let segment = TcpSegment {
-            ethernet2_hdr: Ethernet2Header::new(
-                remote_link_addr,
-                self.rt.local_link_addr(),
-                EtherType2::Ipv4,
-            ),
-            ipv4_hdr: Ipv4Header::new(
-                self.local.get_address(),
-                self.remote.get_address(),
-                IpProtocol::TCP,
-            ),
+            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
+            ipv4_hdr: Ipv4Header::new(self.local.get_address(), self.remote.get_address(), IpProtocol::TCP),
             tcp_hdr: header,
             data,
             tx_checksum_offload: self.rt.tcp_options().get_tx_checksum_offload(),

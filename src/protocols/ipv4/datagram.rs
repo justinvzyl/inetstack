@@ -6,11 +6,23 @@
 //==============================================================================
 
 use crate::protocols::ip::IpProtocol;
-use ::byteorder::{ByteOrder, NetworkEndian};
-use ::libc::{EBADMSG, ENOTSUP};
-use ::runtime::{fail::Fail, memory::Buffer};
+use ::byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
+use ::libc::{
+    EBADMSG,
+    ENOTSUP,
+};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+};
 use ::std::{
-    convert::{TryFrom, TryInto},
+    convert::{
+        TryFrom,
+        TryInto,
+    },
     net::Ipv4Addr,
 };
 
@@ -136,10 +148,7 @@ impl Ipv4Header {
         let dscp: u8 = hdr_buf[1] >> 2;
         // TODO: drop this check once we support DSCP.
         if dscp != 0 {
-            warn!(
-                "differentiated services code point are not supported dscp={:?}",
-                dscp
-            );
+            warn!("differentiated services code point are not supported dscp={:?}", dscp);
             return Err(Fail::new(ENOTSUP, "ipv4 dscp is not supported"));
         }
 
@@ -147,10 +156,7 @@ impl Ipv4Header {
         let ecn: u8 = hdr_buf[1] & 3;
         // TODO: drop this check once we support ECN.
         if ecn != 0 {
-            warn!(
-                "explicit congestion notification is not supported ecn={:?}",
-                ecn
-            );
+            warn!("explicit congestion notification is not supported ecn={:?}", ecn);
             return Err(Fail::new(ENOTSUP, "ipv4 ecn is not supported"));
         }
 
@@ -168,10 +174,7 @@ impl Ipv4Header {
         let identification: u16 = NetworkEndian::read_u16(&hdr_buf[4..6]);
         // TODO: drop this check once we support fragmentation.
         if identification != 0 {
-            warn!(
-                "fragmentation is not supported identification={:?}",
-                identification
-            );
+            warn!("fragmentation is not supported identification={:?}", identification);
             return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
         }
 
@@ -187,10 +190,7 @@ impl Ipv4Header {
         let fragment_offset: u16 = NetworkEndian::read_u16(&hdr_buf[6..8]) & 0x1fff;
         // TODO: drop this check once we support fragmentation.
         if fragment_offset != 0 {
-            warn!(
-                "fragmentation is not supported offset={:?}",
-                fragment_offset
-            );
+            warn!("fragmentation is not supported offset={:?}", fragment_offset);
             return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
         }
 
@@ -241,10 +241,10 @@ impl Ipv4Header {
 
         Ok((header, buf))
     }
+
     /// Serializes the target IPv4 header.
     pub fn serialize(&self, buf: &mut [u8], payload_len: usize) {
-        let buf: &mut [u8; (IPV4_HEADER_MIN_SIZE as usize)] =
-            buf.try_into().expect("buffer to small");
+        let buf: &mut [u8; (IPV4_HEADER_MIN_SIZE as usize)] = buf.try_into().expect("buffer to small");
 
         // Version + IHL.
         buf[0] = (IPV4_VERSION << 4) | IPV4_IHL_NO_OPTIONS;
@@ -300,8 +300,7 @@ impl Ipv4Header {
 
     /// Computes the checksum of the target IPv4 header.
     pub fn compute_checksum(buf: &[u8]) -> u16 {
-        let buf: &[u8; IPV4_HEADER_MIN_SIZE as usize] =
-            buf.try_into().expect("Invalid header size");
+        let buf: &[u8; IPV4_HEADER_MIN_SIZE as usize] = buf.try_into().expect("Invalid header size");
         let mut state: u32 = 0xffffu32;
         for i in 0..5 {
             state += NetworkEndian::read_u16(&buf[(2 * i)..(2 * i + 2)]) as u32;

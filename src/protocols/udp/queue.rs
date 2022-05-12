@@ -7,12 +7,19 @@
 
 use crate::protocols::ipv4::Ipv4Endpoint;
 use ::futures::{
-    channel::mpsc::{self, UnboundedReceiver, UnboundedSender},
+    channel::mpsc::{
+        self,
+        UnboundedReceiver,
+        UnboundedSender,
+    },
     StreamExt,
 };
 use ::libc::EIO;
 use ::runtime::fail::Fail;
-use ::std::{cell::RefCell, rc::Rc};
+use ::std::{
+    cell::RefCell,
+    rc::Rc,
+};
 
 //==============================================================================
 // Structures

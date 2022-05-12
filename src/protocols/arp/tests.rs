@@ -1,24 +1,42 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::packet::{ArpHeader, ArpOperation};
+use super::packet::{
+    ArpHeader,
+    ArpOperation,
+};
 use crate::{
     protocols::ethernet2::Ethernet2Header,
-    test_helpers::{self, TestRuntime},
+    test_helpers::{
+        self,
+        TestRuntime,
+    },
 };
 use ::futures::{
-    task::{noop_waker_ref, Context},
+    task::{
+        noop_waker_ref,
+        Context,
+    },
     FutureExt,
 };
-use ::libc::{EBADMSG, ETIMEDOUT};
+use ::libc::{
+    EBADMSG,
+    ETIMEDOUT,
+};
 use ::runtime::{
-    network::{types::MacAddress, NetworkRuntime},
+    network::{
+        types::MacAddress,
+        NetworkRuntime,
+    },
     task::SchedulerRuntime,
 };
 use ::std::{
     future::Future,
     task::Poll,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 /// Tests that requests get replied.
@@ -57,10 +75,7 @@ fn immediate_reply() {
     carrie.receive(request).unwrap();
     info!("passing ARP request to carrie...");
     let cache = carrie.export_arp_cache();
-    assert_eq!(
-        cache.get(&test_helpers::ALICE_IPV4),
-        Some(&test_helpers::ALICE_MAC)
-    );
+    assert_eq!(cache.get(&test_helpers::ALICE_IPV4), Some(&test_helpers::ALICE_MAC));
 
     carrie.rt().advance_clock(now);
     let reply = carrie.rt().pop_frame();
@@ -116,10 +131,7 @@ fn slow_reply() {
     carrie.receive(request).unwrap();
     info!("passing ARP request to carrie...");
     let cache = carrie.export_arp_cache();
-    assert_eq!(
-        cache.get(&test_helpers::ALICE_IPV4),
-        Some(&test_helpers::ALICE_MAC)
-    );
+    assert_eq!(cache.get(&test_helpers::ALICE_IPV4), Some(&test_helpers::ALICE_MAC));
 
     carrie.rt().advance_clock(now);
     let reply = carrie.rt().pop_frame();

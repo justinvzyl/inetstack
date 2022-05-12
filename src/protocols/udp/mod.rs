@@ -21,6 +21,9 @@ mod tests;
 
 pub use self::{
     datagram::UdpHeader,
-    futures::{UdpOperation, UdpPopFuture},
+    futures::{
+        UdpOperation,
+        UdpPopFuture,
+    },
     peer::UdpPeer,
 };

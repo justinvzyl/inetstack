@@ -4,7 +4,10 @@
 pub mod libos;
 pub mod runtime;
 
-use ::runtime::network::types::{Ipv4Addr, MacAddress};
+use ::runtime::network::types::{
+    Ipv4Addr,
+    MacAddress,
+};
 use std::collections::HashMap;
 
 // Alice Address

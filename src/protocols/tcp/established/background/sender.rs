@@ -1,11 +1,24 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::super::super::{segment::TcpHeader, SeqNumber};
-use super::super::{ctrlblk::ControlBlock, sender::UnackedSegment};
+use super::super::{
+    super::{
+        segment::TcpHeader,
+        SeqNumber,
+    },
+    ctrlblk::ControlBlock,
+    sender::UnackedSegment,
+};
 use ::futures::FutureExt;
-use ::runtime::{fail::Fail, Runtime};
-use ::std::{cmp, rc::Rc, time::Duration};
+use ::runtime::{
+    fail::Fail,
+    Runtime,
+};
+use ::std::{
+    cmp,
+    rc::Rc,
+    time::Duration,
+};
 
 pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     'top: loop {

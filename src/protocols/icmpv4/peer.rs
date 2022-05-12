@@ -2,28 +2,54 @@
 // Licensed under the MIT license.
 
 use crate::{
-    futures::{FutureOperation, UtilityMethods},
+    futures::{
+        FutureOperation,
+        UtilityMethods,
+    },
     protocols::{
         arp::ArpPeer,
-        ethernet2::{EtherType2, Ethernet2Header},
-        icmpv4::datagram::{Icmpv4Header, Icmpv4Message, Icmpv4Type2},
+        ethernet2::{
+            EtherType2,
+            Ethernet2Header,
+        },
+        icmpv4::datagram::{
+            Icmpv4Header,
+            Icmpv4Message,
+            Icmpv4Type2,
+        },
         ip::IpProtocol,
         ipv4::Ipv4Header,
     },
 };
-use ::byteorder::{ByteOrder, NetworkEndian};
-use ::scheduler::SchedulerHandle;
+use ::byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use ::futures::{
     channel::{
         mpsc,
-        oneshot::{channel, Sender},
+        oneshot::{
+            channel,
+            Sender,
+        },
     },
-    FutureExt, StreamExt,
+    FutureExt,
+    StreamExt,
 };
-use ::runtime::{fail::Fail, Runtime};
+use ::runtime::{
+    fail::Fail,
+    Runtime,
+};
+use ::scheduler::SchedulerHandle;
 use ::std::{
-    cell::RefCell, collections::HashMap, future::Future, net::Ipv4Addr, num::Wrapping, process,
-    rc::Rc, time::Duration,
+    cell::RefCell,
+    collections::HashMap,
+    future::Future,
+    net::Ipv4Addr,
+    num::Wrapping,
+    process,
+    rc::Rc,
+    time::Duration,
 };
 
 //==============================================================================
@@ -91,8 +117,7 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
         let (tx, rx) = mpsc::unbounded();
         let requests = ReqQueue::new();
         let future = Self::background(rt.clone(), arp.clone(), rx);
-        let handle: SchedulerHandle =
-            rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         Icmpv4Peer {
             rt,
             arp,
@@ -104,20 +129,13 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
     }
 
     /// Background task for replying to ICMP messages.
-    async fn background(
-        rt: RT,
-        arp: ArpPeer<RT>,
-        mut rx: mpsc::UnboundedReceiver<(Ipv4Addr, u16, u16)>,
-    ) {
+    async fn background(rt: RT, arp: ArpPeer<RT>, mut rx: mpsc::UnboundedReceiver<(Ipv4Addr, u16, u16)>) {
         // Reply requests.
         while let Some((dst_ipv4_addr, id, seq_num)) = rx.next().await {
             let r: Result<_, Fail> = try {
                 debug!("initiating ARP query");
                 let dst_link_addr = arp.query(dst_ipv4_addr).await?;
-                debug!(
-                    "ARP query complete ({} -> {})",
-                    dst_ipv4_addr, dst_link_addr
-                );
+                debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
                 debug!("reply ping ({}, {}, {})", dst_ipv4_addr, id, seq_num);
                 // Send reply message.
                 rt.transmit(Icmpv4Message::new(
@@ -127,10 +145,7 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
                 ));
             };
             if let Err(e) = r {
-                warn!(
-                    "reply_to_ping({}, {}, {}) failed: {:?}",
-                    dst_ipv4_addr, id, seq_num, e
-                )
+                warn!("reply_to_ping({}, {}, {}) failed: {:?}", dst_ipv4_addr, id, seq_num, e)
             }
         }
     }
@@ -144,15 +159,15 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
                 self.tx
                     .unbounded_send((ipv4_header.get_src_addr(), id, seq_num))
                     .unwrap();
-            }
+            },
             Icmpv4Type2::EchoReply { id, seq_num } => {
                 if let Some(tx) = self.requests.borrow_mut().remove(&(id, seq_num)) {
                     let _ = tx.send(());
                 }
-            }
+            },
             _ => {
                 warn!("Unsupported ICMPv4 message: {:?}", icmpv4_hdr);
-            }
+            },
         }
         Ok(())
     }
@@ -202,10 +217,7 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
             let t0 = rt.now();
             debug!("initiating ARP query");
             let dst_link_addr = arp.query(dst_ipv4_addr).await?;
-            debug!(
-                "ARP query complete ({} -> {})",
-                dst_ipv4_addr, dst_link_addr
-            );
+            debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
 
             let msg = Icmpv4Message::new(
                 Ethernet2Header::new(dst_link_addr, rt.local_link_addr(), EtherType2::Ipv4),

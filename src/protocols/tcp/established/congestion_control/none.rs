@@ -2,7 +2,10 @@
 // Licensed under the MIT license.
 
 use super::{
-    CongestionControl, FastRetransmitRecovery, LimitedTransmit, Options,
+    CongestionControl,
+    FastRetransmitRecovery,
+    LimitedTransmit,
+    Options,
     SlowStartCongestionAvoidance,
 };
 use crate::protocols::tcp::SeqNumber;
@@ -14,11 +17,7 @@ use ::std::fmt::Debug;
 pub struct None {}
 
 impl<RT: Runtime> CongestionControl<RT> for None {
-    fn new(
-        _mss: usize,
-        _seq_no: SeqNumber,
-        _options: Option<Options>,
-    ) -> Box<dyn CongestionControl<RT>> {
+    fn new(_mss: usize, _seq_no: SeqNumber, _options: Option<Options>) -> Box<dyn CongestionControl<RT>> {
         Box::new(Self {})
     }
 }

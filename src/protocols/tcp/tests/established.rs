@@ -7,19 +7,29 @@ use crate::{
         tcp::{
             operations::PushFuture,
             tests::{
-                check_packet_data, check_packet_pure_ack,
-                setup::{advance_clock, connection_setup},
+                check_packet_data,
+                check_packet_pure_ack,
+                setup::{
+                    advance_clock,
+                    connection_setup,
+                },
             },
             SeqNumber,
         },
     },
-    test_helpers::Engine,
-    test_helpers::{self, TestRuntime},
+    test_helpers::{
+        self,
+        Engine,
+        TestRuntime,
+    },
 };
 use ::futures::task::noop_waker_ref;
 use ::rand;
 use ::runtime::{
-    memory::{Bytes, BytesMut},
+    memory::{
+        Bytes,
+        BytesMut,
+    },
     network::NetworkRuntime,
     QDesc,
 };
@@ -28,7 +38,10 @@ use ::std::{
     convert::TryFrom,
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{
+        Context,
+        Poll,
+    },
     time::Instant,
 };
 use runtime::network::types::Port16;
@@ -185,12 +198,7 @@ fn send_recv(
     recv_data(ctx, server, client, server_fd, bytes.clone());
 
     // Pop pure ACK.
-    recv_pure_ack(
-        now,
-        server,
-        client,
-        seq_no + SeqNumber::from(bufsize as u32),
-    );
+    recv_pure_ack(now, server, client, seq_no + SeqNumber::from(bufsize as u32));
 }
 
 //=============================================================================
@@ -308,14 +316,8 @@ pub fn test_send_recv_loop() {
         .checked_shl(window_scale as u32)
         .unwrap();
 
-    let (server_fd, client_fd): (QDesc, QDesc) = connection_setup(
-        &mut ctx,
-        &mut now,
-        &mut server,
-        &mut client,
-        listen_port,
-        listen_addr,
-    );
+    let (server_fd, client_fd): (QDesc, QDesc) =
+        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 
     let bufsize: u32 = 64;
     let buf: Bytes = cook_buffer(bufsize as usize, None);
@@ -354,14 +356,8 @@ pub fn test_send_recv_round_loop() {
         .checked_shl(window_scale as u32)
         .unwrap();
 
-    let (server_fd, client_fd): (QDesc, QDesc) = connection_setup(
-        &mut ctx,
-        &mut now,
-        &mut server,
-        &mut client,
-        listen_port,
-        listen_addr,
-    );
+    let (server_fd, client_fd): (QDesc, QDesc) =
+        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 
     let bufsize: u32 = 64;
     let buf: Bytes = cook_buffer(bufsize as usize, None);
@@ -403,14 +399,8 @@ pub fn test_send_recv_with_delay() {
         .checked_shl(window_scale as u32)
         .unwrap();
 
-    let (server_fd, client_fd): (QDesc, QDesc) = connection_setup(
-        &mut ctx,
-        &mut now,
-        &mut server,
-        &mut client,
-        listen_port,
-        listen_addr,
-    );
+    let (server_fd, client_fd): (QDesc, QDesc) =
+        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 
     let bufsize: u32 = 64;
     let buf: Bytes = cook_buffer(bufsize as usize, None);
@@ -445,12 +435,7 @@ pub fn test_send_recv_with_delay() {
         }
 
         // Pop pure ACK
-        recv_pure_ack(
-            &mut now,
-            &mut server,
-            &mut client,
-            recv_seq_no,
-        );
+        recv_pure_ack(&mut now, &mut server, &mut client, recv_seq_no);
     }
 
     // Pop inflight packets.
@@ -460,12 +445,7 @@ pub fn test_send_recv_with_delay() {
         recv_seq_no = recv_seq_no + SeqNumber::from(bufsize as u32);
 
         // Send pure ack.
-        recv_pure_ack(
-            &mut now,
-            &mut server,
-            &mut client,
-            recv_seq_no,
-        );
+        recv_pure_ack(&mut now, &mut server, &mut client, recv_seq_no);
     }
 }
 
@@ -484,21 +464,8 @@ fn test_connect_disconnect() {
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
     let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
 
-    let (server_fd, client_fd): (QDesc, QDesc) = connection_setup(
-        &mut ctx,
-        &mut now,
-        &mut server,
-        &mut client,
-        listen_port,
-        listen_addr,
-    );
+    let (server_fd, client_fd): (QDesc, QDesc) =
+        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 
-    connection_hangup(
-        &mut ctx,
-        &mut now,
-        &mut server,
-        &mut client,
-        server_fd,
-        client_fd,
-    );
+    connection_hangup(&mut ctx, &mut now, &mut server, &mut client, server_fd, client_fd);
 }

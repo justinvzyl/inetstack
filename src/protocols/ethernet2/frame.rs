@@ -2,10 +2,20 @@
 // Licensed under the MIT license.
 
 use crate::protocols::ethernet2::EtherType2;
-use ::byteorder::{ByteOrder, NetworkEndian};
+use ::byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use ::libc::EBADMSG;
-use ::runtime::{fail::Fail, memory::Buffer, network::types::MacAddress};
-use ::std::convert::{TryFrom, TryInto};
+use ::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    network::types::MacAddress,
+};
+use ::std::convert::{
+    TryFrom,
+    TryInto,
+};
 
 pub const ETHERNET2_HEADER_SIZE: usize = 14;
 pub const MIN_PAYLOAD_SIZE: usize = 46;

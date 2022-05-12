@@ -6,34 +6,61 @@
 //==============================================================================
 
 use ::arrayvec::ArrayVec;
-use ::crossbeam_channel::{self};
+use ::crossbeam_channel::{self,};
 use ::rand::{
-    distributions::{Distribution, Standard},
+    distributions::{
+        Distribution,
+        Standard,
+    },
     rngs::SmallRng,
     seq::SliceRandom,
-    Rng, SeedableRng,
+    Rng,
+    SeedableRng,
 };
 use ::runtime::{
     fail::Fail,
-    memory::{Bytes, BytesMut, MemoryRuntime},
+    memory::{
+        Bytes,
+        BytesMut,
+        MemoryRuntime,
+    },
     network::{
-        config::{ArpConfig, TcpConfig, UdpConfig},
+        config::{
+            ArpConfig,
+            TcpConfig,
+            UdpConfig,
+        },
         consts::RECEIVE_BATCH_SIZE,
-        types::{Ipv4Addr, MacAddress},
-        NetworkRuntime, PacketBuf,
+        types::{
+            Ipv4Addr,
+            MacAddress,
+        },
+        NetworkRuntime,
+        PacketBuf,
     },
     task::SchedulerRuntime,
-    timer::{Timer, TimerRc, WaitFuture},
+    timer::{
+        Timer,
+        TimerRc,
+        WaitFuture,
+    },
     types::dmtr_sgarray_t,
     utils::UtilsRuntime,
     Runtime,
 };
-use ::scheduler::{Scheduler, SchedulerFuture, SchedulerHandle};
+use ::scheduler::{
+    Scheduler,
+    SchedulerFuture,
+    SchedulerHandle,
+};
 use ::std::{
     cell::RefCell,
     collections::HashMap,
     rc::Rc,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 //==============================================================================
@@ -144,11 +171,7 @@ impl NetworkRuntime for DummyRuntime {
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
         }
-        self.inner
-            .borrow_mut()
-            .outgoing
-            .try_send(buf.freeze())
-            .unwrap();
+        self.inner.borrow_mut().outgoing.try_send(buf.freeze()).unwrap();
     }
 
     fn receive(&self) -> ArrayVec<Bytes, RECEIVE_BATCH_SIZE> {
@@ -207,10 +230,7 @@ impl SchedulerRuntime for DummyRuntime {
     fn wait(&self, duration: Duration) -> Self::WaitFuture {
         let inner = self.inner.borrow_mut();
         let now = inner.timer.0.now();
-        inner
-            .timer
-            .0
-            .wait_until(inner.timer.clone(), now + duration)
+        inner.timer.0.wait_until(inner.timer.clone(), now + duration)
     }
 
     fn wait_until(&self, when: Instant) -> Self::WaitFuture {

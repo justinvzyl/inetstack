@@ -2,8 +2,15 @@
 // Licensed under the MIT license.
 
 use ::libc::EAGAIN;
-use ::runtime::{fail::Fail, network::types::Port16, Runtime};
-use ::std::{convert::TryFrom, num::NonZeroU16};
+use ::runtime::{
+    fail::Fail,
+    network::types::Port16,
+    Runtime,
+};
+use ::std::{
+    convert::TryFrom,
+    num::NonZeroU16,
+};
 
 //==============================================================================
 // Constants
@@ -28,8 +35,7 @@ impl EphemeralPorts {
     pub fn new<RT: Runtime>(rt: &RT) -> Self {
         let mut ports: Vec<Port16> = Vec::<Port16>::new();
         for n in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
-            let p: Port16 =
-                Port16::new(NonZeroU16::new(n).expect("failed to allocate ephemeral port"));
+            let p: Port16 = Port16::new(NonZeroU16::new(n).expect("failed to allocate ephemeral port"));
             ports.push(p);
         }
 
@@ -46,9 +52,7 @@ impl EphemeralPorts {
     }
 
     pub fn alloc(&mut self) -> Result<Port16, Fail> {
-        self.ports
-            .pop()
-            .ok_or(Fail::new(EAGAIN, "out of private ports"))
+        self.ports.pop().ok_or(Fail::new(EAGAIN, "out of private ports"))
     }
 
     pub fn free(&mut self, port: Port16) {

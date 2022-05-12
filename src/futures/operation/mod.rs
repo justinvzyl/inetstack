@@ -1,14 +1,20 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::protocols::{tcp::operations::TcpOperation, udp::UdpOperation};
-use ::scheduler::SchedulerFuture;
+use crate::protocols::{
+    tcp::operations::TcpOperation,
+    udp::UdpOperation,
+};
 use ::futures::Future;
 use ::runtime::Runtime;
+use ::scheduler::SchedulerFuture;
 use ::std::{
     any::Any,
     pin::Pin,
-    task::{Context, Poll},
+    task::{
+        Context,
+        Poll,
+    },
 };
 
 //==============================================================================

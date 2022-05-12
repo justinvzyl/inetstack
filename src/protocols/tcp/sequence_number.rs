@@ -10,9 +10,11 @@
 // the situation that a < b < c < a.  For this reason, we define sequence numbers to be their own type.
 //
 
-use std::cmp::Ordering;
-use std::convert::From;
-use std::fmt;
+use std::{
+    cmp::Ordering,
+    convert::From,
+    fmt,
+};
 
 // Internally, we store sequence numbers as unsigned 32-bit integers.
 //
