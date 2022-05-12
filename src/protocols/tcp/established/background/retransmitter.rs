@@ -70,7 +70,7 @@ async fn retransmit<RT: Runtime>(cause: RetransmitCause, cb: &Rc<ControlBlock<RT
     let (seq_no, _) = cb.get_send_unacked();
     let mut header: TcpHeader = cb.tcp_header();
     header.seq_num = seq_no;
-    cb.emit(header, segment.bytes.clone(), remote_link_addr);
+    cb.emit(header, segment.bytes, remote_link_addr);
 
     // Set new retransmit deadline.
     // ToDo: Review this.  Shouldn't we only do this for RetransmitCause::Timeout?

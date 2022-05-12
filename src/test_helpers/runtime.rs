@@ -21,8 +21,8 @@ use ::runtime::{
     fail::Fail,
     logging,
     memory::{
-        Bytes,
-        BytesMut,
+        Buffer,
+        DataBuffer,
         MemoryRuntime,
     },
     network::{
@@ -36,6 +36,11 @@ use ::runtime::{
         NetworkRuntime,
         PacketBuf,
     },
+    scheduler::{
+        Scheduler,
+        SchedulerFuture,
+        SchedulerHandle,
+    },
     task::SchedulerRuntime,
     timer::{
         Timer,
@@ -45,11 +50,6 @@ use ::runtime::{
     types::demi_sgarray_t,
     utils::UtilsRuntime,
     Runtime,
-};
-use ::scheduler::{
-    Scheduler,
-    SchedulerFuture,
-    SchedulerHandle,
 };
 use ::std::{
     cell::RefCell,
@@ -78,8 +78,8 @@ pub struct Inner {
     #[allow(unused)]
     timer: TimerRc,
     rng: SmallRng,
-    incoming: VecDeque<Bytes>,
-    outgoing: VecDeque<Bytes>,
+    incoming: VecDeque<Box<dyn Buffer>>,
+    outgoing: VecDeque<Box<dyn Buffer>>,
 }
 
 #[derive(Clone)]
@@ -128,7 +128,7 @@ impl TestRuntime {
         }
     }
 
-    pub fn pop_frame(&self) -> Bytes {
+    pub fn pop_frame(&self) -> Box<dyn Buffer> {
         self.inner
             .borrow_mut()
             .outgoing
@@ -136,11 +136,11 @@ impl TestRuntime {
             .expect("pop_front didn't return an outgoing frame")
     }
 
-    pub fn pop_frame_unchecked(&self) -> Option<Bytes> {
+    pub fn pop_frame_unchecked(&self) -> Option<Box<dyn Buffer>> {
         self.inner.borrow_mut().outgoing.pop_front()
     }
 
-    pub fn push_frame(&self, buf: Bytes) {
+    pub fn push_frame(&self, buf: Box<dyn Buffer>) {
         self.inner.borrow_mut().incoming.push_back(buf);
     }
 
@@ -155,9 +155,7 @@ impl TestRuntime {
 //==============================================================================
 
 impl MemoryRuntime for TestRuntime {
-    type Buf = Bytes;
-
-    fn into_sgarray(&self, _buf: Bytes) -> Result<demi_sgarray_t, Fail> {
+    fn into_sgarray(&self, _buf: Box<dyn Buffer>) -> Result<demi_sgarray_t, Fail> {
         unreachable!()
     }
 
@@ -169,25 +167,25 @@ impl MemoryRuntime for TestRuntime {
         unreachable!()
     }
 
-    fn clone_sgarray(&self, _sga: &demi_sgarray_t) -> Result<Bytes, Fail> {
+    fn clone_sgarray(&self, _sga: &demi_sgarray_t) -> Result<Box<dyn Buffer>, Fail> {
         unreachable!()
     }
 }
 
 impl NetworkRuntime for TestRuntime {
-    fn transmit(&self, pkt: impl PacketBuf<Bytes>) {
+    fn transmit(&self, pkt: impl PacketBuf) {
         let header_size = pkt.header_size();
         let body_size = pkt.body_size();
 
-        let mut buf = BytesMut::zeroed(header_size + body_size).unwrap();
+        let mut buf: Box<dyn Buffer> = Box::new(DataBuffer::new(header_size + body_size).unwrap());
         pkt.write_header(&mut buf[..header_size]);
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
         }
-        self.inner.borrow_mut().outgoing.push_back(buf.freeze());
+        self.inner.borrow_mut().outgoing.push_back(buf);
     }
 
-    fn receive(&self) -> ArrayVec<Bytes, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<Box<dyn Buffer>, RECEIVE_BATCH_SIZE> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.inner.borrow_mut().incoming.pop_front() {
             out.push(buf);

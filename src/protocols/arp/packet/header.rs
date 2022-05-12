@@ -85,7 +85,7 @@ impl ArpHeader {
         ARP_MESSAGE_SIZE
     }
 
-    pub fn parse<T: Buffer>(buf: T) -> Result<Self, Fail> {
+    pub fn parse(buf: Box<dyn Buffer>) -> Result<Self, Fail> {
         if buf.len() < ARP_MESSAGE_SIZE {
             return Err(Fail::new(EBADMSG, "ARP message too short"));
         }

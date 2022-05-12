@@ -31,7 +31,10 @@ use ::inetstack::{
 };
 use ::runtime::{
     fail::Fail,
-    memory::Bytes,
+    memory::{
+        Buffer,
+        DataBuffer,
+    },
     network::types::Port16,
     QDesc,
     QToken,
@@ -66,7 +69,7 @@ fn do_tcp_connection_setup(libos: &mut InetStack<DummyRuntime>, port: u16) {
 
 #[test]
 fn catnip_tcp_connection_setup() {
-    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     do_tcp_connection_setup(&mut libos, PORT_BASE);
@@ -78,8 +81,8 @@ fn catnip_tcp_connection_setup() {
 
 /// Tests if data can be successfully established.
 fn do_tcp_establish_connection(port: u16) {
-    let (alice_tx, alice_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -92,7 +95,7 @@ fn do_tcp_establish_connection(port: u16) {
         libos.bind(sockfd, local).unwrap();
         libos.listen(sockfd, 8).unwrap();
         let qt: QToken = libos.accept(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -122,7 +125,7 @@ fn do_tcp_establish_connection(port: u16) {
         // Open connection.
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
         let qt: QToken = libos.connect(sockfd, remote).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -153,8 +156,8 @@ fn catnip_tcp_establish_connection() {
 
 /// Tests if data can be pushed.
 fn do_tcp_push_remote(port: u16) {
-    let (alice_tx, alice_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -167,7 +170,7 @@ fn do_tcp_push_remote(port: u16) {
         libos.bind(sockfd, local).unwrap();
         libos.listen(sockfd, 8).unwrap();
         let qt: QToken = libos.accept(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -178,7 +181,7 @@ fn do_tcp_push_remote(port: u16) {
 
         // Pop data.
         let qt: QToken = libos.pop(qd).unwrap();
-        let (qd, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (qd, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -207,7 +210,7 @@ fn do_tcp_push_remote(port: u16) {
         // Open connection.
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
         let qt: QToken = libos.connect(sockfd, remote).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -217,11 +220,11 @@ fn do_tcp_push_remote(port: u16) {
         }
 
         // Cook some data.
-        let bytes: Bytes = DummyLibOS::cook_data(32);
+        let bytes: Box<dyn Buffer> = DummyLibOS::cook_data(32);
 
         // Push data.
         let qt: QToken = libos.push2(sockfd, &bytes).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -252,7 +255,7 @@ fn catnip_tcp_push_remote() {
 
 /// Tests for bad socket creation.
 fn do_tcp_bad_socket() {
-    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let domains: Vec<libc::c_int> = vec![
@@ -338,7 +341,7 @@ fn catnip_tcp_bad_socket() {
 
 /// Test bad calls for `bind()`.
 fn do_tcp_bad_bind(port: u16) {
-    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     // Invalid file descriptor.
@@ -359,7 +362,7 @@ fn catnip_tcp_bad_bind() {
 
 /// Tests bad calls for `listen()`.
 fn do_tcp_bad_listen(port: u16) {
-    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let port: Port16 = Port16::try_from(port).unwrap();
@@ -388,7 +391,7 @@ fn catnip_tcp_bad_listen() {
 
 /// Tests bad calls for `accept()`.
 fn do_tcp_bad_accept() {
-    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     // Invalid file descriptor.
@@ -407,8 +410,8 @@ fn catnip_tcp_bad_accept() {
 
 /// Tests if data can be successfully established.
 fn do_tcp_bad_connect(port: u16) {
-    let (alice_tx, alice_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -420,7 +423,7 @@ fn do_tcp_bad_connect(port: u16) {
         libos.bind(sockfd, local).unwrap();
         libos.listen(sockfd, 8).unwrap();
         let qt: QToken = libos.accept(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -456,7 +459,7 @@ fn do_tcp_bad_connect(port: u16) {
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(Ipv4Addr::new(0, 0, 0, 0), port);
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
         let qt: QToken = libos.connect(sockfd, remote).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -469,7 +472,7 @@ fn do_tcp_bad_connect(port: u16) {
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
         let qt: QToken = libos.connect(sockfd, remote).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };

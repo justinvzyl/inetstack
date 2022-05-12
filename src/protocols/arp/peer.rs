@@ -33,14 +33,15 @@ use ::libc::{
 };
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
     network::{
         config::ArpConfig,
         types::MacAddress,
         NetworkRuntime,
     },
+    scheduler::SchedulerHandle,
     Runtime,
 };
-use ::scheduler::SchedulerHandle;
 use ::std::{
     cell::RefCell,
     collections::HashMap,
@@ -135,7 +136,7 @@ impl<RT: Runtime> ArpPeer<RT> {
         }
     }
 
-    pub fn receive(&mut self, buf: RT::Buf) -> Result<(), Fail> {
+    pub fn receive(&mut self, buf: Box<dyn Buffer>) -> Result<(), Fail> {
         // from RFC 826:
         // > ?Do I have the hardware type in ar$hrd?
         // > [optionally check the hardware length ar$hln]

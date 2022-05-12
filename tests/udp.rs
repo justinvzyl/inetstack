@@ -30,7 +30,10 @@ use ::inetstack::{
     InetStack,
 };
 use ::runtime::{
-    memory::Bytes,
+    memory::{
+        Buffer,
+        DataBuffer,
+    },
     network::types::Port16,
     QDesc,
     QToken,
@@ -51,7 +54,7 @@ use ::std::{
 /// endpoint.
 #[test]
 fn udp_connect_remote() {
-    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
@@ -66,7 +69,7 @@ fn udp_connect_remote() {
 /// Tests if a connection can be successfully established in loopback mode.
 #[test]
 fn udp_connect_loopback() {
-    let (tx, rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
@@ -86,8 +89,8 @@ fn udp_connect_loopback() {
 /// itself.
 #[test]
 fn udp_push_remote() {
-    let (alice_tx, alice_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let bob_port: Port16 = Port16::try_from(PORT_BASE).unwrap();
     let bob_addr: Ipv4Endpoint = Ipv4Endpoint::new(BOB_IPV4, bob_port);
@@ -102,11 +105,11 @@ fn udp_push_remote() {
         libos.bind(sockfd, alice_addr).unwrap();
 
         // Cook some data.
-        let bytes: Bytes = DummyLibOS::cook_data(32);
+        let bytes: Box<dyn Buffer> = DummyLibOS::cook_data(32);
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -117,7 +120,7 @@ fn udp_push_remote() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -139,18 +142,18 @@ fn udp_push_remote() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
-        let bytes: Bytes = match qr {
+        let bytes: Box<dyn Buffer> = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => panic!("pop() failed"),
         };
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, alice_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -170,8 +173,8 @@ fn udp_push_remote() {
 /// Tests if data can be successfully pushed/popped in loopback mode.
 #[test]
 fn udp_loopback() {
-    let (alice_tx, alice_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<Bytes>, Receiver<Bytes>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let bob_port: Port16 = Port16::try_from(PORT_BASE).unwrap();
     let bob_addr: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, bob_port);
@@ -186,11 +189,11 @@ fn udp_loopback() {
         libos.bind(sockfd, alice_addr).unwrap();
 
         // Cook some data.
-        let bytes: Bytes = DummyLibOS::cook_data(32);
+        let bytes: Box<dyn Buffer> = DummyLibOS::cook_data(32);
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -201,7 +204,7 @@ fn udp_loopback() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
@@ -223,18 +226,18 @@ fn udp_loopback() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
-        let bytes: Bytes = match qr {
+        let bytes: Box<dyn Buffer> = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => panic!("pop() failed"),
         };
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, alice_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult<Bytes>) = match libos.wait2(qt) {
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };

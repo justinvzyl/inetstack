@@ -29,7 +29,7 @@ pub use header::UdpHeader;
 
 /// UDP Datagram
 #[derive(Debug)]
-pub struct UdpDatagram<T: Buffer> {
+pub struct UdpDatagram {
     /// Ethernet header.
     ethernet2_hdr: Ethernet2Header,
     /// IPv4 header.
@@ -37,7 +37,7 @@ pub struct UdpDatagram<T: Buffer> {
     /// UDP header.
     udp_hdr: UdpHeader,
     /// Payload
-    data: T,
+    data: Box<dyn Buffer>,
     /// Offload checksum to hardware?
     checksum_offload: bool,
 }
@@ -47,13 +47,13 @@ pub struct UdpDatagram<T: Buffer> {
 //==============================================================================
 
 // Associate Functions for UDP Datagrams
-impl<T: Buffer> UdpDatagram<T> {
+impl UdpDatagram {
     /// Creates a UDP packet.
     pub fn new(
         ethernet2_hdr: Ethernet2Header,
         ipv4_hdr: Ipv4Header,
         udp_hdr: UdpHeader,
-        data: T,
+        data: Box<dyn Buffer>,
         checksum_offload: bool,
     ) -> Self {
         Self {
@@ -71,7 +71,7 @@ impl<T: Buffer> UdpDatagram<T> {
 //==============================================================================
 
 /// Packet Buffer Trait Implementation for UDP Datagrams
-impl<T: Buffer> PacketBuf<T> for UdpDatagram<T> {
+impl PacketBuf for UdpDatagram {
     /// Computes the header size of the target UDP datagram.
     fn header_size(&self) -> usize {
         self.ethernet2_hdr.compute_size() + self.ipv4_hdr.compute_size() + self.udp_hdr.size()
@@ -110,7 +110,7 @@ impl<T: Buffer> PacketBuf<T> for UdpDatagram<T> {
     }
 
     /// Returns the payload of the target UDP datagram.
-    fn take_body(self) -> Option<T> {
+    fn take_body(self) -> Option<Box<dyn Buffer>> {
         Some(self.data)
     }
 }
@@ -131,7 +131,7 @@ mod test {
         ipv4::IPV4_HEADER_DEFAULT_SIZE,
     };
     use ::runtime::{
-        memory::Bytes,
+        memory::DataBuffer,
         network::types::{
             Ipv4Addr,
             MacAddress,
@@ -165,7 +165,7 @@ mod test {
 
         // Payload.
         let bytes: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
-        let data: Bytes = Bytes::from_slice(&bytes);
+        let data: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&bytes));
 
         // Build expected header.
         let mut hdr: [u8; HEADER_SIZE] = [0; HEADER_SIZE];
@@ -184,8 +184,7 @@ mod test {
         // Output buffer.
         let mut buf: [u8; HEADER_SIZE] = [0; HEADER_SIZE];
 
-        let datagram: UdpDatagram<Bytes> =
-            UdpDatagram::<Bytes>::new(ethernet2_hdr, ipv4_hdr, udp_hdr, data, checksum_offload);
+        let datagram: UdpDatagram = UdpDatagram::new(ethernet2_hdr, ipv4_hdr, udp_hdr, data, checksum_offload);
 
         // Do it.
         datagram.write_header(&mut buf);

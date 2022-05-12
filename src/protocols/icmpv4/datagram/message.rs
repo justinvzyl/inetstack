@@ -6,32 +6,32 @@ use crate::protocols::{
     ethernet2::Ethernet2Header,
     ipv4::Ipv4Header,
 };
-use ::runtime::network::PacketBuf;
-use ::std::marker::PhantomData;
+use ::runtime::{
+    memory::Buffer,
+    network::PacketBuf,
+};
 
 /// Message for ICMP
-pub struct Icmpv4Message<T> {
+pub struct Icmpv4Message {
     ethernet2_hdr: Ethernet2Header,
     ipv4_hdr: Ipv4Header,
     icmpv4_hdr: Icmpv4Header,
-    _body_marker: PhantomData<T>,
 }
 
 /// Associated Functions for Icmpv4Message
-impl<T> Icmpv4Message<T> {
+impl Icmpv4Message {
     /// Creates an ICMP message.
     pub fn new(ethernet2_hdr: Ethernet2Header, ipv4_hdr: Ipv4Header, icmpv4_hdr: Icmpv4Header) -> Self {
         Self {
             ethernet2_hdr,
             ipv4_hdr,
             icmpv4_hdr,
-            _body_marker: PhantomData,
         }
     }
 }
 
 /// PacketBuf Trait Implementation for Icmpv4Message
-impl<T> PacketBuf<T> for Icmpv4Message<T> {
+impl PacketBuf for Icmpv4Message {
     fn header_size(&self) -> usize {
         self.ethernet2_hdr.compute_size() + self.ipv4_hdr.compute_size() + self.icmpv4_hdr.size()
     }
@@ -59,7 +59,7 @@ impl<T> PacketBuf<T> for Icmpv4Message<T> {
             .serialize(&mut buf[cur_pos..(cur_pos + icmpv4_hdr_size)]);
     }
 
-    fn take_body(self) -> Option<T> {
+    fn take_body(self) -> Option<Box<dyn Buffer>> {
         None
     }
 }

@@ -15,7 +15,10 @@ use ::libc::{
     ENOTCONN,
 };
 use ::runtime::{
-    memory::BytesMut,
+    memory::{
+        Buffer,
+        DataBuffer,
+    },
     network::types::Port16,
     QDesc,
 };
@@ -83,7 +86,7 @@ fn udp_push_pop() {
     bob.udp_bind(bob_fd, bob_addr).unwrap();
 
     // Send data to Bob.
-    let buf = BytesMut::from(&vec![0x5a; 32][..]).freeze();
+    let buf: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
     alice.udp_pushto(alice_fd, buf.clone(), bob_addr).unwrap();
     alice.rt().poll_scheduler();
 
@@ -98,7 +101,7 @@ fn udp_push_pop() {
     }
     .unwrap();
     assert_eq!(remote_addr, alice_addr);
-    assert_eq!(received_buf, buf);
+    assert_eq!(received_buf[..], buf[..]);
 
     // Close peers.
     alice.udp_close(alice_fd).unwrap();
@@ -129,7 +132,7 @@ fn udp_ping_pong() {
     bob.udp_bind(bob_fd, bob_addr).unwrap();
 
     // Send data to Bob.
-    let buf_a = BytesMut::from(&vec![0x5a; 32][..]).freeze();
+    let buf_a: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
     alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr).unwrap();
     alice.rt().poll_scheduler();
 
@@ -144,12 +147,12 @@ fn udp_ping_pong() {
     }
     .unwrap();
     assert_eq!(remote_addr, alice_addr);
-    assert_eq!(received_buf_a, buf_a);
+    assert_eq!(received_buf_a[..], buf_a[..]);
 
     now += Duration::from_micros(1);
 
     // Send data to Alice.
-    let buf_b = BytesMut::from(&vec![0x5a; 32][..]).freeze();
+    let buf_b: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
     bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr).unwrap();
     bob.rt().poll_scheduler();
 
@@ -164,7 +167,7 @@ fn udp_ping_pong() {
     }
     .unwrap();
     assert_eq!(remote_addr, bob_addr);
-    assert_eq!(received_buf_b, buf_b);
+    assert_eq!(received_buf_b[..], buf_b[..]);
 
     // Close peers.
     alice.udp_close(alice_fd).unwrap();
@@ -248,7 +251,7 @@ fn udp_loop2_push_pop() {
     // Loop.
     for b in 0..1000 {
         // Send data to Bob.
-        let buf = BytesMut::from(&vec![(b % 256) as u8; 32][..]).freeze();
+        let buf: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![(b % 256) as u8; 32][..]));
         alice.udp_pushto(alice_fd, buf.clone(), bob_addr).unwrap();
         alice.rt().poll_scheduler();
 
@@ -263,7 +266,7 @@ fn udp_loop2_push_pop() {
         }
         .unwrap();
         assert_eq!(remote_addr, alice_addr);
-        assert_eq!(received_buf, buf);
+        assert_eq!(received_buf[..], buf[..]);
     }
 
     // Close peers.
@@ -305,7 +308,7 @@ fn udp_loop2_ping_pong() {
     // Loop.
     for _ in 0..1000 {
         // Send data to Bob.
-        let buf_a = BytesMut::from(&vec![0x5a; 32][..]).freeze();
+        let buf_a: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
         alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr).unwrap();
         alice.rt().poll_scheduler();
 
@@ -320,12 +323,12 @@ fn udp_loop2_ping_pong() {
         }
         .unwrap();
         assert_eq!(remote_addr, alice_addr);
-        assert_eq!(received_buf_a, buf_a);
+        assert_eq!(received_buf_a[..], buf_a[..]);
 
         now += Duration::from_micros(1);
 
         // Send data to Alice.
-        let buf_b = BytesMut::from(&vec![0x5a; 32][..]).freeze();
+        let buf_b: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
         bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr).unwrap();
         bob.rt().poll_scheduler();
 
@@ -340,7 +343,7 @@ fn udp_loop2_ping_pong() {
         }
         .unwrap();
         assert_eq!(remote_addr, bob_addr);
-        assert_eq!(received_buf_b, buf_b);
+        assert_eq!(received_buf_b[..], buf_b[..]);
     }
 
     // Close peers.
@@ -445,8 +448,8 @@ fn udp_pop_not_bound() {
     // Bob does not create a socket.
 
     // Send data to Bob.
-    let buf = BytesMut::from(&vec![0x5a; 32][..]).freeze();
-    alice.udp_pushto(alice_fd, buf.clone(), bob_addr).unwrap();
+    let buf: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
+    alice.udp_pushto(alice_fd, buf, bob_addr).unwrap();
     alice.rt().poll_scheduler();
 
     now += Duration::from_micros(1);
@@ -486,7 +489,7 @@ fn udp_push_bad_file_descriptor() {
     bob.udp_bind(bob_fd, bob_addr).unwrap();
 
     // Send data to Bob.
-    let buf = BytesMut::from(&vec![0x5a; 32][..]).freeze();
+    let buf: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
     match alice.udp_pushto(QDesc::try_from(usize::MAX).unwrap(), buf.clone(), bob_addr) {
         Err(e) if e.errno == EBADF => Ok(()),
         _ => Err(()),

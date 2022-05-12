@@ -20,8 +20,8 @@ use ::rand::{
 use ::runtime::{
     fail::Fail,
     memory::{
-        Bytes,
-        BytesMut,
+        Buffer,
+        DataBuffer,
         MemoryRuntime,
     },
     network::{
@@ -38,6 +38,11 @@ use ::runtime::{
         NetworkRuntime,
         PacketBuf,
     },
+    scheduler::{
+        Scheduler,
+        SchedulerFuture,
+        SchedulerHandle,
+    },
     task::SchedulerRuntime,
     timer::{
         Timer,
@@ -47,11 +52,6 @@ use ::runtime::{
     types::demi_sgarray_t,
     utils::UtilsRuntime,
     Runtime,
-};
-use ::scheduler::{
-    Scheduler,
-    SchedulerFuture,
-    SchedulerHandle,
 };
 use ::std::{
     cell::RefCell,
@@ -74,9 +74,9 @@ struct SharedDummyRuntime {
     /// Random Number Generator
     rng: SmallRng,
     /// Incoming Queue of Packets
-    incoming: crossbeam_channel::Receiver<Bytes>,
+    incoming: crossbeam_channel::Receiver<DataBuffer>,
     /// Outgoing Queue of Packets
-    outgoing: crossbeam_channel::Sender<Bytes>,
+    outgoing: crossbeam_channel::Sender<DataBuffer>,
 }
 
 /// Dummy Runtime
@@ -102,8 +102,8 @@ impl DummyRuntime {
         now: Instant,
         link_addr: MacAddress,
         ipv4_addr: Ipv4Addr,
-        incoming: crossbeam_channel::Receiver<Bytes>,
-        outgoing: crossbeam_channel::Sender<Bytes>,
+        incoming: crossbeam_channel::Receiver<DataBuffer>,
+        outgoing: crossbeam_channel::Sender<DataBuffer>,
         arp: HashMap<Ipv4Addr, MacAddress>,
     ) -> Self {
         let arp_options: ArpConfig = ArpConfig::new(
@@ -137,10 +137,8 @@ impl DummyRuntime {
 
 /// Memory Runtime Trait Implementation for Dummy Runtime
 impl MemoryRuntime for DummyRuntime {
-    type Buf = Bytes;
-
     // TODO: Drop this when we have cleaned up the runtime interface.
-    fn into_sgarray(&self, _buf: Bytes) -> Result<demi_sgarray_t, Fail> {
+    fn into_sgarray(&self, _buf: Box<dyn Buffer>) -> Result<demi_sgarray_t, Fail> {
         unreachable!();
     }
 
@@ -155,29 +153,30 @@ impl MemoryRuntime for DummyRuntime {
     }
 
     // TODO: Drop this when we have cleaned up the runtime interface.
-    fn clone_sgarray(&self, _sga: &demi_sgarray_t) -> Result<Bytes, Fail> {
+    fn clone_sgarray(&self, _sga: &demi_sgarray_t) -> Result<Box<dyn Buffer>, Fail> {
         unreachable!();
     }
 }
 
 /// Network Runtime Trait Implementation for Dummy Runtime
 impl NetworkRuntime for DummyRuntime {
-    fn transmit(&self, pkt: impl PacketBuf<Bytes>) {
+    fn transmit(&self, pkt: impl PacketBuf) {
         let header_size = pkt.header_size();
         let body_size = pkt.body_size();
 
-        let mut buf = BytesMut::zeroed(header_size + body_size).unwrap();
+        let mut buf: DataBuffer = DataBuffer::new(header_size + body_size).unwrap();
         pkt.write_header(&mut buf[..header_size]);
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
         }
-        self.inner.borrow_mut().outgoing.try_send(buf.freeze()).unwrap();
+        self.inner.borrow_mut().outgoing.try_send(buf).unwrap();
     }
 
-    fn receive(&self) -> ArrayVec<Bytes, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<Box<dyn Buffer>, RECEIVE_BATCH_SIZE> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.inner.borrow_mut().incoming.try_recv().ok() {
-            out.push(buf);
+            let dbuf: Box<dyn Buffer> = Box::new(buf);
+            out.push(dbuf);
         }
         out
     }

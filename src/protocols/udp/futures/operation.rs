@@ -11,10 +11,9 @@ use crate::{
 };
 use ::runtime::{
     fail::Fail,
-    memory::Buffer,
+    scheduler::FutureResult,
     QDesc,
 };
-use ::scheduler::FutureResult;
 use ::std::{
     future::Future,
     pin::Pin,
@@ -29,11 +28,11 @@ use ::std::{
 //==============================================================================
 
 /// UDP Operation Descriptor
-pub enum UdpOperation<T: Buffer> {
+pub enum UdpOperation {
     /// Pushto operation.
     Pushto(QDesc, Result<(), Fail>),
     /// Pop operation.
-    Pop(FutureResult<UdpPopFuture<T>>),
+    Pop(FutureResult<UdpPopFuture>),
 }
 
 //==============================================================================
@@ -41,8 +40,8 @@ pub enum UdpOperation<T: Buffer> {
 //==============================================================================
 
 /// Associate Functions for UDP Operation Descriptors
-impl<T: Buffer> UdpOperation<T> {
-    pub fn get_result(self) -> (QDesc, OperationResult<T>) {
+impl UdpOperation {
+    pub fn get_result(self) -> (QDesc, OperationResult) {
         match self {
             // Pushto operation.
             UdpOperation::Pushto(fd, Ok(())) => (fd, OperationResult::Push),
@@ -68,7 +67,7 @@ impl<T: Buffer> UdpOperation<T> {
 //==============================================================================
 
 /// Future trait implementation for UDP Operation Descriptors
-impl<T: Buffer> Future for UdpOperation<T> {
+impl Future for UdpOperation {
     type Output = ();
 
     /// Poll the target UDP operation descritor.

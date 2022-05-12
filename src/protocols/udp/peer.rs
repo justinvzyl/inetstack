@@ -35,20 +35,21 @@ use ::futures::FutureExt;
 use ::libc::{
     EADDRINUSE,
     EBADF,
+    EEXIST,
     ENOTCONN,
 };
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
     network::types::{
         Ipv4Addr,
         MacAddress,
     },
+    scheduler::SchedulerHandle,
     QDesc,
     Runtime,
 };
-use ::scheduler::SchedulerHandle;
 use ::std::collections::HashMap;
-use libc::EEXIST;
 
 #[cfg(feature = "profiler")]
 use ::perftools::timer;
@@ -66,9 +67,9 @@ pub struct UdpPeer<RT: Runtime> {
     /// Opened sockets.
     sockets: HashMap<QDesc, Option<Ipv4Endpoint>>,
     /// Bound sockets.
-    bound: HashMap<Ipv4Endpoint, SharedQueue<SharedQueueSlot<RT::Buf>>>,
+    bound: HashMap<Ipv4Endpoint, SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>>,
     /// Queue of unset datagrams. This is shared across fast/slow paths.
-    send_queue: SharedQueue<SharedQueueSlot<RT::Buf>>,
+    send_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>,
     /// Local link address.
     local_link_addr: MacAddress,
     /// Local IPv4 address.
@@ -93,7 +94,8 @@ impl<RT: Runtime> UdpPeer<RT> {
         offload_checksum: bool,
         arp: ArpPeer<RT>,
     ) -> Self {
-        let send_queue: SharedQueue<SharedQueueSlot<RT::Buf>> = SharedQueue::<SharedQueueSlot<RT::Buf>>::new();
+        let send_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> =
+            SharedQueue::<SharedQueueSlot<Box<dyn Buffer>>>::new();
         let future = Self::background_sender(
             rt.clone(),
             local_ipv4_addr,
@@ -123,7 +125,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         local_link_addr: MacAddress,
         offload_checksum: bool,
         arp: ArpPeer<RT>,
-        mut rx: SharedQueue<SharedQueueSlot<RT::Buf>>,
+        mut rx: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>,
     ) {
         loop {
             // Grab next unsent datagram.
@@ -189,7 +191,8 @@ impl<RT: Runtime> UdpPeer<RT> {
         }
 
         // Bind endpoint and create a receiver-side shared queue.
-        let queue: SharedQueue<SharedQueueSlot<RT::Buf>> = SharedQueue::<SharedQueueSlot<RT::Buf>>::new();
+        let queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> =
+            SharedQueue::<SharedQueueSlot<Box<dyn Buffer>>>::new();
         if self.bound.insert(addr, queue).is_some() {
             return Err(Fail::new(EADDRINUSE, "address in use"));
         }
@@ -216,7 +219,7 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     /// Pushes data to a remote UDP peer.
-    pub fn do_pushto(&self, qd: QDesc, data: RT::Buf, remote: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn do_pushto(&self, qd: QDesc, data: Box<dyn Buffer>, remote: Ipv4Endpoint) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::pushto");
 
@@ -252,12 +255,12 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     /// Pops data from a socket.
-    pub fn do_pop(&self, qd: QDesc) -> UdpPopFuture<RT::Buf> {
+    pub fn do_pop(&self, qd: QDesc) -> UdpPopFuture {
         #[cfg(feature = "profiler")]
         timer!("udp::pop");
 
         // Lookup associated receiver-side shared queue.
-        let recv_queue: SharedQueue<SharedQueueSlot<RT::Buf>> = match self.sockets.get(&qd) {
+        let recv_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> = match self.sockets.get(&qd) {
             Some(s) if s.is_some() => self.bound.get(&s.unwrap()).unwrap().clone(),
             _ => panic!("invalid queue descriptor"),
         };
@@ -267,19 +270,19 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     /// Consumes the payload from a buffer.
-    pub fn do_receive(&mut self, ipv4_hdr: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
+    pub fn do_receive(&mut self, ipv4_hdr: &Ipv4Header, buf: Box<dyn Buffer>) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::receive");
 
         // Parse datagram.
-        let (hdr, data): (UdpHeader, RT::Buf) = UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
+        let (hdr, data): (UdpHeader, Box<dyn Buffer>) = UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
         debug!("UDP received {:?}", hdr);
 
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
         let remote: Option<Ipv4Endpoint> = hdr.src_port().map(|p| Ipv4Endpoint::new(ipv4_hdr.get_src_addr(), p));
 
         // Lookup associated receiver-side shared queue.
-        let recv_queue: &mut SharedQueue<SharedQueueSlot<RT::Buf>> = match self.bound.get_mut(&local) {
+        let recv_queue: &mut SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> = match self.bound.get_mut(&local) {
             Some(q) => q,
             // TODO: Send ICMPv4 error in this condition.
             None => Err(Fail::new(ENOTCONN, "port not bound"))?,
@@ -304,7 +307,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
         remote_link_addr: MacAddress,
-        buf: RT::Buf,
+        buf: Box<dyn Buffer>,
         local: Option<Ipv4Endpoint>,
         remote: Ipv4Endpoint,
         offload_checksum: bool,

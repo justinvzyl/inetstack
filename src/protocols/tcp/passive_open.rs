@@ -41,10 +41,10 @@ use ::libc::{
 };
 use ::runtime::{
     fail::Fail,
-    memory::Buffer,
+    memory::DataBuffer,
+    scheduler::SchedulerHandle,
     Runtime,
 };
-use ::scheduler::SchedulerHandle;
 use ::std::{
     cell::RefCell,
     collections::{
@@ -310,7 +310,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                     ethernet2_hdr: Ethernet2Header::new(remote_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
                     ipv4_hdr: Ipv4Header::new(local.get_address(), remote.get_address(), IpProtocol::TCP),
                     tcp_hdr,
-                    data: RT::Buf::empty(),
+                    data: Box::new(DataBuffer::empty()),
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
                 };
                 rt.transmit(segment);

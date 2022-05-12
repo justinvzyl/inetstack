@@ -14,8 +14,8 @@ use ::inetstack::InetStack;
 use ::runtime::{
     logging,
     memory::{
-        Bytes,
-        BytesMut,
+        Buffer,
+        DataBuffer,
     },
     network::types::MacAddress,
 };
@@ -40,8 +40,8 @@ impl DummyLibOS {
     pub fn new(
         link_addr: MacAddress,
         ipv4_addr: Ipv4Addr,
-        tx: Sender<Bytes>,
-        rx: Receiver<Bytes>,
+        tx: Sender<DataBuffer>,
+        rx: Receiver<DataBuffer>,
         arp: HashMap<Ipv4Addr, MacAddress>,
     ) -> InetStack<DummyRuntime> {
         let now: Instant = Instant::now();
@@ -51,13 +51,13 @@ impl DummyLibOS {
     }
 
     /// Cooks a buffer.
-    pub fn cook_data(size: usize) -> Bytes {
+    pub fn cook_data(size: usize) -> Box<dyn Buffer> {
         let fill_char: u8 = b'a';
 
-        let mut buf: BytesMut = BytesMut::zeroed(size).unwrap();
+        let mut buf: Box<dyn Buffer> = Box::new(DataBuffer::new(size).unwrap());
         for a in &mut buf[..] {
             *a = fill_char;
         }
-        buf.freeze()
+        buf
     }
 }

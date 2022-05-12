@@ -27,10 +27,13 @@ use ::futures::task::noop_waker_ref;
 use ::rand;
 use ::runtime::{
     memory::{
-        Bytes,
-        BytesMut,
+        Buffer,
+        DataBuffer,
     },
-    network::NetworkRuntime,
+    network::{
+        types::Port16,
+        NetworkRuntime,
+    },
     QDesc,
 };
 use ::std::{
@@ -44,17 +47,16 @@ use ::std::{
     },
     time::Instant,
 };
-use runtime::network::types::Port16;
 
 //=============================================================================
 
 /// Cooks a buffer.
-fn cook_buffer(size: usize, stamp: Option<u8>) -> Bytes {
-    let mut buf: BytesMut = BytesMut::zeroed(size).unwrap();
+fn cook_buffer(size: usize, stamp: Option<u8>) -> Box<dyn Buffer> {
+    let mut buf: DataBuffer = DataBuffer::new(size).unwrap();
     for i in 0..size {
         buf[i] = stamp.unwrap_or(i as u8);
     }
-    buf.freeze()
+    Box::new(buf)
 }
 
 //=============================================================================
@@ -68,8 +70,8 @@ fn send_data(
     window_size: u16,
     seq_no: SeqNumber,
     ack_num: Option<SeqNumber>,
-    bytes: Bytes,
-) -> (Bytes, usize) {
+    bytes: Box<dyn Buffer>,
+) -> (Box<dyn Buffer>, usize) {
     trace!(
         "send_data ====> push: {:?} -> {:?}",
         sender.rt().local_ipv4_addr(),
@@ -77,9 +79,9 @@ fn send_data(
     );
 
     // Push data.
-    let mut push_future: PushFuture<TestRuntime> = sender.tcp_push(sender_fd, bytes.clone());
+    let mut push_future: PushFuture<TestRuntime> = sender.tcp_push(sender_fd, bytes);
 
-    let bytes: Bytes = sender.rt().pop_frame();
+    let bytes: Box<dyn Buffer> = sender.rt().pop_frame();
     let bufsize: usize = check_packet_data(
         bytes.clone(),
         sender.rt().local_link_addr(),
@@ -112,7 +114,7 @@ fn recv_data(
     receiver: &mut Engine<TestRuntime>,
     sender: &mut Engine<TestRuntime>,
     receiver_fd: QDesc,
-    bytes: Bytes,
+    bytes: Box<dyn Buffer>,
 ) {
     trace!(
         "recv_data ====> pop: {:?} -> {:?}",
@@ -177,12 +179,12 @@ fn send_recv(
     client_fd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
-    bytes: Bytes,
+    bytes: Box<dyn Buffer>,
 ) {
     let bufsize: usize = bytes.len();
 
     // Push data.
-    let (bytes, _): (Bytes, usize) = send_data(
+    let (bytes, _): (Box<dyn Buffer>, usize) = send_data(
         ctx,
         now,
         server,
@@ -195,7 +197,7 @@ fn send_recv(
     );
 
     // Pop data.
-    recv_data(ctx, server, client, server_fd, bytes.clone());
+    recv_data(ctx, server, client, server_fd, bytes);
 
     // Pop pure ACK.
     recv_pure_ack(now, server, client, seq_no + SeqNumber::from(bufsize as u32));
@@ -212,27 +214,18 @@ fn send_recv_round(
     client_fd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
-    bytes: Bytes,
+    bytes: Box<dyn Buffer>,
 ) {
     // Push Data: Client -> Server
-    let (bytes, bufsize): (Bytes, usize) = send_data(
-        ctx,
-        now,
-        server,
-        client,
-        client_fd,
-        window_size,
-        seq_no,
-        None,
-        bytes.clone(),
-    );
+    let (bytes, bufsize): (Box<dyn Buffer>, usize) =
+        send_data(ctx, now, server, client, client_fd, window_size, seq_no, None, bytes);
 
     // Pop data.
     recv_data(ctx, server, client, server_fd, bytes.clone());
 
     // Push Data: Server -> Client
-    let bytes = cook_buffer(bufsize, None);
-    let (bytes, _): (Bytes, usize) = send_data(
+    let bytes: Box<dyn Buffer> = cook_buffer(bufsize, None);
+    let (bytes, _): (Box<dyn Buffer>, usize) = send_data(
         ctx,
         now,
         client,
@@ -241,7 +234,7 @@ fn send_recv_round(
         window_size,
         seq_no,
         Some(seq_no + SeqNumber::from(bufsize as u32)),
-        bytes.clone(),
+        bytes,
     );
 
     // Pop data.
@@ -261,13 +254,13 @@ fn connection_hangup(
     // Send FIN: Client -> Server
     client.tcp_close(client_fd).expect("client tcp_close returned error");
     client.rt().poll_scheduler();
-    let bytes: Bytes = client.rt().pop_frame();
+    let bytes: Box<dyn Buffer> = client.rt().pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Server -> Client
     server.receive(bytes).expect("server receive returned error");
     server.rt().poll_scheduler();
-    let bytes: Bytes = server.rt().pop_frame();
+    let bytes: Box<dyn Buffer> = server.rt().pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // Receive ACK FIN
@@ -277,13 +270,13 @@ fn connection_hangup(
     // Send FIN: Server -> Client
     server.tcp_close(server_fd).expect("server tcp_close returned error");
     server.rt().poll_scheduler();
-    let bytes: Bytes = server.rt().pop_frame();
+    let bytes: Box<dyn Buffer> = server.rt().pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Client -> Server
     client.receive(bytes).expect("client receive (of FIN) returned error");
     client.rt().poll_scheduler();
-    let bytes: Bytes = client.rt().pop_frame();
+    let bytes: Box<dyn Buffer> = client.rt().pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // Receive ACK FIN
@@ -320,7 +313,7 @@ pub fn test_send_recv_loop() {
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 
     let bufsize: u32 = 64;
-    let buf: Bytes = cook_buffer(bufsize as usize, None);
+    let buf: Box<dyn Buffer> = cook_buffer(bufsize as usize, None);
 
     for i in 0..((max_window_size + 1) / bufsize) {
         send_recv(
@@ -360,7 +353,7 @@ pub fn test_send_recv_round_loop() {
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 
     let bufsize: u32 = 64;
-    let buf: Bytes = cook_buffer(bufsize as usize, None);
+    let buf: Box<dyn Buffer> = cook_buffer(bufsize as usize, None);
 
     for i in 0..((max_window_size + 1) / bufsize) {
         send_recv_round(
@@ -403,14 +396,14 @@ pub fn test_send_recv_with_delay() {
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 
     let bufsize: u32 = 64;
-    let buf: Bytes = cook_buffer(bufsize as usize, None);
+    let buf: Box<dyn Buffer> = cook_buffer(bufsize as usize, None);
     let mut recv_seq_no: SeqNumber = SeqNumber::from(1);
     let mut seq_no: SeqNumber = SeqNumber::from(1);
-    let mut inflight = VecDeque::<Bytes>::new();
+    let mut inflight = VecDeque::<Box<dyn Buffer>>::new();
 
     for _ in 0..((max_window_size + 1) / bufsize) {
         // Push data.
-        let (bytes, _): (Bytes, usize) = send_data(
+        let (bytes, _): (Box<dyn Buffer>, usize) = send_data(
             &mut ctx,
             &mut now,
             &mut server,

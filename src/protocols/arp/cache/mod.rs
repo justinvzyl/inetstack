@@ -5,8 +5,8 @@
 mod tests;
 
 use crate::collections::HashTtlCache;
-use runtime::network::types::MacAddress;
-use std::{
+use ::runtime::network::types::MacAddress;
+use ::std::{
     collections::HashMap,
     net::Ipv4Addr,
     time::{

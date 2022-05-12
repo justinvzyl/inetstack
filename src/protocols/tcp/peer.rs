@@ -55,7 +55,10 @@ use ::libc::{
 };
 use ::runtime::{
     fail::Fail,
-    memory::Buffer,
+    memory::{
+        Buffer,
+        DataBuffer,
+    },
     QDesc,
     Runtime,
 };
@@ -153,7 +156,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    pub fn receive(&self, ip_header: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
+    pub fn receive(&self, ip_header: &Ipv4Header, buf: Box<dyn Buffer>) -> Result<(), Fail> {
         self.inner.borrow_mut().receive(ip_header, buf)
     }
 
@@ -250,7 +253,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    pub fn poll_recv(&self, fd: QDesc, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {
+    pub fn poll_recv(&self, fd: QDesc, ctx: &mut Context) -> Poll<Result<Box<dyn Buffer>, Fail>> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -265,7 +268,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    pub fn push(&self, fd: QDesc, buf: RT::Buf) -> PushFuture<RT> {
+    pub fn push(&self, fd: QDesc, buf: Box<dyn Buffer>) -> PushFuture<RT> {
         let err = match self.send(fd, buf) {
             Ok(()) => None,
             Err(e) => Some(e),
@@ -284,7 +287,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    fn send(&self, fd: QDesc, buf: RT::Buf) -> Result<(), Fail> {
+    fn send(&self, fd: QDesc, buf: Box<dyn Buffer>) -> Result<(), Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -377,7 +380,7 @@ impl<RT: Runtime> Inner<RT> {
         }
     }
 
-    fn receive(&mut self, ip_hdr: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
+    fn receive(&mut self, ip_hdr: &Ipv4Header, buf: Box<dyn Buffer>) -> Result<(), Fail> {
         let tcp_options = self.rt.tcp_options();
         let (mut tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, tcp_options.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
@@ -428,7 +431,7 @@ impl<RT: Runtime> Inner<RT> {
             ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
             ipv4_hdr: Ipv4Header::new(local.get_address(), remote.get_address(), IpProtocol::TCP),
             tcp_hdr,
-            data: RT::Buf::empty(),
+            data: Box::new(DataBuffer::empty()),
             tx_checksum_offload: self.rt.tcp_options().get_rx_checksum_offload(),
         };
         self.rt.transmit(segment);
