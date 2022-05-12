@@ -26,8 +26,9 @@ use ::std::{
     time::Duration,
 };
 use std::collections::hash_map::Entry;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::fmt::{Debug, Formatter};
+use std::net::Ipv4Addr;
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
@@ -159,7 +160,8 @@ pub struct Inner<RT: Runtime> {
     passive: HashMap<Ipv4Endpoint, PassiveSocket<RT>>,
     connecting: HashMap<(Ipv4Endpoint, Ipv4Endpoint), ActiveOpenSocket<RT>>,
     pub(crate) established: HashMap<(Ipv4Endpoint, Ipv4Endpoint), EstablishedSocket<RT>>,
-
+    // Quick look up of IP addresses we have migrated in. Used by [Peer] to TODO
+    migrated_in_connections: HashSet<Ipv4Addr>,
     rt: RT,
     arp: ArpPeer<RT>,
 
@@ -175,6 +177,10 @@ impl<RT: Runtime> TcpPeer<RT> {
         let (tx, rx) = mpsc::unbounded();
         let inner = Rc::new(RefCell::new(Inner::new(rt.clone(), arp, tx, rx)));
         Self { inner }
+    }
+
+    pub fn ip_migrated_in(&self, ip: &Ipv4Addr) -> bool{
+        self.inner.borrow().migrated_in_connections.contains(ip)
     }
 
     /// Opens a TCP socket.
@@ -502,6 +508,8 @@ impl<RT: Runtime> TcpPeer<RT> {
             return Err(Fail::ResourceBusy { details: "This connection already exists." })
         }
 
+        // Connection should either not exist or have been migrated out (and now we are migrating
+        // it back in).
         match inner.sockets.entry(qd) {
             Entry::Occupied(mut e) => {
                 match e.get_mut() {
@@ -558,6 +566,9 @@ impl<RT: Runtime> TcpPeer<RT> {
             // This condition should have been checked for at the beggining of this function.
             unreachable!();
         }
+
+        // This IP might have already been migrated in. That's okay.
+        inner.migrated_in_connections.insert(state.local.get_address());
 
         Ok(())
     }
@@ -648,7 +659,6 @@ impl<RT: Runtime> TcpPeer<RT> {
             State::Established => {}
             s => panic!("We only migrate out established conn. Found:  {:?}", s),
         }
-        established.cb.set_state(State::MigratedOut);
 
         // 3) Remove socket from Established hashmap.
         if let None = inner.established.remove(&key) {
@@ -675,6 +685,7 @@ impl<RT: Runtime> Inner<RT> {
             passive: HashMap::new(),
             connecting: HashMap::new(),
             established: HashMap::new(),
+            migrated_in_connections: Default::default(),
             rt,
             arp,
             dead_socket_tx,

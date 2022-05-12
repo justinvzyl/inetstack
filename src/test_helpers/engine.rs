@@ -48,6 +48,7 @@ impl<RT: Runtime> Engine<RT> {
     pub fn receive(&mut self, bytes: RT::Buf) -> Result<(), Fail> {
         let (header, payload) = Ethernet2Header::parse(bytes)?;
         debug!("Engine received {:?}", header);
+
         if self.rt.local_link_addr() != header.dst_addr() && !header.dst_addr().is_broadcast() {
             return Err(Fail::Ignored {
                 details: "Physical dst_addr mismatch",
@@ -159,6 +160,8 @@ impl<RT: Runtime> Engine<RT> {
 
     pub fn tcp_migrate_in_connection(&mut self, state: TcpState<RT>) -> Result<IoQueueDescriptor, Fail> {
         let newfd = self.file_table.alloc(IoQueueType::TcpSocket);
+
+
         self.ipv4.tcp.migrate_in_tcp_connection(state, newfd)?;
         Ok(newfd)
     }

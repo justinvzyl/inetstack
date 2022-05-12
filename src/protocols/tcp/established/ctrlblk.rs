@@ -59,12 +59,6 @@ pub enum State {
     LastAck,
     Closed,
     Reset,
-    /// This connection has been migrated out. It is no longer able to process segments on this
-    /// catnip instance.
-    // TODO: This might not be the best way to do this, this triggers a "watched value" update. So
-    // the futures related to this connection will be marked as runnable even though we don't
-    // really want them running...
-    MigratedOut
 }
 
 pub struct ReceiveQueue<RT: Runtime> {
@@ -200,6 +194,9 @@ pub struct ControlBlock<RT: Runtime> {
     out_of_order: RefCell<VecDeque<(SeqNumber, RT::Buf)>>,
 
     pub receive_queue: ReceiveQueue<RT>,
+    /// This connection was migrated in. Used to rewrite IP header (source and destination
+    /// IP addresses for incoming and outgoing segments).
+    migrated_in: bool,
 }
 
 //==============================================================================
@@ -243,10 +240,13 @@ impl<RT: Runtime> ControlBlock<RT> {
             waker: RefCell::new(None),
             out_of_order: RefCell::new(VecDeque::new()),
             receive_queue: ReceiveQueue::new(receiver_seq_no, receiver_seq_no, receiver_seq_no),
+            migrated_in: false
         }
     }
 
+    /// Create a new control block from a connection that is being migrated in, i.e. being imported.
     pub fn imported_connection(
+        // This is the origin's IPv4 address.
         local: Ipv4Endpoint,
         remote: Ipv4Endpoint,
         rt: RT,
@@ -271,6 +271,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             waker: RefCell::new(None),
             out_of_order: RefCell::new(VecDeque::new()),
             receive_queue,
+            migrated_in: true
         }
     }
 

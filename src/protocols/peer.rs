@@ -37,8 +37,12 @@ impl<RT: Runtime> Peer<RT> {
     pub fn receive(&mut self, buf: RT::Buf) -> Result<(), Fail> {
         let (header, payload) = Ipv4Header::parse(buf)?;
         debug!("Ipv4 received {:?}", header);
+
         if header.dst_addr() != self.rt.local_ipv4_addr() && !header.dst_addr().is_broadcast() {
-            return Err(Fail::Misdelivered {});
+            // Connection migrated in, this is not a misdelivery!
+            if !(header.protocol() == Ipv4Protocol2::Tcp && self.tcp.ip_migrated_in(&header.dst_addr())) {
+                return Err(Fail::Misdelivered {});
+            }
         }
         match header.protocol() {
             Ipv4Protocol2::Icmpv4 => self.icmpv4.receive(&header, payload),

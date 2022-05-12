@@ -274,7 +274,7 @@ pub fn test_send_recv_round_loop_currently_panicking() {
 }
 
 #[test]
-pub fn migrate_conection() {
+pub fn migrate_connection() {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
@@ -285,7 +285,7 @@ pub fn migrate_conection() {
     // Setup peers.
     let mut server = test_helpers::new_bob2(now);
     let mut client = test_helpers::new_alice2(now);
-    let mut server2 = test_helpers::new_bob2(now);
+    let mut server2 = test_helpers::new_juan(now);
 
     let window_scale: u8 = client.rt().tcp_options().get_window_scale();
     let max_window_size: u32 = (client.rt().tcp_options().get_receive_window_size() as u32)
@@ -319,7 +319,7 @@ pub fn migrate_conection() {
     }
 
     let state = server.tcp_migrate_out_connection(server_fd).unwrap();
-    let server2_fd = server2.tcp_migrate_in_connection(state.clone()).unwrap();
+    let server2_fd = server2.tcp_migrate_in_connection(state).unwrap();
     // Drop to ensure we don't accidentally use them again.
     drop(server);
     drop(server_fd);
