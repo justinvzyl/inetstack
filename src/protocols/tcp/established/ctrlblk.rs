@@ -6,6 +6,7 @@ use super::{
         self,
         CongestionControlConstructor,
     },
+    rto::RtoCalculator,
     sender::{
         Sender,
         UnackedSegment,
@@ -190,6 +191,13 @@ pub struct ControlBlock<RT: Runtime> {
     // Congestion control trait implementation we're currently using.
     // ToDo: Consider switching this to a static implementation to avoid V-table call overhead.
     cc: Box<dyn congestion_control::CongestionControl<RT>>,
+
+    // Current retransmission timer expiration time.
+    // ToDo: Consider storing this directly in the RtoCalculator.
+    retransmit_deadline: WatchedValue<Option<Instant>>,
+
+    // Retransmission Timeout (RTO) calculator.
+    rto: RefCell<RtoCalculator>,
 }
 
 //==============================================================================
@@ -229,6 +237,8 @@ impl<RT: Runtime> ControlBlock<RT> {
             receiver: Receiver::new(receiver_seq_no, receiver_seq_no),
             user_is_done_sending: Cell::new(false),
             cc: cc_constructor(sender_mss, sender_seq_no, congestion_control_options),
+            retransmit_deadline: WatchedValue::new(None),
+            rto: RefCell::new(RtoCalculator::new()),
         }
     }
 
@@ -313,12 +323,16 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.modify_send_next(f)
     }
 
-    pub fn get_retransmit_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
-        self.sender.get_retransmit_deadline()
+    pub fn get_retransmit_deadline(&self) -> Option<Instant> {
+        self.retransmit_deadline.get()
     }
 
     pub fn set_retransmit_deadline(&self, when: Option<Instant>) {
-        self.sender.set_retransmit_deadline(when);
+        self.retransmit_deadline.set(when);
+    }
+
+    pub fn watch_retransmit_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
+        self.retransmit_deadline.watch()
     }
 
     pub fn pop_unacked_segment(&self) -> Option<UnackedSegment<RT>> {
@@ -329,12 +343,16 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.push_unacked_segment(segment)
     }
 
+    pub fn rto_add_sample(&self, rtt: Duration) {
+        self.rto.borrow_mut().add_sample(rtt)
+    }
+
     pub fn rto_estimate(&self) -> Duration {
-        self.sender.rto_estimate()
+        self.rto.borrow().estimate()
     }
 
     pub fn rto_record_failure(&self) {
-        self.sender.rto_record_failure()
+        self.rto.borrow_mut().record_failure()
     }
 
     pub fn unsent_top_size(&self) -> Option<usize> {
@@ -556,7 +574,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         // grained.  It currently duplicates the new/duplicate ack check itself internally, which is inefficient.
         // We should either make separate calls for each case or integrate those cases directly.
         self.cc.on_ack_received(
-            self.sender.current_rto(),
+            self.rto.borrow().estimate(),
             send_unacknowledged,
             send_next,
             header.ack_num,
@@ -568,7 +586,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                 let bytes_acknowledged: u32 = (header.ack_num - send_unacknowledged).into();
 
                 // Remove the now acknowledged data from the unacknowledged queue.
-                self.sender.remove_acknowledged_data(bytes_acknowledged, now);
+                self.sender.remove_acknowledged_data(self, bytes_acknowledged, now);
 
                 // Update SND.UNA to SEG.ACK.
                 self.sender.send_unacked.set(header.ack_num);
@@ -580,7 +598,7 @@ impl<RT: Runtime> ControlBlock<RT> {
                     // This segment acknowledges everything we've sent so far (i.e. nothing is currently outstanding).
 
                     // Since we no longer have anything outstanding, we can turn off the retransmit timer.
-                    self.sender.retransmit_deadline.set(None);
+                    self.retransmit_deadline.set(None);
 
                     // Some states require additional processing.
                     match self.state.get() {
@@ -609,8 +627,8 @@ impl<RT: Runtime> ControlBlock<RT> {
                     // Update the retransmit timer.  Some of our outstanding data is now acknowledged, but not all.
                     // ToDo: This looks wrong.  We should reset the retransmit timer to match the deadline for the
                     // oldest still-outstanding data.  The below is overly generous (minor efficiency issue).
-                    let deadline: Instant = now + self.sender.rto.borrow().estimate();
-                    self.sender.retransmit_deadline.set(Some(deadline));
+                    let deadline: Instant = now + self.rto.borrow().estimate();
+                    self.retransmit_deadline.set(Some(deadline));
                 }
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
@@ -827,10 +845,6 @@ impl<RT: Runtime> ControlBlock<RT> {
 
     pub fn remote_mss(&self) -> usize {
         self.sender.remote_mss()
-    }
-
-    pub fn rto_current(&self) -> Duration {
-        self.sender.current_rto()
     }
 
     pub fn get_ack_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {

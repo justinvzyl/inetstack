@@ -4,6 +4,7 @@
 mod background;
 pub mod congestion_control;
 mod ctrlblk;
+mod rto;
 mod sender;
 
 pub use self::ctrlblk::{
@@ -76,7 +77,7 @@ impl<RT: Runtime> EstablishedSocket<RT> {
     }
 
     pub fn current_rto(&self) -> Duration {
-        self.cb.rto_current()
+        self.cb.rto_estimate()
     }
 
     pub fn endpoints(&self) -> (Ipv4Endpoint, Ipv4Endpoint) {

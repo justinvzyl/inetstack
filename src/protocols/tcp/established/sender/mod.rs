@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod rto;
-
-use self::rto::RtoCalculator;
 use super::ControlBlock;
 use crate::protocols::tcp::{
     segment::TcpHeader,
@@ -93,11 +90,6 @@ pub struct Sender<RT: Runtime> {
     // Maximum Segment Size currently in use for this connection.
     // ToDo: Revisit this once we support path MTU discovery.
     mss: usize,
-
-    pub retransmit_deadline: WatchedValue<Option<Instant>>,
-
-    // Retransmission Timeout (RTO) calculator.
-    pub rto: RefCell<RtoCalculator>,
 }
 
 impl<RT: Runtime> fmt::Debug for Sender<RT> {
@@ -109,8 +101,6 @@ impl<RT: Runtime> fmt::Debug for Sender<RT> {
             .field("send_window", &self.send_window)
             .field("window_scale", &self.window_scale)
             .field("mss", &self.mss)
-            .field("retransmit_deadline", &self.retransmit_deadline)
-            .field("rto", &self.rto)
             .finish()
     }
 }
@@ -130,9 +120,6 @@ impl<RT: Runtime> Sender<RT> {
 
             window_scale,
             mss,
-
-            retransmit_deadline: WatchedValue::new(None),
-            rto: RefCell::new(RtoCalculator::new()),
         }
     }
 
@@ -160,28 +147,12 @@ impl<RT: Runtime> Sender<RT> {
         self.unsent_seq_no.watch()
     }
 
-    pub fn get_retransmit_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
-        self.retransmit_deadline.watch()
-    }
-
-    pub fn set_retransmit_deadline(&self, when: Option<Instant>) {
-        self.retransmit_deadline.set(when);
-    }
-
     pub fn pop_unacked_segment(&self) -> Option<UnackedSegment<RT>> {
         self.unacked_queue.borrow_mut().pop_front()
     }
 
     pub fn push_unacked_segment(&self, segment: UnackedSegment<RT>) {
         self.unacked_queue.borrow_mut().push_back(segment)
-    }
-
-    pub fn rto_estimate(&self) -> Duration {
-        self.rto.borrow().estimate()
-    }
-
-    pub fn rto_record_failure(&self) {
-        self.rto.borrow_mut().record_failure()
     }
 
     // This is the main TCP send routine.
@@ -246,7 +217,7 @@ impl<RT: Runtime> Sender<RT> {
                 if let Some(remote_link_addr) = cb.arp().try_query(cb.get_remote().get_address()) {
                     // This hook is primarily intended to record the last time we sent data, so we can later tell if
                     // the connection has been idle.
-                    let rto: Duration = self.current_rto();
+                    let rto: Duration = cb.rto_estimate();
                     cb.congestion_control_on_send(rto, sent_data);
 
                     // Prepare the segment and send it.
@@ -275,9 +246,9 @@ impl<RT: Runtime> Sender<RT> {
                     self.unacked_queue.borrow_mut().push_back(unacked_segment);
 
                     // Start the retransmission timer if it isn't already running.
-                    if self.retransmit_deadline.get().is_none() {
-                        let rto: Duration = self.rto.borrow().estimate();
-                        self.retransmit_deadline.set(Some(cb.rt().now() + rto));
+                    if cb.get_retransmit_deadline().is_none() {
+                        let rto: Duration = cb.rto_estimate();
+                        cb.set_retransmit_deadline(Some(cb.rt().now() + rto));
                     }
 
                     return Ok(());
@@ -303,7 +274,7 @@ impl<RT: Runtime> Sender<RT> {
 
     // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
     //
-    pub fn remove_acknowledged_data(&self, bytes_acknowledged: u32, now: Instant) {
+    pub fn remove_acknowledged_data(&self, cb: &ControlBlock<RT>, bytes_acknowledged: u32, now: Instant) {
         let mut bytes_remaining: usize = bytes_acknowledged as usize;
 
         while bytes_remaining != 0 {
@@ -312,7 +283,7 @@ impl<RT: Runtime> Sender<RT> {
                 // Note that in the case of repacketization, an ack for the first byte is enough for the time sample.
                 // ToDo: TCP timestamp support.
                 if let Some(initial_tx) = segment.initial_tx {
-                    self.rto.borrow_mut().add_sample(now - initial_tx);
+                    cb.rto_add_sample(now - initial_tx);
                 }
 
                 if segment.bytes.len() > bytes_remaining {
@@ -403,9 +374,5 @@ impl<RT: Runtime> Sender<RT> {
 
     pub fn remote_mss(&self) -> usize {
         self.mss
-    }
-
-    pub fn current_rto(&self) -> Duration {
-        self.rto.borrow().estimate()
     }
 }

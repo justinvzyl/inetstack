@@ -84,7 +84,7 @@ async fn retransmit<RT: Runtime>(cause: RetransmitCause, cb: &Rc<ControlBlock<RT
 pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         // Pin future for timeout retransmission.
-        let (rtx_deadline, rtx_deadline_changed) = cb.get_retransmit_deadline();
+        let (rtx_deadline, rtx_deadline_changed) = cb.watch_retransmit_deadline();
         futures::pin_mut!(rtx_deadline_changed);
         let rtx_future = match rtx_deadline {
             Some(t) => Either::Left(cb.rt().wait_until(t).fuse()),
