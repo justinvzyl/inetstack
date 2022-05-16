@@ -11,20 +11,20 @@ edition = "2018"
 
 [dependencies]
 arrayvec = "0.7.2"
-async-trait = "0.1.52"
+async-trait = "0.1.53"
 byteorder = "1.4.3"
 crc = "1.8.1"
-crossbeam-channel = "0.5.2"
+crossbeam-channel = "0.5.4"
 float_duration = "0.3.3"
 futures = "0.3.21"
-libc = "0.2.115"
-log = "0.4.14"
+libc = "0.2.125"
+log = "0.4.17"
 num-derive = "0.3.3"
-num-traits = "0.2.14"
-rand = { version = "0.8.4", features = ["small_rng"] }
+num-traits = "0.2.15"
+rand = { version = "0.8.5", features = ["small_rng"] }
 
 perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a" }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "b1d6e4c2f3eebb35c582e8b24c0d99e5987e9a2b" }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "a6551e787cbeeecbac95195626306a82cb37e119" }
 scheduler = { git = "https://github.com/demikernel/scheduler", rev = "9583bfd7ceae1c0ee62cef0e69b37752d8475ccc" }
 
 [features]

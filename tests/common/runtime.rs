@@ -44,7 +44,7 @@ use ::runtime::{
         TimerRc,
         WaitFuture,
     },
-    types::dmtr_sgarray_t,
+    types::demi_sgarray_t,
     utils::UtilsRuntime,
     Runtime,
 };
@@ -140,22 +140,22 @@ impl MemoryRuntime for DummyRuntime {
     type Buf = Bytes;
 
     // TODO: Drop this when we have cleaned up the runtime interface.
-    fn into_sgarray(&self, _buf: Bytes) -> Result<dmtr_sgarray_t, Fail> {
+    fn into_sgarray(&self, _buf: Bytes) -> Result<demi_sgarray_t, Fail> {
         unreachable!();
     }
 
     // TODO: Drop this when we have cleaned up the runtime interface.
-    fn alloc_sgarray(&self, _size: usize) -> Result<dmtr_sgarray_t, Fail> {
+    fn alloc_sgarray(&self, _size: usize) -> Result<demi_sgarray_t, Fail> {
         unreachable!();
     }
 
     // TODO: Drop this when we have cleaned up the runtime interface.
-    fn free_sgarray(&self, _sga: dmtr_sgarray_t) -> Result<(), Fail> {
+    fn free_sgarray(&self, _sga: demi_sgarray_t) -> Result<(), Fail> {
         unreachable!();
     }
 
     // TODO: Drop this when we have cleaned up the runtime interface.
-    fn clone_sgarray(&self, _sga: &dmtr_sgarray_t) -> Result<Bytes, Fail> {
+    fn clone_sgarray(&self, _sga: &demi_sgarray_t) -> Result<Bytes, Fail> {
         unreachable!();
     }
 }
