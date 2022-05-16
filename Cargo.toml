@@ -18,7 +18,7 @@ crossbeam-channel = "0.5.4"
 float_duration = "0.3.3"
 futures = "0.3.21"
 libc = "0.2.125"
-log = "0.4.14"
+log = "0.4.17"
 num-derive = "0.3.3"
 num-traits = "0.2.14"
 rand = { version = "0.8.4", features = ["small_rng"] }
