@@ -20,7 +20,7 @@ futures = "0.3.21"
 libc = "0.2.125"
 log = "0.4.17"
 num-derive = "0.3.3"
-num-traits = "0.2.14"
+num-traits = "0.2.15"
 rand = { version = "0.8.4", features = ["small_rng"] }
 
 perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a" }
