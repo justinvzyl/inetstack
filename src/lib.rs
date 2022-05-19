@@ -279,7 +279,9 @@ impl<RT: Runtime> InetStack<RT> {
             _ => Err(Fail::new(EBADF, "bad queue descriptor")),
         }?;
 
-        Ok(self.rt.schedule(future).into_raw().into())
+        let qt: QToken = self.rt.schedule(future).into_raw().into();
+        trace!("connect() qt={:?}", qt);
+        Ok(qt)
     }
 
     ///
@@ -339,7 +341,7 @@ impl<RT: Runtime> InetStack<RT> {
         // Issue operation.
         let future: FutureOperation<RT> = self.do_push(qd, buf)?;
         let qt: QToken = self.rt.schedule(future).into_raw().into();
-
+        trace!("push2() qt={:?}", qt);
         Ok(qt)
     }
 
@@ -374,7 +376,7 @@ impl<RT: Runtime> InetStack<RT> {
         // Issue operation.
         let future: FutureOperation<RT> = self.do_pushto(qd, buf, remote)?;
         let qt: QToken = self.rt.schedule(future).into_raw().into();
-
+        trace!("pushto2() qt={:?}", qt);
         Ok(qt)
     }
 
@@ -398,7 +400,9 @@ impl<RT: Runtime> InetStack<RT> {
             _ => Err(Fail::new(EBADF, "bad queue descriptor")),
         }?;
 
-        Ok(self.rt.schedule(future).into_raw().into())
+        let qt: QToken = self.rt.schedule(future).into_raw().into();
+        trace!("pop() qt={:?}", qt);
+        Ok(qt)
     }
 
     /// Waits for an operation to complete.
@@ -419,6 +423,7 @@ impl<RT: Runtime> InetStack<RT> {
 
             // The operation has completed, so extract the result and return.
             if handle.has_completed() {
+                trace!("wait2() qt={:?} completed!", qt);
                 return Ok(self.take_operation(handle));
             }
         }
