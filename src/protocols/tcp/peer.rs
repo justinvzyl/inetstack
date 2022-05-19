@@ -298,12 +298,12 @@ impl<RT: Runtime> TcpPeer<RT> {
     }
 
     /// Closes a TCP socket.
-    pub fn do_close(&self, fd: QDesc) -> Result<(), Fail> {
-        let inner = self.inner.borrow_mut();
+    pub fn do_close(&self, qd: QDesc) -> Result<(), Fail> {
+        let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
 
-        match inner.sockets.get(&fd) {
+        match inner.sockets.remove(&qd) {
             Some(Socket::Established { local, remote }) => {
-                let key = (*local, *remote);
+                let key: (Ipv4Endpoint, Ipv4Endpoint) = (local, remote);
                 match inner.established.get(&key) {
                     Some(ref s) => s.close()?,
                     None => return Err(Fail::new(ENOTCONN, "connection not established")),
