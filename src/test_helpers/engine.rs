@@ -20,13 +20,14 @@ use crate::protocols::{
 use ::libc::EBADMSG;
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
     network::types::MacAddress,
     queue::IoQueueTable,
     QDesc,
     QType,
     Runtime,
 };
-use std::{
+use ::std::{
     collections::HashMap,
     future::Future,
     net::Ipv4Addr,
@@ -58,7 +59,7 @@ impl<RT: Runtime> Engine<RT> {
         &mut self.rt
     }
 
-    pub fn receive(&mut self, bytes: RT::Buf) -> Result<(), Fail> {
+    pub fn receive(&mut self, bytes: Box<dyn Buffer>) -> Result<(), Fail> {
         let (header, payload) = Ethernet2Header::parse(bytes)?;
         debug!("Engine received {:?}", header);
         if self.rt.local_link_addr() != header.dst_addr() && !header.dst_addr().is_broadcast() {
@@ -79,11 +80,11 @@ impl<RT: Runtime> Engine<RT> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
-    pub fn udp_pushto(&self, fd: QDesc, buf: RT::Buf, to: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn udp_pushto(&self, fd: QDesc, buf: Box<dyn Buffer>, to: Ipv4Endpoint) -> Result<(), Fail> {
         self.ipv4.udp.do_pushto(fd, buf, to)
     }
 
-    pub fn udp_pop(&mut self, fd: QDesc) -> UdpPopFuture<RT::Buf> {
+    pub fn udp_pop(&mut self, fd: QDesc) -> UdpPopFuture {
         self.ipv4.udp.do_pop(fd)
     }
 
@@ -120,7 +121,7 @@ impl<RT: Runtime> Engine<RT> {
         self.ipv4.tcp.do_accept(fd, newfd)
     }
 
-    pub fn tcp_push(&mut self, socket_fd: QDesc, buf: RT::Buf) -> PushFuture<RT> {
+    pub fn tcp_push(&mut self, socket_fd: QDesc, buf: Box<dyn Buffer>) -> PushFuture<RT> {
         self.ipv4.tcp.push(socket_fd, buf)
     }
 

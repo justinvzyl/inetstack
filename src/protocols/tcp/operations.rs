@@ -8,10 +8,11 @@ use super::peer::{
 use crate::operations::OperationResult;
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
+    scheduler::FutureResult,
     QDesc,
     Runtime,
 };
-use ::scheduler::FutureResult;
 use ::std::{
     cell::RefCell,
     fmt,
@@ -69,7 +70,7 @@ impl<RT: Runtime> Future for TcpOperation<RT> {
 }
 
 impl<RT: Runtime> TcpOperation<RT> {
-    pub fn expect_result(self) -> (QDesc, Option<QDesc>, OperationResult<RT::Buf>) {
+    pub fn expect_result(self) -> (QDesc, Option<QDesc>, OperationResult) {
         match self {
             // Connect operation.
             TcpOperation::Connect(FutureResult {
@@ -220,7 +221,7 @@ impl<RT: Runtime> fmt::Debug for PopFuture<RT> {
 }
 
 impl<RT: Runtime> Future for PopFuture<RT> {
-    type Output = Result<RT::Buf, Fail>;
+    type Output = Result<Box<dyn Buffer>, Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();

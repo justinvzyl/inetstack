@@ -38,9 +38,11 @@ use ::futures::{
 };
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
+    network::types::MacAddress,
+    scheduler::SchedulerHandle,
     Runtime,
 };
-use ::scheduler::SchedulerHandle;
 use ::std::{
     cell::RefCell,
     collections::HashMap,
@@ -132,26 +134,27 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
     async fn background(rt: RT, arp: ArpPeer<RT>, mut rx: mpsc::UnboundedReceiver<(Ipv4Addr, u16, u16)>) {
         // Reply requests.
         while let Some((dst_ipv4_addr, id, seq_num)) = rx.next().await {
-            let r: Result<_, Fail> = try {
-                debug!("initiating ARP query");
-                let dst_link_addr = arp.query(dst_ipv4_addr).await?;
-                debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
-                debug!("reply ping ({}, {}, {})", dst_ipv4_addr, id, seq_num);
-                // Send reply message.
-                rt.transmit(Icmpv4Message::new(
-                    Ethernet2Header::new(dst_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
-                    Ipv4Header::new(rt.local_ipv4_addr(), dst_ipv4_addr, IpProtocol::ICMPv4),
-                    Icmpv4Header::new(Icmpv4Type2::EchoReply { id, seq_num }, 0),
-                ));
+            debug!("initiating ARP query");
+            let dst_link_addr: MacAddress = match arp.query(dst_ipv4_addr).await {
+                Ok(dst_link_addr) => dst_link_addr,
+                Err(e) => {
+                    warn!("reply_to_ping({}, {}, {}) failed: {:?}", dst_ipv4_addr, id, seq_num, e);
+                    continue;
+                },
             };
-            if let Err(e) = r {
-                warn!("reply_to_ping({}, {}, {}) failed: {:?}", dst_ipv4_addr, id, seq_num, e)
-            }
+            debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
+            debug!("reply ping ({}, {}, {})", dst_ipv4_addr, id, seq_num);
+            // Send reply message.
+            rt.transmit(Icmpv4Message::new(
+                Ethernet2Header::new(dst_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
+                Ipv4Header::new(rt.local_ipv4_addr(), dst_ipv4_addr, IpProtocol::ICMPv4),
+                Icmpv4Header::new(Icmpv4Type2::EchoReply { id, seq_num }, 0),
+            ));
         }
     }
 
     /// Parses and handles a ICMP message.
-    pub fn receive(&mut self, ipv4_header: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
+    pub fn receive(&mut self, ipv4_header: &Ipv4Header, buf: Box<dyn Buffer>) -> Result<(), Fail> {
         let (icmpv4_hdr, _) = Icmpv4Header::parse(buf)?;
         debug!("ICMPv4 received {:?}", icmpv4_hdr);
         match icmpv4_hdr.get_protocol() {

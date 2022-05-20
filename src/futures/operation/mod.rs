@@ -6,8 +6,10 @@ use crate::protocols::{
     udp::UdpOperation,
 };
 use ::futures::Future;
-use ::runtime::Runtime;
-use ::scheduler::SchedulerFuture;
+use ::runtime::{
+    scheduler::SchedulerFuture,
+    Runtime,
+};
 use ::std::{
     any::Any,
     pin::Pin,
@@ -33,7 +35,7 @@ use ::std::{
 /// long so we allocate them on the heap.
 pub enum FutureOperation<RT: Runtime> {
     Tcp(TcpOperation<RT>),
-    Udp(UdpOperation<RT::Buf>),
+    Udp(UdpOperation),
 
     // These are expected to have long lifetimes and be large enough to justify another allocation.
     Background(Pin<Box<dyn Future<Output = ()>>>),

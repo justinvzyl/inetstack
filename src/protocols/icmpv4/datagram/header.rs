@@ -38,7 +38,7 @@ impl Icmpv4Header {
         ICMPV4_HEADER_SIZE
     }
 
-    pub fn parse<T: Buffer>(mut buf: T) -> Result<(Self, T), Fail> {
+    pub fn parse(mut buf: Box<dyn Buffer>) -> Result<(Self, Box<dyn Buffer>), Fail> {
         if buf.len() < ICMPV4_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "ICMPv4 datagram too small for header"));
         }

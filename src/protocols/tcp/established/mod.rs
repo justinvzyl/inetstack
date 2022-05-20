@@ -26,10 +26,11 @@ use ::futures::{
 };
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
+    scheduler::SchedulerHandle,
     QDesc,
     Runtime,
 };
-use ::scheduler::SchedulerHandle;
 use ::std::{
     rc::Rc,
     task::{
@@ -56,15 +57,15 @@ impl<RT: Runtime> EstablishedSocket<RT> {
         }
     }
 
-    pub fn receive(&self, header: &mut TcpHeader, data: RT::Buf) {
+    pub fn receive(&self, header: &mut TcpHeader, data: Box<dyn Buffer>) {
         self.cb.receive(header, data)
     }
 
-    pub fn send(&self, buf: RT::Buf) -> Result<(), Fail> {
+    pub fn send(&self, buf: Box<dyn Buffer>) -> Result<(), Fail> {
         self.cb.send(buf)
     }
 
-    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {
+    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Box<dyn Buffer>, Fail>> {
         self.cb.poll_recv(ctx)
     }
 

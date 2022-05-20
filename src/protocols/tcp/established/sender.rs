@@ -37,8 +37,8 @@ use ::std::{
 // ToDo: We currently allocate these on the fly when we add a buffer to the queue.  Would be more efficient to have a
 // buffer structure that held everything we need directly, thus avoiding this extra wrapper.
 //
-pub struct UnackedSegment<RT: Runtime> {
-    pub bytes: RT::Buf,
+pub struct UnackedSegment {
+    pub bytes: Box<dyn Buffer>,
     // Set to `None` on retransmission to implement Karn's algorithm.
     pub initial_tx: Option<Instant>,
 }
@@ -50,7 +50,7 @@ const UNSENT_QUEUE_CUTOFF: usize = 1024;
 
 // ToDo: Consider moving retransmit timer and congestion control fields out of this structure.
 // ToDo: Make all public fields in this structure private.
-pub struct Sender<RT: Runtime> {
+pub struct Sender {
     //
     // Send Sequence Space:
     //
@@ -68,13 +68,13 @@ pub struct Sender<RT: Runtime> {
     pub send_unacked: WatchedValue<SeqNumber>,
 
     // Queue of unacknowledged sent data.  RFC 793 calls this the "retransmission queue".
-    unacked_queue: RefCell<VecDeque<UnackedSegment<RT>>>,
+    unacked_queue: RefCell<VecDeque<UnackedSegment>>,
 
     // Sequence Number of the next data to be sent.  In RFC 793 terms, this is SND.NXT.
     send_next: WatchedValue<SeqNumber>,
 
     // This is the send buffer (user data we do not yet have window to send).
-    unsent_queue: RefCell<VecDeque<RT::Buf>>,
+    unsent_queue: RefCell<VecDeque<Box<dyn Buffer>>>,
 
     // ToDo: Remove this as soon as sender.rs is fixed to not use it to tell if there is unsent data.
     unsent_seq_no: WatchedValue<SeqNumber>,
@@ -92,7 +92,7 @@ pub struct Sender<RT: Runtime> {
     mss: usize,
 }
 
-impl<RT: Runtime> fmt::Debug for Sender<RT> {
+impl fmt::Debug for Sender {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender")
             .field("send_unacked", &self.send_unacked)
@@ -105,7 +105,7 @@ impl<RT: Runtime> fmt::Debug for Sender<RT> {
     }
 }
 
-impl<RT: Runtime> Sender<RT> {
+impl Sender {
     pub fn new(seq_no: SeqNumber, send_window: u32, window_scale: u8, mss: usize) -> Self {
         Self {
             send_unacked: WatchedValue::new(seq_no),
@@ -147,17 +147,17 @@ impl<RT: Runtime> Sender<RT> {
         self.unsent_seq_no.watch()
     }
 
-    pub fn pop_unacked_segment(&self) -> Option<UnackedSegment<RT>> {
+    pub fn pop_unacked_segment(&self) -> Option<UnackedSegment> {
         self.unacked_queue.borrow_mut().pop_front()
     }
 
-    pub fn push_unacked_segment(&self, segment: UnackedSegment<RT>) {
+    pub fn push_unacked_segment(&self, segment: UnackedSegment) {
         self.unacked_queue.borrow_mut().push_back(segment)
     }
 
     // This is the main TCP send routine.
     //
-    pub fn send(&self, buf: RT::Buf, cb: &ControlBlock<RT>) -> Result<(), Fail> {
+    pub fn send<RT: Runtime>(&self, buf: Box<dyn Buffer>, cb: &ControlBlock<RT>) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
         //
         if cb.user_is_done_sending.get() {
@@ -274,7 +274,7 @@ impl<RT: Runtime> Sender<RT> {
 
     // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
     //
-    pub fn remove_acknowledged_data(&self, cb: &ControlBlock<RT>, bytes_acknowledged: u32, now: Instant) {
+    pub fn remove_acknowledged_data<RT: Runtime> (&self, cb: &ControlBlock<RT>, bytes_acknowledged: u32, now: Instant) {
         let mut bytes_remaining: usize = bytes_acknowledged as usize;
 
         while bytes_remaining != 0 {
@@ -313,11 +313,11 @@ impl<RT: Runtime> Sender<RT> {
         }
     }
 
-    pub fn pop_one_unsent_byte(&self) -> Option<RT::Buf> {
+    pub fn pop_one_unsent_byte(&self) -> Option<Box<dyn Buffer>> {
         let mut queue = self.unsent_queue.borrow_mut();
 
         let buf = queue.front_mut()?;
-        let mut cloned_buf: RT::Buf = buf.clone();
+        let mut cloned_buf = buf.clone();
         let buf_len: usize = buf.len();
 
         // Pop one byte off the buf still in the queue and all but one of the bytes on our clone.
@@ -327,14 +327,14 @@ impl<RT: Runtime> Sender<RT> {
         Some(cloned_buf)
     }
 
-    pub fn pop_unsent(&self, max_bytes: usize) -> Option<RT::Buf> {
+    pub fn pop_unsent(&self, max_bytes: usize) -> Option<Box<dyn Buffer>> {
         // TODO: Use a scatter/gather array to coalesce multiple buffers into a single segment.
         let mut unsent_queue = self.unsent_queue.borrow_mut();
-        let mut buf: RT::Buf = unsent_queue.pop_front()?;
+        let mut buf: Box<dyn Buffer> = unsent_queue.pop_front()?;
         let buf_len: usize = buf.len();
 
         if buf_len > max_bytes {
-            let mut cloned_buf: RT::Buf = buf.clone();
+            let mut cloned_buf = buf.clone();
 
             buf.adjust(max_bytes);
             cloned_buf.trim(buf_len - max_bytes);

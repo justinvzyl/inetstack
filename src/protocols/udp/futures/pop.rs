@@ -32,11 +32,11 @@ use ::std::{
 //==============================================================================
 
 /// Pop Operation Descriptor
-pub struct UdpPopFuture<T: Buffer> {
+pub struct UdpPopFuture {
     /// Associated queue descriptor.
     qd: QDesc,
     /// Shared receiving queue.
-    recv_queue: SharedQueue<SharedQueueSlot<T>>,
+    recv_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>,
 }
 
 //==============================================================================
@@ -44,9 +44,9 @@ pub struct UdpPopFuture<T: Buffer> {
 //==============================================================================
 
 /// Associate Functions for Pop Operation Descriptor
-impl<T: Buffer> UdpPopFuture<T> {
+impl UdpPopFuture {
     /// Creates a pop operation descritor.
-    pub fn new(qd: QDesc, recv_queue: SharedQueue<SharedQueueSlot<T>>) -> Self {
+    pub fn new(qd: QDesc, recv_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>) -> Self {
         Self { qd, recv_queue }
     }
 
@@ -61,8 +61,8 @@ impl<T: Buffer> UdpPopFuture<T> {
 //==============================================================================
 
 /// Future Trait implementation for Pop Operation Descriptor
-impl<T: Buffer> Future for UdpPopFuture<T> {
-    type Output = Result<(Option<Ipv4Endpoint>, T), Fail>;
+impl Future for UdpPopFuture {
+    type Output = Result<(Option<Ipv4Endpoint>, Box<dyn Buffer>), Fail>;
 
     /// Polls the target pop operation descriptor.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {

@@ -12,6 +12,7 @@ use crate::protocols::{
 use ::libc::ENOTCONN;
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
     network::types::MacAddress,
     Runtime,
 };
@@ -22,7 +23,7 @@ use ::std::{
 };
 
 #[cfg(test)]
-use runtime::QDesc;
+use ::runtime::QDesc;
 
 pub struct Peer<RT: Runtime> {
     rt: RT,
@@ -48,7 +49,7 @@ impl<RT: Runtime> Peer<RT> {
         Peer { rt, icmpv4, tcp, udp }
     }
 
-    pub fn receive(&mut self, buf: RT::Buf) -> Result<(), Fail> {
+    pub fn receive(&mut self, buf: Box<dyn Buffer>) -> Result<(), Fail> {
         let (header, payload) = Ipv4Header::parse(buf)?;
         debug!("Ipv4 received {:?}", header);
         if header.get_dest_addr() != self.rt.local_ipv4_addr() && !header.get_dest_addr().is_broadcast() {

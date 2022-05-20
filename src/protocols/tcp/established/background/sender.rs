@@ -2,16 +2,17 @@
 // Licensed under the MIT license.
 
 use super::super::{
-    super::{
-        segment::TcpHeader,
-        SeqNumber,
-    },
     ctrlblk::ControlBlock,
     sender::UnackedSegment,
+};
+use crate::protocols::tcp::{
+    segment::TcpHeader,
+    SeqNumber,
 };
 use ::futures::FutureExt;
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
     Runtime,
 };
 use ::std::{
@@ -47,7 +48,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         if win_sz == 0 {
             // Send a window probe (this is a one-byte packet designed to elicit a window update from our peer).
             let remote_link_addr = cb.arp().query(cb.get_remote().get_address()).await?;
-            let buf: RT::Buf = cb
+            let buf: Box<dyn Buffer> = cb
                 .pop_one_unsent_byte()
                 .unwrap_or_else(|| panic!("No unsent data? {}, {}", send_next, unsent_seq));
 
@@ -125,7 +126,7 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
             cmp::min((win_sz - sent_data) as usize, cb.get_mss()),
             (effective_cwnd - sent_data) as usize,
         );
-        let segment_data: RT::Buf = cb
+        let segment_data: Box<dyn Buffer> = cb
             .pop_unsent_segment(max_size)
             .expect("No unsent data with sequence number gap?");
         let mut segment_data_len: u32 = segment_data.len() as u32;

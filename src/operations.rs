@@ -17,11 +17,11 @@ use ::std::fmt;
 // Structures
 //==============================================================================
 
-pub enum OperationResult<T: Buffer> {
+pub enum OperationResult {
     Connect,
     Accept(QDesc),
     Push,
-    Pop(Option<Ipv4Endpoint>, T),
+    Pop(Option<Ipv4Endpoint>, Box<dyn Buffer>),
     Failed(Fail),
 }
 
@@ -29,7 +29,7 @@ pub enum OperationResult<T: Buffer> {
 // Trait Implementations
 //==============================================================================
 
-impl<T: Buffer> fmt::Debug for OperationResult<T> {
+impl fmt::Debug for OperationResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             OperationResult::Connect => write!(f, "Connect"),

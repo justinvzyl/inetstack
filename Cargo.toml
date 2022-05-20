@@ -13,19 +13,18 @@ edition = "2018"
 arrayvec = "0.7.2"
 async-trait = "0.1.53"
 byteorder = "1.4.3"
-crc = "1.8.1"
+crc = "3.0.0"
 crossbeam-channel = "0.5.4"
 float_duration = "0.3.3"
 futures = "0.3.21"
-libc = "0.2.125"
+libc = "0.2.126"
 log = "0.4.17"
 num-derive = "0.3.3"
 num-traits = "0.2.15"
 rand = { version = "0.8.5", features = ["small_rng"] }
 
 perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a" }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "a6551e787cbeeecbac95195626306a82cb37e119" }
-scheduler = { git = "https://github.com/demikernel/scheduler", rev = "9583bfd7ceae1c0ee62cef0e69b37752d8475ccc" }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "7d9c21f9b48036e690964cd64bc4c75abc7b0255" }
 
 [features]
 profiler = []

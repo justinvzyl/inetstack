@@ -3,31 +3,31 @@
 
 use super::ArpHeader;
 use crate::protocols::ethernet2::Ethernet2Header;
-use ::runtime::network::PacketBuf;
-use ::std::marker::PhantomData;
+use ::runtime::{
+    memory::Buffer,
+    network::PacketBuf,
+};
 
 //==============================================================================
 // Structures
 //==============================================================================
 
 #[derive(Clone, Debug)]
-pub struct ArpMessage<T> {
+pub struct ArpMessage {
     ethernet2_hdr: Ethernet2Header,
     header: ArpHeader,
-    _body_marker: PhantomData<T>,
 }
 
 //==============================================================================
 // Associate Functions
 //==============================================================================
 
-impl<T> ArpMessage<T> {
+impl ArpMessage {
     /// Creates an ARP message.
     pub fn new(header: Ethernet2Header, pdu: ArpHeader) -> Self {
         Self {
             ethernet2_hdr: header,
             header: pdu,
-            _body_marker: PhantomData,
         }
     }
 }
@@ -36,7 +36,7 @@ impl<T> ArpMessage<T> {
 // Trait Implementations
 //==============================================================================
 
-impl<T> PacketBuf<T> for ArpMessage<T> {
+impl PacketBuf for ArpMessage {
     fn header_size(&self) -> usize {
         self.ethernet2_hdr.compute_size() + self.header.compute_size()
     }
@@ -57,7 +57,7 @@ impl<T> PacketBuf<T> for ArpMessage<T> {
         self.header.serialize(&mut buf[cur_pos..(cur_pos + arp_pdu_size)]);
     }
 
-    fn take_body(self) -> Option<T> {
+    fn take_body(self) -> Option<Box<dyn Buffer>> {
         None
     }
 }

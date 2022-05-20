@@ -16,7 +16,10 @@ use ::byteorder::{
 use ::libc::EBADMSG;
 use ::runtime::{
     fail::Fail,
-    memory::Buffer,
+    memory::{
+        Buffer,
+        DataBuffer,
+    },
     network::types::Port16,
 };
 use ::std::convert::{
@@ -104,9 +107,13 @@ impl UdpHeader {
     }
 
     /// Parses a buffer into a UDP header.
-    pub fn parse<T: Buffer>(ipv4_hdr: &Ipv4Header, buf: T, checksum_offload: bool) -> Result<(Self, T), Fail> {
+    pub fn parse(
+        ipv4_hdr: &Ipv4Header,
+        buf: Box<dyn Buffer>,
+        checksum_offload: bool,
+    ) -> Result<(Self, Box<dyn Buffer>), Fail> {
         match Self::parse_from_slice(ipv4_hdr, &buf[..], checksum_offload) {
-            Ok((udp_hdr, bytes)) => Ok((udp_hdr, T::from_slice(bytes))),
+            Ok((udp_hdr, bytes)) => Ok((udp_hdr, Box::new(DataBuffer::from_slice(bytes)))),
             Err(e) => Err(e),
         }
     }

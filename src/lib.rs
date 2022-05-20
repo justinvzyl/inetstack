@@ -29,6 +29,7 @@ use crate::{
             Ethernet2Header,
         },
         ipv4::Ipv4Endpoint,
+        udp::UdpOperation,
         Peer,
     },
 };
@@ -40,23 +41,25 @@ use ::libc::{
 };
 use ::runtime::{
     fail::Fail,
-    memory::Buffer,
+    memory::{
+        Buffer,
+        DataBuffer,
+    },
     queue::IoQueueTable,
+    scheduler::{
+        FutureResult,
+        SchedulerHandle,
+    },
     QDesc,
     QToken,
     QType,
     Runtime,
-};
-use ::scheduler::{
-    FutureResult,
-    SchedulerHandle,
 };
 use ::std::{
     any::Any,
     convert::TryFrom,
     time::Instant,
 };
-use protocols::udp::UdpOperation;
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
@@ -315,7 +318,7 @@ impl<RT: Runtime> InetStack<RT> {
 
     /// Pushes a buffer to a TCP socket.
     /// TODO: Rename this function to push() once we have a common representation across all libOSes.
-    pub fn do_push(&mut self, qd: QDesc, buf: RT::Buf) -> Result<FutureOperation<RT>, Fail> {
+    pub fn do_push(&mut self, qd: QDesc, buf: Box<dyn Buffer>) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.push(qd, buf))),
@@ -333,7 +336,7 @@ impl<RT: Runtime> InetStack<RT> {
         trace!("push2(): qd={:?}", qd);
 
         // Convert raw data to a buffer representation.
-        let buf: RT::Buf = RT::Buf::from_slice(data);
+        let buf: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(data));
         if buf.is_empty() {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
@@ -347,7 +350,12 @@ impl<RT: Runtime> InetStack<RT> {
 
     /// Pushes a buffer to a UDP socket.
     /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
-    pub fn do_pushto(&mut self, qd: QDesc, buf: RT::Buf, to: Ipv4Endpoint) -> Result<FutureOperation<RT>, Fail> {
+    pub fn do_pushto(
+        &mut self,
+        qd: QDesc,
+        buf: Box<dyn Buffer>,
+        to: Ipv4Endpoint,
+    ) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::UdpSocket) => {
@@ -368,7 +376,7 @@ impl<RT: Runtime> InetStack<RT> {
         trace!("pushto2(): qd={:?}", qd);
 
         // Convert raw data to a buffer representation.
-        let buf: RT::Buf = RT::Buf::from_slice(data);
+        let buf: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(data));
         if buf.is_empty() {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
@@ -406,7 +414,7 @@ impl<RT: Runtime> InetStack<RT> {
     }
 
     /// Waits for an operation to complete.
-    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<RT::Buf>), Fail> {
+    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::wait2");
         trace!("wait2(): qt={:?}", qt);
@@ -430,7 +438,7 @@ impl<RT: Runtime> InetStack<RT> {
     }
 
     /// Waits for any operation to complete.
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult<RT::Buf>), Fail> {
+    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::wait_any2");
         trace!("wait_any2(): qts={:?}", qts);
@@ -450,7 +458,7 @@ impl<RT: Runtime> InetStack<RT> {
 
                 // Found one, so extract the result and return.
                 if handle.has_completed() {
-                    let (qd, r): (QDesc, OperationResult<RT::Buf>) = self.take_operation(handle);
+                    let (qd, r): (QDesc, OperationResult) = self.take_operation(handle);
                     return Ok((i, qd, r));
                 }
 
@@ -465,14 +473,14 @@ impl<RT: Runtime> InetStack<RT> {
     /// and the file descriptor for this connection.
     ///
     /// This function will panic if the specified future had not completed or is _background_ future.
-    pub fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult<RT::Buf>) {
+    pub fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
         let boxed_future: Box<dyn Any> = self.rt.take(handle).as_any();
         let boxed_concrete_type: FutureOperation<RT> =
             *boxed_future.downcast::<FutureOperation<RT>>().expect("Wrong type!");
 
         match boxed_concrete_type {
             FutureOperation::Tcp(f) => {
-                let (qd, new_qd, qr): (QDesc, Option<QDesc>, OperationResult<RT::Buf>) = f.expect_result();
+                let (qd, new_qd, qr): (QDesc, Option<QDesc>, OperationResult) = f.expect_result();
 
                 // Handle accept failures.
                 if let Some(new_qd) = new_qd {
@@ -498,7 +506,7 @@ impl<RT: Runtime> InetStack<RT> {
     /// New incoming data has arrived. Route it to the correct parse out the Ethernet header and
     /// allow the correct protocol to handle it. The underlying protocol will futher parse the data
     /// and inform the correct task that its data has arrived.
-    fn do_receive(&mut self, bytes: RT::Buf) -> Result<(), Fail> {
+    fn do_receive(&mut self, bytes: Box<dyn Buffer>) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::engine::receive");
         let (header, payload) = Ethernet2Header::parse(bytes)?;

@@ -37,9 +37,7 @@ use ::libc::{
 use ::runtime::{
     memory::{
         Buffer,
-        Bytes,
-        BytesMut,
-        MemoryRuntime,
+        DataBuffer,
     },
     network::{
         types::{
@@ -88,7 +86,7 @@ fn test_connection_timeout() {
     advance_clock(None, Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, mut connect_future, bytes): (QDesc, ConnectFuture<TestRuntime>, Bytes) =
+    let (_, mut connect_future, bytes): (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Sanity check packet.
@@ -138,13 +136,13 @@ fn test_refuse_connection_early_rst() {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Bytes) =
+    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
         extract_headers(bytes.clone());
-    let segment: TcpSegment<<TestRuntime as MemoryRuntime>::Buf> = TcpSegment {
+    let segment: TcpSegment = TcpSegment {
         ethernet2_hdr: eth2_header,
         ipv4_hdr: ipv4_header,
         tcp_hdr: TcpHeader {
@@ -166,12 +164,12 @@ fn test_refuse_connection_early_rst() {
             num_options: tcp_header.num_options,
             option_list: tcp_header.option_list,
         },
-        data: Bytes::empty(),
+        data: Box::new(DataBuffer::empty()),
         tx_checksum_offload: false,
     };
 
     // Serialize segment.
-    let buf: Bytes = serialize_segment(segment);
+    let buf: Box<dyn Buffer> = serialize_segment(segment);
 
     // T(1) -> T(2)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
@@ -207,13 +205,13 @@ fn test_refuse_connection_early_ack() {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Bytes) =
+    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
         extract_headers(bytes.clone());
-    let segment: TcpSegment<<TestRuntime as MemoryRuntime>::Buf> = TcpSegment {
+    let segment: TcpSegment = TcpSegment {
         ethernet2_hdr: eth2_header,
         ipv4_hdr: ipv4_header,
         tcp_hdr: TcpHeader {
@@ -235,12 +233,12 @@ fn test_refuse_connection_early_ack() {
             num_options: tcp_header.num_options,
             option_list: tcp_header.option_list,
         },
-        data: Bytes::empty(),
+        data: Box::new(DataBuffer::empty()),
         tx_checksum_offload: false,
     };
 
     // Serialize segment.
-    let buf: Bytes = serialize_segment(segment);
+    let buf: Box<dyn Buffer> = serialize_segment(segment);
 
     // T(1) -> T(2)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
@@ -276,7 +274,7 @@ fn test_refuse_connection_missing_syn() {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Bytes) =
+    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Sanity check packet.
@@ -292,7 +290,7 @@ fn test_refuse_connection_missing_syn() {
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
         extract_headers(bytes.clone());
-    let segment: TcpSegment<<TestRuntime as MemoryRuntime>::Buf> = TcpSegment {
+    let segment: TcpSegment = TcpSegment {
         ethernet2_hdr: eth2_header,
         ipv4_hdr: ipv4_header,
         tcp_hdr: TcpHeader {
@@ -314,12 +312,12 @@ fn test_refuse_connection_missing_syn() {
             num_options: tcp_header.num_options,
             option_list: tcp_header.option_list,
         },
-        data: Bytes::empty(),
+        data: Box::new(DataBuffer::empty()),
         tx_checksum_offload: false,
     };
 
     // Serialize segment.
-    let buf: Bytes = serialize_segment(segment);
+    let buf: Box<dyn Buffer> = serialize_segment(segment);
 
     // T(1) -> T(2)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
@@ -335,7 +333,7 @@ fn test_refuse_connection_missing_syn() {
 //=============================================================================
 
 /// Extracts headers of a TCP packet.
-fn extract_headers(bytes: Bytes) -> (Ethernet2Header, Ipv4Header, TcpHeader) {
+fn extract_headers(bytes: Box<dyn Buffer>) -> (Ethernet2Header, Ipv4Header, TcpHeader) {
     let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
     let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
     let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
@@ -346,15 +344,15 @@ fn extract_headers(bytes: Bytes) -> (Ethernet2Header, Ipv4Header, TcpHeader) {
 //=============================================================================
 
 /// Serializes a TCP segment.
-fn serialize_segment(pkt: TcpSegment<Bytes>) -> Bytes {
+fn serialize_segment(pkt: TcpSegment) -> Box<dyn Buffer> {
     let header_size: usize = pkt.header_size();
     let body_size: usize = pkt.body_size();
-    let mut buf: BytesMut = BytesMut::zeroed(header_size + body_size).unwrap();
+    let mut buf = DataBuffer::new(header_size + body_size).unwrap();
     pkt.write_header(&mut buf[..header_size]);
     if let Some(body) = pkt.take_body() {
         buf[header_size..].copy_from_slice(&body[..]);
     }
-    buf.freeze()
+    Box::new(buf)
 }
 
 //=============================================================================
@@ -363,14 +361,14 @@ fn serialize_segment(pkt: TcpSegment<Bytes>) -> Bytes {
 fn connection_setup_listen_syn_sent(
     client: &mut Engine<TestRuntime>,
     listen_addr: Ipv4Endpoint,
-) -> (QDesc, ConnectFuture<TestRuntime>, Bytes) {
+) -> (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) {
     // Issue CONNECT operation.
     let client_fd: QDesc = client.tcp_socket().unwrap();
     let connect_future: ConnectFuture<TestRuntime> = client.tcp_connect(client_fd, listen_addr);
 
     // SYN_SENT state.
     client.rt().poll_scheduler();
-    let bytes: Bytes = client.rt().pop_frame();
+    let bytes: Box<dyn Buffer> = client.rt().pop_frame();
 
     (client_fd, connect_future, bytes)
 }
@@ -393,7 +391,7 @@ fn connection_setup_closed_listen(
 }
 
 /// Triggers LISTEN -> SYN_RCVD state transition.
-fn connection_setup_listen_syn_rcvd(server: &mut Engine<TestRuntime>, bytes: Bytes) -> Bytes {
+fn connection_setup_listen_syn_rcvd(server: &mut Engine<TestRuntime>, bytes: Box<dyn Buffer>) -> Box<dyn Buffer> {
     // SYN_RCVD state.
     server.receive(bytes).unwrap();
     server.rt().poll_scheduler();
@@ -401,14 +399,14 @@ fn connection_setup_listen_syn_rcvd(server: &mut Engine<TestRuntime>, bytes: Byt
 }
 
 /// Triggers SYN_SENT -> ESTABLISHED state transition.
-fn connection_setup_syn_sent_established(client: &mut Engine<TestRuntime>, bytes: Bytes) -> Bytes {
+fn connection_setup_syn_sent_established(client: &mut Engine<TestRuntime>, bytes: Box<dyn Buffer>) -> Box<dyn Buffer> {
     client.receive(bytes).unwrap();
     client.rt().poll_scheduler();
     client.rt().pop_frame()
 }
 
 /// Triggers SYN_RCVD -> ESTABLISHED state transition.
-fn connection_setup_sync_rcvd_established(server: &mut Engine<TestRuntime>, bytes: Bytes) {
+fn connection_setup_sync_rcvd_established(server: &mut Engine<TestRuntime>, bytes: Box<dyn Buffer>) {
     server.receive(bytes).unwrap();
     server.rt().poll_scheduler();
 }
@@ -416,7 +414,7 @@ fn connection_setup_sync_rcvd_established(server: &mut Engine<TestRuntime>, byte
 /// Checks for a pure SYN packet. This packet is sent by the sender side (active
 /// open peer) when transitioning from the LISTEN to the SYN_SENT state.
 fn check_packet_pure_syn(
-    bytes: Bytes,
+    bytes: Box<dyn Buffer>,
     eth2_src_addr: MacAddress,
     eth2_dst_addr: MacAddress,
     ipv4_src_addr: Ipv4Addr,
@@ -439,7 +437,7 @@ fn check_packet_pure_syn(
 /// Checks for a SYN+ACK packet. This packet is sent by the receiver side
 /// (passive open peer) when transitioning from the LISTEN to the SYN_RCVD state.
 fn check_packet_syn_ack(
-    bytes: Bytes,
+    bytes: Box<dyn Buffer>,
     eth2_src_addr: MacAddress,
     eth2_dst_addr: MacAddress,
     ipv4_src_addr: Ipv4Addr,
@@ -465,7 +463,7 @@ fn check_packet_syn_ack(
 /// side (active open peer) when transitioning from the SYN_SENT state to the
 /// ESTABLISHED state.
 fn check_packet_pure_ack_on_syn_ack(
-    bytes: Bytes,
+    bytes: Box<dyn Buffer>,
     eth2_src_addr: MacAddress,
     eth2_dst_addr: MacAddress,
     ipv4_src_addr: Ipv4Addr,
@@ -517,7 +515,7 @@ pub fn connection_setup(
     advance_clock(Some(server), Some(client), now);
 
     // Client: SYN_SENT state at T(1).
-    let (client_fd, mut connect_future, mut bytes): (QDesc, ConnectFuture<TestRuntime>, Bytes) =
+    let (client_fd, mut connect_future, mut bytes): (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) =
         connection_setup_listen_syn_sent(client, listen_addr);
 
     // Sanity check packet.
