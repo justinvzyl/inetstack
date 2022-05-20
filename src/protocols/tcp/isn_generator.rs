@@ -6,11 +6,6 @@ use crate::protocols::{
     tcp::SeqNumber,
 };
 #[allow(unused_imports)]
-use crc::{
-    crc32,
-    Hasher32,
-};
-#[allow(unused_imports)]
 use std::{
     hash::Hasher,
     num::Wrapping,
@@ -37,14 +32,19 @@ impl IsnGenerator {
 
     #[cfg(not(test))]
     pub fn generate(&mut self, local: &Ipv4Endpoint, remote: &Ipv4Endpoint) -> SeqNumber {
-        let mut hash = crc32::Digest::new(crc32::IEEE);
-        hash.write_u32(remote.get_address().into());
-        hash.write_u16(remote.get_port().into());
-        hash.write_u32(local.get_address().into());
-        hash.write_u16(local.get_port().into());
-        hash.write_u32(self.nonce);
-        let hash = hash.sum32();
-        let isn = SeqNumber::from(hash + self.counter.0 as u32);
+        let crc: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_CKSUM);
+        let mut digest = crc.digest();
+        let remote_addr: u32 = remote.get_address().into();
+        digest.update(&remote_addr.to_be_bytes());
+        let remote_port: u16 = remote.get_port().into();
+        digest.update(&remote_port.to_be_bytes());
+        let local_addr: u32 = local.get_address().into();
+        digest.update(&local_addr.to_be_bytes());
+        let local_port: u16 = local.get_port().into();
+        digest.update(&local_port.to_be_bytes());
+        digest.update(&self.nonce.to_be_bytes());
+        let digest = digest.finalize();
+        let isn = SeqNumber::from(digest + self.counter.0 as u32);
         self.counter += Wrapping(1);
         isn
     }
