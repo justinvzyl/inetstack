@@ -53,8 +53,12 @@ use ::std::{
 //==============================================================================
 
 /// Tests if a passive socket may be successfully opened and closed.
-fn do_tcp_connection_setup(libos: &mut InetStack<DummyRuntime>, port: u16) {
-    let port: Port16 = Port16::try_from(port).unwrap();
+#[test]
+fn tcp_connection_setup() {
+    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+
+    let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
     let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Open and close a connection.
@@ -67,27 +71,20 @@ fn do_tcp_connection_setup(libos: &mut InetStack<DummyRuntime>, port: u16) {
     };
 }
 
-#[test]
-fn catnip_tcp_connection_setup() {
-    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
-
-    do_tcp_connection_setup(&mut libos, PORT_BASE);
-}
-
 //==============================================================================
 // Establish Connection
 //==============================================================================
 
 /// Tests if data can be successfully established.
-fn do_tcp_establish_connection(port: u16) {
+#[test]
+fn tcp_establish_connection() {
     let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port: Port16 = Port16::try_from(port).unwrap();
+        let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
@@ -119,7 +116,7 @@ fn do_tcp_establish_connection(port: u16) {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port: Port16 = Port16::try_from(port).unwrap();
+        let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
@@ -145,24 +142,20 @@ fn do_tcp_establish_connection(port: u16) {
     bob.join().unwrap();
 }
 
-#[test]
-fn catnip_tcp_establish_connection() {
-    do_tcp_establish_connection(PORT_BASE + 1)
-}
-
 //==============================================================================
 // Push
 //==============================================================================
 
 /// Tests if data can be pushed.
-fn do_tcp_push_remote(port: u16) {
+#[test]
+fn tcp_push_remote() {
     let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port: Port16 = Port16::try_from(port).unwrap();
+        let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
@@ -204,7 +197,7 @@ fn do_tcp_push_remote(port: u16) {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port: Port16 = Port16::try_from(port).unwrap();
+        let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
@@ -244,17 +237,13 @@ fn do_tcp_push_remote(port: u16) {
     bob.join().unwrap();
 }
 
-#[test]
-fn catnip_tcp_push_remote() {
-    do_tcp_push_remote(PORT_BASE + 2)
-}
-
 //==============================================================================
 // Bad Socket
 //==============================================================================
 
 /// Tests for bad socket creation.
-fn do_tcp_bad_socket() {
+#[test]
+fn tcp_bad_socket() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
@@ -330,30 +319,21 @@ fn do_tcp_bad_socket() {
     }
 }
 
-#[test]
-fn catnip_tcp_bad_socket() {
-    do_tcp_bad_socket()
-}
-
 //==============================================================================
 // Bad Bind
 //==============================================================================
 
 /// Test bad calls for `bind()`.
-fn do_tcp_bad_bind(port: u16) {
+#[test]
+fn tcp_bad_bind() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     // Invalid file descriptor.
-    let port: Port16 = Port16::try_from(port).unwrap();
+    let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
     let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
     let e: Fail = libos.bind(QDesc::from(0), local).unwrap_err();
     assert_eq!(e.errno, libc::EBADF);
-}
-
-#[test]
-fn catnip_tcp_bad_bind() {
-    do_tcp_bad_bind(PORT_BASE + 3);
 }
 
 //==============================================================================
@@ -361,11 +341,12 @@ fn catnip_tcp_bad_bind() {
 //==============================================================================
 
 /// Tests bad calls for `listen()`.
-fn do_tcp_bad_listen(port: u16) {
+#[test]
+fn tcp_bad_listen() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port: Port16 = Port16::try_from(port).unwrap();
+    let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
     let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Invalid file descriptor.
@@ -380,17 +361,13 @@ fn do_tcp_bad_listen(port: u16) {
     libos.close(sockfd).unwrap_err();
 }
 
-#[test]
-fn catnip_tcp_bad_listen() {
-    do_tcp_bad_listen(PORT_BASE + 4);
-}
-
 //==============================================================================
 // Bad Accept
 //==============================================================================
 
 /// Tests bad calls for `accept()`.
-fn do_tcp_bad_accept() {
+#[test]
+fn tcp_bad_accept() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
@@ -399,23 +376,19 @@ fn do_tcp_bad_accept() {
     assert_eq!(e.errno, libc::EBADF);
 }
 
-#[test]
-fn catnip_tcp_bad_accept() {
-    do_tcp_bad_accept();
-}
-
 //==============================================================================
 // Bad Accept
 //==============================================================================
 
 /// Tests if data can be successfully established.
-fn do_tcp_bad_connect(port: u16) {
+#[test]
+fn tcp_bad_connect() {
     let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
-        let port: Port16 = Port16::try_from(port).unwrap();
+        let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
@@ -448,7 +421,7 @@ fn do_tcp_bad_connect(port: u16) {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port: Port16 = Port16::try_from(port).unwrap();
+        let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Bad file descriptor.
@@ -484,9 +457,4 @@ fn do_tcp_bad_connect(port: u16) {
 
     alice.join().unwrap();
     bob.join().unwrap();
-}
-
-#[test]
-fn catnip_tcp_bad_connect() {
-    do_tcp_bad_connect(PORT_BASE + 5)
 }
