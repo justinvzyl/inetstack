@@ -458,3 +458,100 @@ fn tcp_bad_connect() {
     alice.join().unwrap();
     bob.join().unwrap();
 }
+
+//==============================================================================
+// Bad Close
+//==============================================================================
+
+/// Tests if bad calls t `close()`.
+#[test]
+fn tcp_bad_close() {
+    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+
+    let alice: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+
+        let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+        let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+
+        // Open connection.
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        libos.bind(sockfd, local).unwrap();
+        libos.listen(sockfd, 8).unwrap();
+        let qt: QToken = libos.accept(sockfd).unwrap();
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
+
+        let qd: QDesc = match qr {
+            OperationResult::Accept(qd) => qd,
+            _ => panic!("accept() has failed"),
+        };
+
+        // Close bad queue descriptor.
+        let bad_qd: QDesc = 2.into();
+        match libos.close(bad_qd) {
+            Ok(_) => panic!("close() invalid file descriptir should fail"),
+            Err(_) => (),
+        };
+
+        // Close connection.
+        match libos.close(qd) {
+            Ok(_) => (),
+            Err(_) => panic!("close() on passive socket has failed"),
+        };
+        match libos.close(sockfd) {
+            Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
+            Err(_) => (),
+        };
+
+        // Double close queue descriptor.
+        match libos.close(qd) {
+            Ok(_) => panic!("double close() should fail"),
+            Err(_) => (),
+        };
+    });
+
+    let bob: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+
+        let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+
+        // Open connection.
+        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let qt: QToken = libos.connect(sockfd, remote).unwrap();
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
+        match qr {
+            OperationResult::Connect => (),
+            _ => panic!("connect() has failed"),
+        }
+
+        // Close bad queue descriptor.
+        let bad_qd: QDesc = 2.into();
+        match libos.close(bad_qd) {
+            Ok(_) => panic!("close() invalid file descriptor should fail"),
+            Err(_) => (),
+        };
+
+        // Close connection.
+        match libos.close(sockfd) {
+            Ok(_) => (),
+            Err(_) => panic!("close() on active socket has failed"),
+        };
+
+        // Double close queue descriptor.
+        match libos.close(sockfd) {
+            Ok(_) => panic!("double close() should fail"),
+            Err(_) => (),
+        };
+    });
+
+    alice.join().unwrap();
+    bob.join().unwrap();
+}
