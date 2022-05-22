@@ -555,3 +555,135 @@ fn tcp_bad_close() {
     alice.join().unwrap();
     bob.join().unwrap();
 }
+
+//==============================================================================
+// Bad Push
+//==============================================================================
+
+/// Tests bad calls to `push()`.
+#[test]
+fn tcp_bad_push() {
+    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+
+    let alice: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+
+        let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+        let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+
+        // Open connection.
+        let sockqd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
+            Ok(sockqd) => sockqd,
+            Err(e) => panic!("failed to create socket: {:?}", e),
+        };
+        match libos.bind(sockqd, local) {
+            Ok(_) => (),
+            Err(e) => panic!("bind() failed: {:?}", e),
+        };
+        match libos.listen(sockqd, 8) {
+            Ok(_) => (),
+            Err(e) => panic!("listen() failed: {:?}", e),
+        };
+        let qt: QToken = match libos.accept(sockqd) {
+            Ok(qt) => qt,
+            Err(e) => panic!("accept() failed: {:?}", e),
+        };
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
+        let qd: QDesc = match qr {
+            OperationResult::Accept(qd) => qd,
+            _ => panic!("accept() has failed"),
+        };
+
+        // Pop data.
+        let qt: QToken = match libos.pop(qd) {
+            Ok(qt) => qt,
+            Err(e) => panic!("pop() failed: {:?}", e),
+        };
+        let (qd, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
+        match qr {
+            OperationResult::Pop(_, _) => (),
+            _ => panic!("pop() has has failed {:?}", qr),
+        }
+
+        // Close connection.
+        match libos.close(qd) {
+            Ok(_) => (),
+            Err(_) => panic!("close() on passive socket has failed"),
+        };
+        match libos.close(sockqd) {
+            Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
+            Err(_) => (),
+        };
+    });
+
+    let bob: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+
+        let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+
+        // Open connection.
+        let sockqd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
+            Ok(sockqd) => sockqd,
+            Err(e) => panic!("failed to create socket: {:?}", e),
+        };
+        let qt: QToken = match libos.connect(sockqd, remote) {
+            Ok(qt) => qt,
+            Err(e) => panic!("failed to establish connection: {:?}", e),
+        };
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
+        match qr {
+            OperationResult::Connect => (),
+            _ => panic!("connect() has failed"),
+        }
+
+        // Cook some data.
+        let bytes: Box<dyn Buffer> = DummyLibOS::cook_data(32);
+
+        // Push to bad socket.
+        match libos.push2(2.into(), &bytes) {
+            Ok(_) => panic!("push2() to bad socket should fail."),
+            Err(_) => (),
+        };
+
+        // Push bad data to socket.
+        let zero_bytes: [u8; 0] = [];
+        match libos.push2(sockqd, &DataBuffer::from_slice(&zero_bytes)) {
+            Ok(_) => panic!("push2() zero-length slice should fail."),
+            Err(_) => (),
+        };
+
+        // Push data.
+        let qt: QToken = match libos.push2(sockqd, &bytes) {
+            Ok(qt) => qt,
+            Err(e) => panic!("failed to push: {:?}", e),
+        };
+        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
+            Ok((qd, qr)) => (qd, qr),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+        };
+        match qr {
+            OperationResult::Push => (),
+            _ => panic!("push() has failed"),
+        }
+
+        // Close connection.
+        match libos.close(sockqd) {
+            Ok(_) => (),
+            Err(_) => panic!("close() on active socket has failed"),
+        };
+    });
+
+    alice.join().unwrap();
+    bob.join().unwrap();
+}
