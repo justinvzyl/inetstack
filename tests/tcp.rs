@@ -62,10 +62,10 @@ fn tcp_connection_setup() {
     let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Open and close a connection.
-    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-    libos.bind(sockfd, local).unwrap();
-    libos.listen(sockfd, 8).unwrap();
-    match libos.close(sockfd) {
+    let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+    libos.bind(sockqd, local).unwrap();
+    libos.listen(sockqd, 8).unwrap();
+    match libos.close(sockqd) {
         Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
         Err(_) => (),
     };
@@ -88,10 +88,10 @@ fn tcp_establish_connection() {
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        libos.bind(sockfd, local).unwrap();
-        libos.listen(sockfd, 8).unwrap();
-        let qt: QToken = libos.accept(sockfd).unwrap();
+        let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        libos.bind(sockqd, local).unwrap();
+        libos.listen(sockqd, 8).unwrap();
+        let qt: QToken = libos.accept(sockqd).unwrap();
         let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -107,7 +107,7 @@ fn tcp_establish_connection() {
             Ok(_) => (),
             Err(_) => panic!("close() on passive socket has failed"),
         };
-        match libos.close(sockfd) {
+        match libos.close(sockqd) {
             Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
             Err(_) => (),
         };
@@ -120,8 +120,8 @@ fn tcp_establish_connection() {
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        let qt: QToken = libos.connect(sockfd, remote).unwrap();
+        let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let qt: QToken = libos.connect(sockqd, remote).unwrap();
         let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -132,7 +132,7 @@ fn tcp_establish_connection() {
         }
 
         // Close connection.
-        match libos.close(sockfd) {
+        match libos.close(sockqd) {
             Ok(_) => (),
             Err(_) => panic!("close() on active socket has failed"),
         };
@@ -159,10 +159,10 @@ fn tcp_push_remote() {
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        libos.bind(sockfd, local).unwrap();
-        libos.listen(sockfd, 8).unwrap();
-        let qt: QToken = libos.accept(sockfd).unwrap();
+        let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        libos.bind(sockqd, local).unwrap();
+        libos.listen(sockqd, 8).unwrap();
+        let qt: QToken = libos.accept(sockqd).unwrap();
         let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -188,7 +188,7 @@ fn tcp_push_remote() {
             Ok(_) => (),
             Err(_) => panic!("close() on passive socket has failed"),
         };
-        match libos.close(sockfd) {
+        match libos.close(sockqd) {
             Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
             Err(_) => (),
         };
@@ -201,8 +201,8 @@ fn tcp_push_remote() {
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        let qt: QToken = libos.connect(sockfd, remote).unwrap();
+        let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let qt: QToken = libos.connect(sockqd, remote).unwrap();
         let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -216,7 +216,7 @@ fn tcp_push_remote() {
         let bytes: Box<dyn Buffer> = DummyLibOS::cook_data(32);
 
         // Push data.
-        let qt: QToken = libos.push2(sockfd, &bytes).unwrap();
+        let qt: QToken = libos.push2(sockqd, &bytes).unwrap();
         let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -227,7 +227,7 @@ fn tcp_push_remote() {
         }
 
         // Close connection.
-        match libos.close(sockfd) {
+        match libos.close(sockqd) {
             Ok(_) => (),
             Err(_) => panic!("close() on active socket has failed"),
         };
@@ -306,15 +306,15 @@ fn tcp_bad_socket() {
 
     // Invalid domain.
     for d in domains {
-        let sockfd: Result<QDesc, Fail> = libos.socket(d, libc::SOCK_STREAM, 0);
-        let e: Fail = sockfd.unwrap_err();
+        let sockqd: Result<QDesc, Fail> = libos.socket(d, libc::SOCK_STREAM, 0);
+        let e: Fail = sockqd.unwrap_err();
         assert_eq!(e.errno, libc::ENOTSUP);
     }
 
     // Invalid socket tpe.
     for t in scoket_types {
-        let sockfd: Result<QDesc, Fail> = libos.socket(libc::AF_INET, t, 0);
-        let e: Fail = sockfd.unwrap_err();
+        let sockqd: Result<QDesc, Fail> = libos.socket(libc::AF_INET, t, 0);
+        let e: Fail = sockqd.unwrap_err();
         assert_eq!(e.errno, libc::ENOTSUP);
     }
 }
@@ -329,7 +329,7 @@ fn tcp_bad_bind() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    // Invalid file descriptor.
+    // Invalid queue descriptor.
     let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
     let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
     let e: Fail = libos.bind(QDesc::from(0), local).unwrap_err();
@@ -349,16 +349,16 @@ fn tcp_bad_listen() {
     let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
     let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
-    // Invalid file descriptor.
+    // Invalid queue descriptor.
     let e: Fail = libos.listen(QDesc::from(0), 8).unwrap_err();
     assert_eq!(e.errno, libc::EBADF);
 
     // Invalid backlog length
-    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-    libos.bind(sockfd, local).unwrap();
-    let e: Fail = libos.listen(sockfd, 0).unwrap_err();
+    let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+    libos.bind(sockqd, local).unwrap();
+    let e: Fail = libos.listen(sockqd, 0).unwrap_err();
     assert_eq!(e.errno, libc::EINVAL);
-    libos.close(sockfd).unwrap_err();
+    libos.close(sockqd).unwrap_err();
 }
 
 //==============================================================================
@@ -371,7 +371,7 @@ fn tcp_bad_accept() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    // Invalid file descriptor.
+    // Invalid queue descriptor.
     let e: Fail = libos.accept(QDesc::from(0)).unwrap_err();
     assert_eq!(e.errno, libc::EBADF);
 }
@@ -392,10 +392,10 @@ fn tcp_bad_connect() {
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        libos.bind(sockfd, local).unwrap();
-        libos.listen(sockfd, 8).unwrap();
-        let qt: QToken = libos.accept(sockfd).unwrap();
+        let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        libos.bind(sockqd, local).unwrap();
+        libos.listen(sockqd, 8).unwrap();
+        let qt: QToken = libos.accept(sockqd).unwrap();
         let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -412,7 +412,7 @@ fn tcp_bad_connect() {
                 panic!("close() on passive socket has failed")
             },
         };
-        match libos.close(sockfd) {
+        match libos.close(sockqd) {
             Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
             Err(_) => (),
         };
@@ -424,14 +424,14 @@ fn tcp_bad_connect() {
         let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
-        // Bad file descriptor.
+        // Bad queue descriptor.
         let e: Fail = libos.connect(QDesc::from(0), remote).unwrap_err();
         assert_eq!(e.errno, libc::EBADF);
 
         // Bad endpoint.
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(Ipv4Addr::new(0, 0, 0, 0), port);
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        let qt: QToken = libos.connect(sockfd, remote).unwrap();
+        let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let qt: QToken = libos.connect(sockqd, remote).unwrap();
         let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -443,8 +443,8 @@ fn tcp_bad_connect() {
 
         // Close connection.
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        let qt: QToken = libos.connect(sockfd, remote).unwrap();
+        let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let qt: QToken = libos.connect(sockqd, remote).unwrap();
         let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -476,10 +476,10 @@ fn tcp_bad_close() {
         let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        libos.bind(sockfd, local).unwrap();
-        libos.listen(sockfd, 8).unwrap();
-        let qt: QToken = libos.accept(sockfd).unwrap();
+        let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        libos.bind(sockqd, local).unwrap();
+        libos.listen(sockqd, 8).unwrap();
+        let qt: QToken = libos.accept(sockqd).unwrap();
         let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -502,7 +502,7 @@ fn tcp_bad_close() {
             Ok(_) => (),
             Err(_) => panic!("close() on passive socket has failed"),
         };
-        match libos.close(sockfd) {
+        match libos.close(sockqd) {
             Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
             Err(_) => (),
         };
@@ -521,8 +521,8 @@ fn tcp_bad_close() {
         let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
-        let qt: QToken = libos.connect(sockfd, remote).unwrap();
+        let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).unwrap();
+        let qt: QToken = libos.connect(sockqd, remote).unwrap();
         let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -535,18 +535,18 @@ fn tcp_bad_close() {
         // Close bad queue descriptor.
         let bad_qd: QDesc = 2.into();
         match libos.close(bad_qd) {
-            Ok(_) => panic!("close() invalid file descriptor should fail"),
+            Ok(_) => panic!("close() invalid queue descriptor should fail"),
             Err(_) => (),
         };
 
         // Close connection.
-        match libos.close(sockfd) {
+        match libos.close(sockqd) {
             Ok(_) => (),
             Err(_) => panic!("close() on active socket has failed"),
         };
 
         // Double close queue descriptor.
-        match libos.close(sockfd) {
+        match libos.close(sockqd) {
             Ok(_) => panic!("double close() should fail"),
             Err(_) => (),
         };
