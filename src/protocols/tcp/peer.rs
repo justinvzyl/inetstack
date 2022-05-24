@@ -147,10 +147,14 @@ impl<RT: Runtime> TcpPeer<RT> {
         if addr.get_port() >= EphemeralPorts::first_private_port() {
             return Err(Fail::new(EBADMSG, "Port number in private port range"));
         }
+
         match inner.sockets.get_mut(&fd) {
-            Some(Socket::Inactive { ref mut local }) => {
-                *local = Some(addr);
-                Ok(())
+            Some(Socket::Inactive { ref mut local }) => match *local {
+                Some(_) => return Err(Fail::new(libc::EINVAL, "socket is already bound to an address")),
+                None => {
+                    *local = Some(addr);
+                    Ok(())
+                },
             },
             _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
         }
