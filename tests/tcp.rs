@@ -309,6 +309,18 @@ fn tcp_bad_bind() {
         Ok(_) => panic!("bind() socket multiple times should fail with EINVAL"),
     };
     safe_close_passive(&mut libos, sockqd);
+
+    // Bind sockets to same address.
+    let sockqd_a: QDesc = safe_socket(&mut libos);
+    let sockqd_b: QDesc = safe_socket(&mut libos);
+    safe_bind(&mut libos, sockqd_a, local);
+    match libos.bind(sockqd_b, local) {
+        Err(e) if e.errno == libc::EADDRINUSE => (),
+        Err(e) => panic!("bind() failed with unexpected error code ({:?})", e),
+        Ok(_) => panic!("bind() multiple sockets to the same address should fail with EADDRINUSE"),
+    };
+    safe_close_passive(&mut libos, sockqd_a);
+    safe_close_passive(&mut libos, sockqd_b);
 }
 
 //======================================================================================================================
