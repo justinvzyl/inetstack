@@ -146,10 +146,8 @@ impl Ipv4Header {
 
         // Differentiated services code point.
         let dscp: u8 = hdr_buf[1] >> 2;
-        // TODO: drop this check once we support DSCP.
         if dscp != 0 {
-            warn!("differentiated services code point are not supported dscp={:?}", dscp);
-            return Err(Fail::new(ENOTSUP, "ipv4 dscp is not supported"));
+            warn!("ignoring dscp field (dscp={:?})", dscp);
         }
 
         // Explicit congestion notification.
