@@ -152,10 +152,8 @@ impl Ipv4Header {
 
         // Explicit congestion notification.
         let ecn: u8 = hdr_buf[1] & 3;
-        // TODO: drop this check once we support ECN.
         if ecn != 0 {
-            warn!("explicit congestion notification is not supported ecn={:?}", ecn);
-            return Err(Fail::new(ENOTSUP, "ipv4 ecn is not supported"));
+            warn!("ignoring ecn field (ecn={:?})", ecn);
         }
 
         // Total length.

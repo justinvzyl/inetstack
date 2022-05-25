@@ -471,8 +471,6 @@ fn test_ipv4_header_parse_unsupported_dscp() {
 }
 
 /// Parses a malformed IPv4 header with unsupported ECN field.
-///
-/// TODO: Drop this test once we support ECN.
 #[test]
 fn test_ipv4_header_parse_unsupported_ecn() {
     const HEADER_SIZE: usize = 20;
@@ -502,8 +500,8 @@ fn test_ipv4_header_parse_unsupported_ecn() {
         // Do it.
         let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
         match Ipv4Header::parse(buf_bytes) {
-            Ok(_) => assert!(false, "parsed ipv4 header with ecn={:?}. Do we support it now?", ecn),
-            Err(_) => {},
+            Ok(_) => {},
+            Err(_) => panic!("ecn field should be ignored (ecn={:?})", ecn),
         };
     }
 }
