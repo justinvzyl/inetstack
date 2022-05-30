@@ -297,7 +297,7 @@ fn tcp_bad_bind() {
     // Invalid queue descriptor.
     match libos.bind(QDesc::from(0), local) {
         Err(e) if e.errno == libc::EBADF => (),
-        _ => panic!("invalid call to bind() should failed with EBADF"),
+        _ => panic!("invalid call to bind() should fail with EBADF"),
     };
 
     // Bind socket multiple times.
@@ -339,7 +339,7 @@ fn tcp_bad_listen() {
     // Invalid queue descriptor.
     match libos.listen(QDesc::from(0), 8) {
         Err(e) if e.errno == libc::EBADF => (),
-        _ => panic!("invalid call to listen() should failed with EBADF"),
+        _ => panic!("invalid call to listen() should fail with EBADF"),
     };
 
     // Invalid backlog length
@@ -347,7 +347,7 @@ fn tcp_bad_listen() {
     safe_bind(&mut libos, sockqd, local);
     match libos.listen(sockqd, 0) {
         Err(e) if e.errno == libc::EINVAL => (),
-        _ => panic!("invalid call to listen() should failed with EINVAL"),
+        _ => panic!("invalid call to listen() should fail with EINVAL"),
     };
 
     // Close socket.
@@ -367,7 +367,7 @@ fn tcp_bad_accept() {
     // Invalid queue descriptor.
     match libos.accept(QDesc::from(0)) {
         Err(e) if e.errno == libc::EBADF => (),
-        _ => panic!("invalid call to accept() should failed with EBADF"),
+        _ => panic!("invalid call to accept() should fail with EBADF"),
     };
 }
 
@@ -411,7 +411,7 @@ fn tcp_bad_connect() {
         // Bad queue descriptor.
         match libos.connect(QDesc::from(0), remote) {
             Err(e) if e.errno == libc::EBADF => (),
-            _ => panic!("invalid call to connect() should failed with EBADF"),
+            _ => panic!("invalid call to connect() should fail with EBADF"),
         };
 
         // Bad endpoint.
