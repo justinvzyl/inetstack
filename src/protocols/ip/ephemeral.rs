@@ -6,7 +6,6 @@ use ::runtime::{
     fail::Fail,
     Runtime,
 };
-use ::std::convert::TryFrom;
 
 //==============================================================================
 // Constants
@@ -39,11 +38,11 @@ impl EphemeralPorts {
     }
 
     pub fn first_private_port() -> u16 {
-        u16::try_from(FIRST_PRIVATE_PORT).unwrap()
+        FIRST_PRIVATE_PORT
     }
 
     pub fn is_private(port: u16) -> bool {
-        u16::from(port) >= FIRST_PRIVATE_PORT
+        port >= FIRST_PRIVATE_PORT
     }
 
     pub fn alloc(&mut self) -> Result<u16, Fail> {

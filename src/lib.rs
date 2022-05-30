@@ -28,7 +28,6 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        ipv4::Ipv4Endpoint,
         udp::UdpOperation,
         Peer,
     },
@@ -58,6 +57,7 @@ use ::runtime::{
 use ::std::{
     any::Any,
     convert::TryFrom,
+    net::SocketAddrV4,
     time::Instant,
 };
 
@@ -176,7 +176,7 @@ impl<RT: Runtime> InetStack<RT> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn bind(&mut self, qd: QDesc, local: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::bind");
         trace!("bind(): qd={:?} local={:?}", qd, local);
@@ -270,7 +270,7 @@ impl<RT: Runtime> InetStack<RT> {
     /// remote endpoints. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn connect(&mut self, qd: QDesc, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::connect");
         trace!("connect(): qd={:?} remote={:?}", qd, remote);
@@ -354,7 +354,7 @@ impl<RT: Runtime> InetStack<RT> {
         &mut self,
         qd: QDesc,
         buf: Box<dyn Buffer>,
-        to: Ipv4Endpoint,
+        to: SocketAddrV4,
     ) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
@@ -370,7 +370,7 @@ impl<RT: Runtime> InetStack<RT> {
 
     /// Pushes raw data to a UDP socket.
     /// TODO: Move this function to demikernel repo once we have a common buffer representation across all libOSes.
-    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::pushto2");
         trace!("pushto2(): qd={:?}", qd);

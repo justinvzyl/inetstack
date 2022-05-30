@@ -5,12 +5,9 @@
 // Imports
 //==============================================================================
 
-use crate::protocols::{
-    ipv4::Ipv4Endpoint,
-    udp::queue::{
-        SharedQueue,
-        SharedQueueSlot,
-    },
+use crate::protocols::udp::queue::{
+    SharedQueue,
+    SharedQueueSlot,
 };
 use ::runtime::{
     fail::Fail,
@@ -19,6 +16,7 @@ use ::runtime::{
 };
 use ::std::{
     future::Future,
+    net::SocketAddrV4,
     pin::Pin,
     task::{
         Context,
@@ -62,7 +60,7 @@ impl UdpPopFuture {
 
 /// Future Trait implementation for Pop Operation Descriptor
 impl Future for UdpPopFuture {
-    type Output = Result<(Option<Ipv4Endpoint>, Box<dyn Buffer>), Fail>;
+    type Output = Result<(Option<SocketAddrV4>, Box<dyn Buffer>), Fail>;
 
     /// Polls the target pop operation descriptor.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {

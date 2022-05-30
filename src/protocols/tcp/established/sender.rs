@@ -214,7 +214,7 @@ impl Sender {
             let win_sz: u32 = self.send_window.get();
 
             if win_sz > 0 && win_sz >= in_flight_after_send && effective_cwnd >= in_flight_after_send {
-                if let Some(remote_link_addr) = cb.arp().try_query(cb.get_remote().get_address()) {
+                if let Some(remote_link_addr) = cb.arp().try_query(cb.get_remote().ip().clone()) {
                     // This hook is primarily intended to record the last time we sent data, so we can later tell if
                     // the connection has been idle.
                     let rto: Duration = cb.rto_estimate();
@@ -274,7 +274,7 @@ impl Sender {
 
     // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
     //
-    pub fn remove_acknowledged_data<RT: Runtime> (&self, cb: &ControlBlock<RT>, bytes_acknowledged: u32, now: Instant) {
+    pub fn remove_acknowledged_data<RT: Runtime>(&self, cb: &ControlBlock<RT>, bytes_acknowledged: u32, now: Instant) {
         let mut bytes_remaining: usize = bytes_acknowledged as usize;
 
         while bytes_remaining != 0 {

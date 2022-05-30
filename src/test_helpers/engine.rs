@@ -7,7 +7,6 @@ use crate::protocols::{
         EtherType2,
         Ethernet2Header,
     },
-    ipv4::Ipv4Endpoint,
     tcp::operations::{
         AcceptFuture,
         ConnectFuture,
@@ -30,7 +29,10 @@ use ::runtime::{
 use ::std::{
     collections::HashMap,
     future::Future,
-    net::Ipv4Addr,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     time::Duration,
 };
 
@@ -80,7 +82,7 @@ impl<RT: Runtime> Engine<RT> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
-    pub fn udp_pushto(&self, fd: QDesc, buf: Box<dyn Buffer>, to: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn udp_pushto(&self, fd: QDesc, buf: Box<dyn Buffer>, to: SocketAddrV4) -> Result<(), Fail> {
         self.ipv4.udp.do_pushto(fd, buf, to)
     }
 
@@ -94,7 +96,7 @@ impl<RT: Runtime> Engine<RT> {
         Ok(fd)
     }
 
-    pub fn udp_bind(&mut self, socket_fd: QDesc, endpoint: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn udp_bind(&mut self, socket_fd: QDesc, endpoint: SocketAddrV4) -> Result<(), Fail> {
         self.ipv4.udp.do_bind(socket_fd, endpoint)
     }
 
@@ -108,11 +110,11 @@ impl<RT: Runtime> Engine<RT> {
         Ok(fd)
     }
 
-    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: Ipv4Endpoint) -> ConnectFuture<RT> {
+    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddrV4) -> ConnectFuture<RT> {
         self.ipv4.tcp.connect(socket_fd, remote_endpoint)
     }
 
-    pub fn tcp_bind(&mut self, socket_fd: QDesc, endpoint: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn tcp_bind(&mut self, socket_fd: QDesc, endpoint: SocketAddrV4) -> Result<(), Fail> {
         self.ipv4.tcp.bind(socket_fd, endpoint)
     }
 

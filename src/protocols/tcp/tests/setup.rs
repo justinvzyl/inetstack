@@ -7,10 +7,7 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        ipv4::{
-            Ipv4Endpoint,
-            Ipv4Header,
-        },
+        ipv4::Ipv4Header,
         tcp::{
             operations::{
                 AcceptFuture,
@@ -51,8 +48,8 @@ use ::runtime::{
     QDesc,
 };
 use ::std::{
-    convert::TryFrom,
     future::Future,
+    net::SocketAddrV4,
     pin::Pin,
     task::{
         Context,
@@ -73,8 +70,8 @@ fn test_connection_timeout() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: u16 = u16::try_from(80).unwrap();
-    let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_port: u16 = 80;
+    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup client.
     let mut client = test_helpers::new_alice2(now);
@@ -121,8 +118,8 @@ fn test_refuse_connection_early_rst() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: u16 = u16::try_from(80).unwrap();
-    let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_port: u16 = 80;
+    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server = test_helpers::new_bob2(now);
@@ -190,8 +187,8 @@ fn test_refuse_connection_early_ack() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: u16 = u16::try_from(80).unwrap();
-    let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_port: u16 = 80;
+    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server = test_helpers::new_bob2(now);
@@ -259,8 +256,8 @@ fn test_refuse_connection_missing_syn() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: u16 = u16::try_from(80).unwrap();
-    let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_port: u16 = 80;
+    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server = test_helpers::new_bob2(now);
@@ -359,7 +356,7 @@ fn serialize_segment(pkt: TcpSegment) -> Box<dyn Buffer> {
 /// Triggers LISTEN -> SYN_SENT state transition.
 fn connection_setup_listen_syn_sent(
     client: &mut Engine<TestRuntime>,
-    listen_addr: Ipv4Endpoint,
+    listen_addr: SocketAddrV4,
 ) -> (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) {
     // Issue CONNECT operation.
     let client_fd: QDesc = client.tcp_socket().unwrap();
@@ -375,7 +372,7 @@ fn connection_setup_listen_syn_sent(
 /// Triggers CLOSED -> LISTEN state transition.
 fn connection_setup_closed_listen(
     server: &mut Engine<TestRuntime>,
-    listen_addr: Ipv4Endpoint,
+    listen_addr: SocketAddrV4,
 ) -> AcceptFuture<TestRuntime> {
     // Issue ACCEPT operation.
     let socket_fd: QDesc = server.tcp_socket().unwrap();
@@ -505,7 +502,7 @@ pub fn connection_setup(
     server: &mut Engine<TestRuntime>,
     client: &mut Engine<TestRuntime>,
     listen_port: u16,
-    listen_addr: Ipv4Endpoint,
+    listen_addr: SocketAddrV4,
 ) -> (QDesc, QDesc) {
     // Server: LISTEN state at T(0).
     let mut accept_future: AcceptFuture<TestRuntime> = connection_setup_closed_listen(server, listen_addr);
@@ -585,8 +582,8 @@ fn test_good_connect() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: u16 = u16::try_from(80).unwrap();
-    let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_port: u16 = 80;
+    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server = test_helpers::new_bob2(now);

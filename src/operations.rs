@@ -5,13 +5,15 @@
 // Imports
 //==============================================================================
 
-use crate::protocols::ipv4::Ipv4Endpoint;
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
     QDesc,
 };
-use ::std::fmt;
+use ::std::{
+    fmt,
+    net::SocketAddrV4,
+};
 
 //==============================================================================
 // Structures
@@ -21,7 +23,7 @@ pub enum OperationResult {
     Connect,
     Accept(QDesc),
     Push,
-    Pop(Option<Ipv4Endpoint>, Box<dyn Buffer>),
+    Pop(Option<SocketAddrV4>, Box<dyn Buffer>),
     Failed(Fail),
 }
 

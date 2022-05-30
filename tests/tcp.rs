@@ -26,7 +26,6 @@ use ::crossbeam_channel::{
 };
 use ::inetstack::{
     operations::OperationResult,
-    protocols::ipv4::Ipv4Endpoint,
     InetStack,
 };
 use ::runtime::{
@@ -38,8 +37,10 @@ use ::runtime::{
     QToken,
 };
 use ::std::{
-    convert::TryFrom,
-    net::Ipv4Addr,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     thread::{
         self,
         JoinHandle,
@@ -56,8 +57,8 @@ fn tcp_connection_setup() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port: u16 = safe_try_port16(PORT_BASE);
-    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let port: u16 = PORT_BASE;
+    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
     // Open and close a connection.
     let sockqd: QDesc = safe_socket(&mut libos);
@@ -79,8 +80,8 @@ fn tcp_establish_connection() {
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -102,8 +103,8 @@ fn tcp_establish_connection() {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -135,8 +136,8 @@ fn tcp_push_remote() {
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -165,8 +166,8 @@ fn tcp_push_remote() {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -290,8 +291,8 @@ fn tcp_bad_bind() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, safe_try_port16(PORT_BASE));
-    let local2: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, safe_try_port16(PORT_BASE + 1));
+    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
+    let local2: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE + 1);
 
     // Invalid queue descriptor.
     match libos.bind(QDesc::from(0), local) {
@@ -332,8 +333,8 @@ fn tcp_bad_listen() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port: u16 = safe_try_port16(PORT_BASE);
-    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let port: u16 = PORT_BASE;
+    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
     // Invalid queue descriptor.
     match libos.listen(QDesc::from(0), 8) {
@@ -401,8 +402,8 @@ fn tcp_bad_connect() {
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -423,8 +424,8 @@ fn tcp_bad_connect() {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Bad queue descriptor.
         match libos.connect(QDesc::from(0), remote) {
@@ -433,7 +434,7 @@ fn tcp_bad_connect() {
         };
 
         // Bad endpoint.
-        let bad_remote: Ipv4Endpoint = Ipv4Endpoint::new(Ipv4Addr::new(0, 0, 0, 0), port);
+        let bad_remote: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
         let sockqd: QDesc = safe_socket(&mut libos);
         let qt: QToken = safe_connect(&mut libos, sockqd, bad_remote);
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
@@ -443,7 +444,7 @@ fn tcp_bad_connect() {
         }
 
         // Close connection.
-        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
         let sockqd: QDesc = safe_socket(&mut libos);
         let qt: QToken = safe_connect(&mut libos, sockqd, remote);
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
@@ -473,8 +474,8 @@ fn tcp_bad_close() {
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -507,8 +508,8 @@ fn tcp_bad_close() {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -552,8 +553,8 @@ fn tcp_bad_push() {
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -582,8 +583,8 @@ fn tcp_bad_push() {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -639,8 +640,8 @@ fn tcp_bad_pop() {
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -675,8 +676,8 @@ fn tcp_bad_pop() {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port: u16 = safe_try_port16(PORT_BASE);
-        let remote: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+        let port: u16 = PORT_BASE;
+        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -710,14 +711,6 @@ fn tcp_bad_pop() {
 // Standalone Functions
 //======================================================================================================================
 
-/// Safe call for port conversion.
-fn safe_try_port16(port: u16) -> u16 {
-    match u16::try_from(port) {
-        Ok(port) => port,
-        Err(e) => panic!("conversion failed: {:?}", e),
-    }
-}
-
 /// Safe call to `socket()`.
 fn safe_socket(libos: &mut InetStack<DummyRuntime>) -> QDesc {
     match libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
@@ -727,7 +720,7 @@ fn safe_socket(libos: &mut InetStack<DummyRuntime>) -> QDesc {
 }
 
 /// Safe call to `connect()`.
-fn safe_connect(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, remote: Ipv4Endpoint) -> QToken {
+fn safe_connect(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, remote: SocketAddrV4) -> QToken {
     match libos.connect(sockqd, remote) {
         Ok(qt) => qt,
         Err(e) => panic!("failed to establish connection: {:?}", e),
@@ -735,7 +728,7 @@ fn safe_connect(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, remote: Ipv4
 }
 
 /// Safe call to `bind()`.
-fn safe_bind(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, local: Ipv4Endpoint) {
+fn safe_bind(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, local: SocketAddrV4) {
     match libos.bind(sockqd, local) {
         Ok(_) => (),
         Err(e) => panic!("bind() failed: {:?}", e),

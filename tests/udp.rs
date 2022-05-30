@@ -26,7 +26,6 @@ use ::crossbeam_channel::{
 };
 use ::inetstack::{
     operations::OperationResult,
-    protocols::ipv4::Ipv4Endpoint,
     InetStack,
 };
 use ::runtime::{
@@ -38,7 +37,7 @@ use ::runtime::{
     QToken,
 };
 use ::std::{
-    convert::TryFrom,
+    net::SocketAddrV4,
     thread::{
         self,
         JoinHandle,
@@ -56,8 +55,8 @@ fn udp_connect_remote() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port: u16 = u16::try_from(PORT_BASE).unwrap();
-    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let port: u16 = PORT_BASE;
+    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
     // Open and close a connection.
     let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
@@ -71,8 +70,8 @@ fn udp_connect_loopback() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port: u16 = u16::try_from(PORT_BASE).unwrap();
-    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let port: u16 = PORT_BASE;
+    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
     // Open and close a connection.
     let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
@@ -91,10 +90,10 @@ fn udp_push_remote() {
     let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
-    let bob_port: u16 = u16::try_from(PORT_BASE).unwrap();
-    let bob_addr: Ipv4Endpoint = Ipv4Endpoint::new(BOB_IPV4, bob_port);
-    let alice_port: u16 = u16::try_from(PORT_BASE).unwrap();
-    let alice_addr: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, alice_port);
+    let bob_port: u16 = PORT_BASE;
+    let bob_addr: SocketAddrV4 = SocketAddrV4::new(BOB_IPV4, bob_port);
+    let alice_port: u16 = PORT_BASE;
+    let alice_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, alice_port);
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -175,10 +174,10 @@ fn udp_loopback() {
     let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
-    let bob_port: u16 = u16::try_from(PORT_BASE).unwrap();
-    let bob_addr: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, bob_port);
-    let alice_port: u16 = u16::try_from(PORT_BASE).unwrap();
-    let alice_addr: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, alice_port);
+    let bob_port: u16 = PORT_BASE;
+    let bob_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, bob_port);
+    let alice_port: u16 = PORT_BASE;
+    let alice_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, alice_port);
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());

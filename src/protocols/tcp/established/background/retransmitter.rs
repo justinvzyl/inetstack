@@ -61,7 +61,7 @@ async fn retransmit<RT: Runtime>(cause: RetransmitCause, cb: &Rc<ControlBlock<RT
     };
 
     // Our retransmission timer fired, so we need to resend a packet.
-    let remote_link_addr: MacAddress = cb.arp().query(cb.get_remote().get_address()).await?;
+    let remote_link_addr: MacAddress = cb.arp().query(cb.get_remote().ip().clone()).await?;
 
     // Unset the initial timestamp so we don't use this for RTT estimation.
     segment.initial_tx.take();

@@ -15,10 +15,7 @@ pub use self::ctrlblk::{
 use self::background::background;
 use crate::{
     futures::FutureOperation,
-    protocols::{
-        ipv4::Ipv4Endpoint,
-        tcp::segment::TcpHeader,
-    },
+    protocols::tcp::segment::TcpHeader,
 };
 use ::futures::{
     channel::mpsc,
@@ -32,6 +29,7 @@ use ::runtime::{
     Runtime,
 };
 use ::std::{
+    net::SocketAddrV4,
     rc::Rc,
     task::{
         Context,
@@ -81,7 +79,7 @@ impl<RT: Runtime> EstablishedSocket<RT> {
         self.cb.rto_estimate()
     }
 
-    pub fn endpoints(&self) -> (Ipv4Endpoint, Ipv4Endpoint) {
+    pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {
         (self.cb.get_local(), self.cb.get_remote())
     }
 }

@@ -21,10 +21,7 @@ use crate::protocols::{
         EphemeralPorts,
         IpProtocol,
     },
-    ipv4::{
-        Ipv4Endpoint,
-        Ipv4Header,
-    },
+    ipv4::Ipv4Header,
     tcp::{
         established::ControlBlock,
         operations::{
@@ -67,6 +64,7 @@ use ::std::{
         RefMut,
     },
     collections::HashMap,
+    net::SocketAddrV4,
     rc::Rc,
     task::{
         Context,
@@ -83,10 +81,10 @@ use perftools::timer;
 //==============================================================================
 
 enum Socket {
-    Inactive { local: Option<Ipv4Endpoint> },
-    Listening { local: Ipv4Endpoint },
-    Connecting { local: Ipv4Endpoint, remote: Ipv4Endpoint },
-    Established { local: Ipv4Endpoint, remote: Ipv4Endpoint },
+    Inactive { local: Option<SocketAddrV4> },
+    Listening { local: SocketAddrV4 },
+    Connecting { local: SocketAddrV4, remote: SocketAddrV4 },
+    Established { local: SocketAddrV4, remote: SocketAddrV4 },
 }
 
 //==============================================================================
@@ -101,9 +99,9 @@ pub struct Inner<RT: Runtime> {
     // FD -> local port
     sockets: HashMap<QDesc, Socket>,
 
-    passive: HashMap<Ipv4Endpoint, PassiveSocket<RT>>,
-    connecting: HashMap<(Ipv4Endpoint, Ipv4Endpoint), ActiveOpenSocket<RT>>,
-    established: HashMap<(Ipv4Endpoint, Ipv4Endpoint), EstablishedSocket<RT>>,
+    passive: HashMap<SocketAddrV4, PassiveSocket<RT>>,
+    connecting: HashMap<(SocketAddrV4, SocketAddrV4), ActiveOpenSocket<RT>>,
+    established: HashMap<(SocketAddrV4, SocketAddrV4), EstablishedSocket<RT>>,
 
     rt: RT,
     arp: ArpPeer<RT>,
@@ -141,9 +139,9 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    pub fn bind(&self, fd: QDesc, addr: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn bind(&self, fd: QDesc, addr: SocketAddrV4) -> Result<(), Fail> {
         let mut inner = self.inner.borrow_mut();
-        if addr.get_port() >= EphemeralPorts::first_private_port() {
+        if addr.port() >= EphemeralPorts::first_private_port() {
             return Err(Fail::new(EBADMSG, "Port number in private port range"));
         }
 
@@ -183,7 +181,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
 
         // Get bound address while checking for several issues.
-        let local: Ipv4Endpoint = match inner.sockets.get_mut(&qd) {
+        let local: SocketAddrV4 = match inner.sockets.get_mut(&qd) {
             Some(Socket::Inactive { local: Some(local) }) => *local,
             Some(Socket::Listening { local: _ }) => return Err(Fail::new(libc::EINVAL, "socket is already listening")),
             Some(Socket::Inactive { local: None }) => {
@@ -222,7 +220,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         let mut inner_: RefMut<Inner<RT>> = self.inner.borrow_mut();
         let inner: &mut Inner<RT> = &mut *inner_;
 
-        let local: &Ipv4Endpoint = match inner.sockets.get(&qd) {
+        let local: &SocketAddrV4 = match inner.sockets.get(&qd) {
             Some(Socket::Listening { local }) => local,
             Some(..) => return Poll::Ready(Err(Fail::new(EOPNOTSUPP, "socket not listening"))),
             None => return Poll::Ready(Err(Fail::new(EBADF, "bad file descriptor"))),
@@ -235,7 +233,7 @@ impl<RT: Runtime> TcpPeer<RT> {
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
         };
         let established: EstablishedSocket<RT> = EstablishedSocket::new(cb, new_qd, inner.dead_socket_tx.clone());
-        let key: (Ipv4Endpoint, Ipv4Endpoint) = (established.cb.get_local(), established.cb.get_remote());
+        let key: (SocketAddrV4, SocketAddrV4) = (established.cb.get_local(), established.cb.get_remote());
 
         let socket: Socket = Socket::Established {
             local: established.cb.get_local(),
@@ -255,7 +253,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         Poll::Ready(Ok(new_qd))
     }
 
-    pub fn connect(&self, fd: QDesc, remote: Ipv4Endpoint) -> ConnectFuture<RT> {
+    pub fn connect(&self, fd: QDesc, remote: SocketAddrV4) -> ConnectFuture<RT> {
         let mut inner = self.inner.borrow_mut();
 
         let r = try {
@@ -266,7 +264,7 @@ impl<RT: Runtime> TcpPeer<RT> {
 
             // TODO: We need to free these!
             let local_port = inner.ephemeral_ports.alloc()?;
-            let local = Ipv4Endpoint::new(inner.rt.local_ipv4_addr(), local_port);
+            let local = SocketAddrV4::new(inner.rt.local_ipv4_addr(), local_port);
 
             let socket = Socket::Connecting { local, remote };
             inner.sockets.insert(fd, socket);
@@ -341,7 +339,7 @@ impl<RT: Runtime> TcpPeer<RT> {
 
         match inner.sockets.remove(&qd) {
             Some(Socket::Established { local, remote }) => {
-                let key: (Ipv4Endpoint, Ipv4Endpoint) = (local, remote);
+                let key: (SocketAddrV4, SocketAddrV4) = (local, remote);
                 match inner.established.get(&key) {
                     Some(ref s) => s.close()?,
                     None => return Err(Fail::new(ENOTCONN, "connection not established")),
@@ -381,7 +379,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    pub fn endpoints(&self, fd: QDesc) -> Result<(Ipv4Endpoint, Ipv4Endpoint), Fail> {
+    pub fn endpoints(&self, fd: QDesc) -> Result<(SocketAddrV4, SocketAddrV4), Fail> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -419,13 +417,10 @@ impl<RT: Runtime> Inner<RT> {
         let tcp_options = self.rt.tcp_options();
         let (mut tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, tcp_options.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
-        let local = Ipv4Endpoint::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
-        let remote = Ipv4Endpoint::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
+        let local = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
+        let remote = SocketAddrV4::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
 
-        if remote.get_address().is_broadcast()
-            || remote.get_address().is_multicast()
-            || remote.get_address().is_unspecified()
-        {
+        if remote.ip().is_broadcast() || remote.ip().is_multicast() || remote.ip().is_unspecified() {
             return Err(Fail::new(EINVAL, "invalid address type"));
         }
         let key = (local, remote);
@@ -452,19 +447,19 @@ impl<RT: Runtime> Inner<RT> {
         Ok(())
     }
 
-    fn send_rst(&mut self, local: &Ipv4Endpoint, remote: &Ipv4Endpoint) -> Result<(), Fail> {
+    fn send_rst(&mut self, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<(), Fail> {
         // TODO: Make this work pending on ARP resolution if needed.
         let remote_link_addr = self
             .arp
-            .try_query(remote.get_address())
+            .try_query(remote.ip().clone())
             .ok_or(Fail::new(EINVAL, "detination not in ARP cache"))?;
 
-        let mut tcp_hdr = TcpHeader::new(local.get_port(), remote.get_port());
+        let mut tcp_hdr = TcpHeader::new(local.port(), remote.port());
         tcp_hdr.rst = true;
 
         let segment = TcpSegment {
             ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
-            ipv4_hdr: Ipv4Header::new(local.get_address(), remote.get_address(), IpProtocol::TCP),
+            ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr,
             data: Box::new(DataBuffer::empty()),
             tx_checksum_offload: self.rt.tcp_options().get_rx_checksum_offload(),

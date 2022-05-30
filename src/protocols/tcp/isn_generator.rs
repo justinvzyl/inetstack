@@ -1,13 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::protocols::{
-    ipv4::Ipv4Endpoint,
-    tcp::SeqNumber,
-};
+use crate::protocols::tcp::SeqNumber;
 #[allow(unused_imports)]
 use std::{
     hash::Hasher,
+    net::SocketAddrV4,
     num::Wrapping,
 };
 
@@ -26,21 +24,21 @@ impl IsnGenerator {
     }
 
     #[cfg(test)]
-    pub fn generate(&mut self, _local: &Ipv4Endpoint, _remote: &Ipv4Endpoint) -> SeqNumber {
+    pub fn generate(&mut self, _local: &SocketAddrV4, _remote: &SocketAddrV4) -> SeqNumber {
         SeqNumber::from(0)
     }
 
     #[cfg(not(test))]
-    pub fn generate(&mut self, local: &Ipv4Endpoint, remote: &Ipv4Endpoint) -> SeqNumber {
+    pub fn generate(&mut self, local: &SocketAddrV4, remote: &SocketAddrV4) -> SeqNumber {
         let crc: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_CKSUM);
         let mut digest = crc.digest();
-        let remote_addr: u32 = remote.get_address().into();
+        let remote_addr: u32 = u32::from_be_bytes(remote.ip().octets());
         digest.update(&remote_addr.to_be_bytes());
-        let remote_port: u16 = remote.get_port().into();
+        let remote_port: u16 = remote.port().into();
         digest.update(&remote_port.to_be_bytes());
-        let local_addr: u32 = local.get_address().into();
+        let local_addr: u32 = u32::from_be_bytes(local.ip().octets());
         digest.update(&local_addr.to_be_bytes());
-        let local_port: u16 = local.get_port().into();
+        let local_port: u16 = local.port().into();
         digest.update(&local_port.to_be_bytes());
         digest.update(&self.nonce.to_be_bytes());
         let digest = digest.finalize();

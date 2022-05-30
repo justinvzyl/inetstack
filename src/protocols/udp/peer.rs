@@ -25,10 +25,7 @@ use crate::{
             Ethernet2Header,
         },
         ip::IpProtocol,
-        ipv4::{
-            Ipv4Endpoint,
-            Ipv4Header,
-        },
+        ipv4::Ipv4Header,
     },
 };
 use ::futures::FutureExt;
@@ -49,7 +46,10 @@ use ::runtime::{
     QDesc,
     Runtime,
 };
-use ::std::collections::HashMap;
+use ::std::{
+    collections::HashMap,
+    net::SocketAddrV4,
+};
 
 #[cfg(feature = "profiler")]
 use ::perftools::timer;
@@ -65,9 +65,9 @@ pub struct UdpPeer<RT: Runtime> {
     /// Underlying ARP peer.
     arp: ArpPeer<RT>,
     /// Opened sockets.
-    sockets: HashMap<QDesc, Option<Ipv4Endpoint>>,
+    sockets: HashMap<QDesc, Option<SocketAddrV4>>,
     /// Bound sockets.
-    bound: HashMap<Ipv4Endpoint, SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>>,
+    bound: HashMap<SocketAddrV4, SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>>,
     /// Queue of unset datagrams. This is shared across fast/slow paths.
     send_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>,
     /// Local link address.
@@ -131,7 +131,7 @@ impl<RT: Runtime> UdpPeer<RT> {
             // Grab next unsent datagram.
             match rx.pop().await {
                 // Resolve remote address.
-                Ok(SharedQueueSlot { local, remote, data }) => match arp.query(remote.unwrap().get_address()).await {
+                Ok(SharedQueueSlot { local, remote, data }) => match arp.query(remote.unwrap().ip().clone()).await {
                     // Send datagram.
                     Ok(link_addr) => {
                         Self::do_send(
@@ -163,7 +163,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         match self.sockets.contains_key(&qd) {
             // Que descriptor not used.
             false => {
-                let socket: Option<Ipv4Endpoint> = None;
+                let socket: Option<SocketAddrV4> = None;
                 self.sockets.insert(qd, socket);
                 Ok(())
             },
@@ -173,7 +173,7 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     /// Binds a UDP socket to a local endpoint address.
-    pub fn do_bind(&mut self, qd: QDesc, addr: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn do_bind(&mut self, qd: QDesc, addr: SocketAddrV4) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::bind");
 
@@ -206,7 +206,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         timer!("udp::close");
 
         // Lookup associated endpoint.
-        let socket: Option<Ipv4Endpoint> = match self.sockets.remove(&qd) {
+        let socket: Option<SocketAddrV4> = match self.sockets.remove(&qd) {
             Some(s) => s,
             None => return Err(Fail::new(EBADF, "invalid queue descriptor")),
         };
@@ -219,18 +219,18 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     /// Pushes data to a remote UDP peer.
-    pub fn do_pushto(&self, qd: QDesc, data: Box<dyn Buffer>, remote: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn do_pushto(&self, qd: QDesc, data: Box<dyn Buffer>, remote: SocketAddrV4) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::pushto");
 
         // Lookup associated endpoint.
-        let local: Option<Ipv4Endpoint> = match self.sockets.get(&qd) {
+        let local: Option<SocketAddrV4> = match self.sockets.get(&qd) {
             Some(s) if s.is_some() => *s,
             _ => return Err(Fail::new(EBADF, "invalid queue descriptor")),
         };
 
         // Fast path: try to send the datagram immediately.
-        if let Some(link_addr) = self.arp.try_query(remote.get_address()) {
+        if let Some(link_addr) = self.arp.try_query(remote.ip().clone()) {
             Self::do_send(
                 self.rt.clone(),
                 self.local_ipv4_addr,
@@ -278,8 +278,8 @@ impl<RT: Runtime> UdpPeer<RT> {
         let (hdr, data): (UdpHeader, Box<dyn Buffer>) = UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
         debug!("UDP received {:?}", hdr);
 
-        let local: Ipv4Endpoint = Ipv4Endpoint::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
-        let remote: Option<Ipv4Endpoint> = hdr.src_port().map(|p| Ipv4Endpoint::new(ipv4_hdr.get_src_addr(), p));
+        let local: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
+        let remote: Option<SocketAddrV4> = hdr.src_port().map(|p| SocketAddrV4::new(ipv4_hdr.get_src_addr(), p));
 
         // Lookup associated receiver-side shared queue.
         let recv_queue: &mut SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> = match self.bound.get_mut(&local) {
@@ -308,15 +308,15 @@ impl<RT: Runtime> UdpPeer<RT> {
         local_link_addr: MacAddress,
         remote_link_addr: MacAddress,
         buf: Box<dyn Buffer>,
-        local: Option<Ipv4Endpoint>,
-        remote: Ipv4Endpoint,
+        local: Option<SocketAddrV4>,
+        remote: SocketAddrV4,
         offload_checksum: bool,
     ) {
-        let udp_header: UdpHeader = UdpHeader::new(local.map(|l| l.get_port()), remote.get_port());
+        let udp_header: UdpHeader = UdpHeader::new(local.map(|l| l.port()), remote.port());
         debug!("UDP send {:?}", udp_header);
         let datagram = UdpDatagram::new(
             Ethernet2Header::new(remote_link_addr, local_link_addr, EtherType2::Ipv4),
-            Ipv4Header::new(local_ipv4_addr, remote.get_address(), IpProtocol::UDP),
+            Ipv4Header::new(local_ipv4_addr, remote.ip().clone(), IpProtocol::UDP),
             udp_header,
             buf,
             offload_checksum,
