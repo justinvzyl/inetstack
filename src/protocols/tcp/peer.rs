@@ -188,6 +188,9 @@ impl<RT: Runtime> TcpPeer<RT> {
             Some(Socket::Listening { local: _ }) => {
                 return Err(Fail::new(libc::EADDRINUSE, "socket is already listening"))
             },
+            Some(Socket::Inactive { local: None }) => {
+                return Err(Fail::new(libc::EDESTADDRREQ, "socket is not bound to a local address"))
+            },
             _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         };
 
