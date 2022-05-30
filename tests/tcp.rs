@@ -359,6 +359,15 @@ fn tcp_bad_listen() {
         _ => panic!("listen() multiple times should fail with EADDRINUSE"),
     };
     safe_close_passive(&mut libos, sockqd);
+
+    // Listen on unbound socket.
+    let sockqd: QDesc = safe_socket(&mut libos);
+    match libos.listen(sockqd, 16) {
+        Err(e) if e.errno == libc::EDESTADDRREQ => (),
+        Err(e) => panic!("listen() to unbound address should fail with EDESTADDRREQ {:?}", e),
+        _ => panic!("should fail"),
+    };
+    safe_close_passive(&mut libos, sockqd);
 }
 
 //======================================================================================================================
