@@ -5,10 +5,7 @@
 // Imports
 //==============================================================================
 
-use ::runtime::network::types::{
-    Ipv4Addr,
-    Port16,
-};
+use ::runtime::network::types::Ipv4Addr;
 
 //==============================================================================
 // Structures
@@ -20,7 +17,7 @@ pub struct Ipv4Endpoint {
     /// IPv4 address.
     addr: Ipv4Addr,
     /// Port number.
-    port: Port16,
+    port: u16,
 }
 
 //==============================================================================
@@ -30,7 +27,7 @@ pub struct Ipv4Endpoint {
 /// Associate functions.
 impl Ipv4Endpoint {
     /// Constructs a new [Ipv4Endpoint].
-    pub fn new(addr: Ipv4Addr, port: Port16) -> Ipv4Endpoint {
+    pub fn new(addr: Ipv4Addr, port: u16) -> Ipv4Endpoint {
         Ipv4Endpoint { addr, port }
     }
 
@@ -40,7 +37,7 @@ impl Ipv4Endpoint {
     }
 
     /// Returns the [ip::Port] associated to the target [Ipv4Endpoint].
-    pub fn get_port(&self) -> Port16 {
+    pub fn get_port(&self) -> u16 {
         self.port
     }
 }

@@ -20,12 +20,8 @@ use ::runtime::{
         Buffer,
         DataBuffer,
     },
-    network::types::Port16,
 };
-use ::std::convert::{
-    TryFrom,
-    TryInto,
-};
+use ::std::convert::TryInto;
 
 //==============================================================================
 // Constants
@@ -42,9 +38,9 @@ pub const UDP_HEADER_SIZE: usize = 8;
 #[derive(Debug)]
 pub struct UdpHeader {
     /// Port used on sender side (optional).
-    src_port: Option<Port16>,
+    src_port: Option<u16>,
     /// Port used receiver side.
-    dest_port: Port16,
+    dest_port: u16,
 }
 
 //==============================================================================
@@ -54,17 +50,17 @@ pub struct UdpHeader {
 /// Associate functions for UDP Datagram Headers
 impl UdpHeader {
     /// Creates a UDP header.
-    pub fn new(src_port: Option<Port16>, dest_port: Port16) -> Self {
+    pub fn new(src_port: Option<u16>, dest_port: u16) -> Self {
         Self { src_port, dest_port }
     }
 
     /// Returns the source port stored in the target UDP header.
-    pub fn src_port(&self) -> Option<Port16> {
+    pub fn src_port(&self) -> Option<u16> {
         self.src_port
     }
 
     /// Returns the destination port stored in the target UDP header.
-    pub fn dest_port(&self) -> Port16 {
+    pub fn dest_port(&self) -> u16 {
         self.dest_port
     }
 
@@ -86,8 +82,8 @@ impl UdpHeader {
 
         // Deserialize buffer.
         let hdr_buf: &[u8] = &buf[..UDP_HEADER_SIZE];
-        let src_port: Option<Port16> = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[0..2])).ok();
-        let dest_port: Port16 = Port16::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
+        let src_port: Option<u16> = Some(NetworkEndian::read_u16(&hdr_buf[0..2]));
+        let dest_port: u16 = NetworkEndian::read_u16(&hdr_buf[2..4]);
         let length: usize = NetworkEndian::read_u16(&hdr_buf[4..6]) as usize;
         if length != buf.len() {
             return Err(Fail::new(EBADMSG, "UDP length mismatch"));
@@ -212,7 +208,6 @@ impl UdpHeader {
 mod test {
     use super::*;
     use ::runtime::network::types::Ipv4Addr;
-    use ::std::num::NonZeroU16;
 
     /// Builds a fake Ipv4 Header.
     fn ipv4_header() -> Ipv4Header {
@@ -229,8 +224,8 @@ mod test {
         let ipv4_hdr: Ipv4Header = ipv4_header();
 
         // Build fake UDP header.
-        let src_port: Port16 = Port16::new(NonZeroU16::new(0x32).unwrap());
-        let dest_port: Port16 = Port16::new(NonZeroU16::new(0x45).unwrap());
+        let src_port: u16 = 0x32;
+        let dest_port: u16 = 0x45;
         let checksum_offload: bool = true;
         let udp_hdr: UdpHeader = UdpHeader::new(Some(src_port), dest_port);
 
@@ -252,9 +247,9 @@ mod test {
         let ipv4_hdr: Ipv4Header = ipv4_header();
 
         // Build fake UDP header.
-        let src_port: Port16 = Port16::new(NonZeroU16::new(0x32).unwrap());
+        let src_port: u16 = 0x32;
         let checksum_offload: bool = true;
-        let dest_port: Port16 = Port16::new(NonZeroU16::new(0x45).unwrap());
+        let dest_port: u16 = 0x45;
         let hdr: [u8; 8] = [0x0, 0x32, 0x0, 0x45, 0x0, 0x10, 0x0, 0x0];
 
         // Payload.

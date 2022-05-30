@@ -135,10 +135,8 @@ mod test {
         network::types::{
             Ipv4Addr,
             MacAddress,
-            Port16,
         },
     };
-    use ::std::num::NonZeroU16;
 
     #[test]
     fn test_udp_datagram_header_serialization() {
@@ -158,8 +156,8 @@ mod test {
         let ipv4_hdr: Ipv4Header = Ipv4Header::new(src_addr, dst_addr, protocol);
 
         // Build fake UDP header.
-        let src_port: Port16 = Port16::new(NonZeroU16::new(0x32).unwrap());
-        let dest_port: Port16 = Port16::new(NonZeroU16::new(0x45).unwrap());
+        let src_port: u16 = 0x32;
+        let dest_port: u16 = 0x45;
         let checksum_offload: bool = true;
         let udp_hdr: UdpHeader = UdpHeader::new(Some(src_port), dest_port);
 

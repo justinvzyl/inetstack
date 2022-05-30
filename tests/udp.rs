@@ -34,7 +34,6 @@ use ::runtime::{
         Buffer,
         DataBuffer,
     },
-    network::types::Port16,
     QDesc,
     QToken,
 };
@@ -57,7 +56,7 @@ fn udp_connect_remote() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let port: u16 = u16::try_from(PORT_BASE).unwrap();
     let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Open and close a connection.
@@ -72,7 +71,7 @@ fn udp_connect_loopback() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let port: u16 = u16::try_from(PORT_BASE).unwrap();
     let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
 
     // Open and close a connection.
@@ -92,9 +91,9 @@ fn udp_push_remote() {
     let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
-    let bob_port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let bob_port: u16 = u16::try_from(PORT_BASE).unwrap();
     let bob_addr: Ipv4Endpoint = Ipv4Endpoint::new(BOB_IPV4, bob_port);
-    let alice_port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let alice_port: u16 = u16::try_from(PORT_BASE).unwrap();
     let alice_addr: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, alice_port);
 
     let alice: JoinHandle<()> = thread::spawn(move || {
@@ -176,9 +175,9 @@ fn udp_loopback() {
     let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
-    let bob_port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let bob_port: u16 = u16::try_from(PORT_BASE).unwrap();
     let bob_addr: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, bob_port);
-    let alice_port: Port16 = Port16::try_from(PORT_BASE).unwrap();
+    let alice_port: u16 = u16::try_from(PORT_BASE).unwrap();
     let alice_addr: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, alice_port);
 
     let alice: JoinHandle<()> = thread::spawn(move || {
