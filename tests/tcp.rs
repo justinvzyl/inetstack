@@ -333,8 +333,7 @@ fn tcp_bad_listen() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port: Port16 = safe_try_port16(PORT_BASE);
-    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, safe_try_port16(PORT_BASE));
 
     // Invalid queue descriptor.
     match libos.listen(QDesc::from(0), 8) {
@@ -349,8 +348,6 @@ fn tcp_bad_listen() {
         Err(e) if e.errno == libc::EINVAL => (),
         _ => panic!("invalid call to listen() should fail with EINVAL"),
     };
-
-    // Close socket.
     safe_close_passive(&mut libos, sockqd);
 }
 
