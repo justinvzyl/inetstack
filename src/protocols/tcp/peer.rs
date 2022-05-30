@@ -191,6 +191,12 @@ impl<RT: Runtime> TcpPeer<RT> {
             Some(Socket::Inactive { local: None }) => {
                 return Err(Fail::new(libc::EDESTADDRREQ, "socket is not bound to a local address"))
             },
+            Some(Socket::Connecting { local: _, remote: _ }) => {
+                return Err(Fail::new(libc::EINVAL, "socket is connecting"))
+            },
+            Some(Socket::Established { local: _, remote: _ }) => {
+                return Err(Fail::new(libc::EINVAL, "socket is connected"))
+            },
             _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         };
 
