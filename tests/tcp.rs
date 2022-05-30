@@ -349,6 +349,16 @@ fn tcp_bad_listen() {
         _ => panic!("invalid call to listen() should fail with EINVAL"),
     };
     safe_close_passive(&mut libos, sockqd);
+
+    // Listen multiple times same address/part pair.
+    let sockqd: QDesc = safe_socket(&mut libos);
+    safe_bind(&mut libos, sockqd, local);
+    safe_listen(&mut libos, sockqd);
+    match libos.listen(sockqd, 16) {
+        Err(e) if e.errno == libc::EADDRINUSE => (),
+        _ => panic!("listen() multiple times should fail with EADDRINUSE"),
+    };
+    safe_close_passive(&mut libos, sockqd);
 }
 
 //======================================================================================================================
