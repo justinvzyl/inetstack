@@ -29,7 +29,6 @@ use ::std::{
 use ::runtime::QDesc;
 
 pub struct Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
-    rt: RT,
     local_ipv4_addr: Ipv4Addr,
     icmpv4: Icmpv4Peer<RT>,
     pub tcp: TcpPeer<RT>,
@@ -57,7 +56,6 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
         let tcp: TcpPeer<RT> = TcpPeer::new(rt.clone(), local_link_addr, local_ipv4_addr, arp, rng_seed);
 
         Peer {
-            rt,
             local_ipv4_addr,
             icmpv4,
             tcp,
