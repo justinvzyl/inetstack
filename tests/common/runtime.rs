@@ -16,7 +16,6 @@ use ::runtime::{
         config::{
             ArpConfig,
             TcpConfig,
-            UdpConfig,
         },
         consts::RECEIVE_BATCH_SIZE,
         types::{
@@ -134,10 +133,6 @@ impl NetworkRuntime for DummyRuntime {
 
     fn tcp_options(&self) -> TcpConfig {
         self.tcp_options.clone()
-    }
-
-    fn udp_options(&self) -> UdpConfig {
-        UdpConfig::default()
     }
 }
 

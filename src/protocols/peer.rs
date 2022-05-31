@@ -14,6 +14,7 @@ use ::runtime::{
     fail::Fail,
     memory::Buffer,
     network::{
+        config::UdpConfig,
         types::MacAddress,
         NetworkRuntime,
     },
@@ -42,8 +43,9 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         rng_seed: [u8; 32],
+        udp_options: UdpConfig,
     ) -> Peer<RT> {
-        let udp_offload_checksum: bool = rt.udp_options().get_tx_checksum_offload();
+        let udp_offload_checksum: bool = udp_options.get_tx_checksum_offload();
         let udp: UdpPeer<RT> = UdpPeer::new(
             rt.clone(),
             local_link_addr,

@@ -45,7 +45,10 @@ use ::runtime::{
         DataBuffer,
     },
     network::{
-        config::ArpConfig,
+        config::{
+            ArpConfig,
+            UdpConfig,
+        },
         types::MacAddress,
         NetworkRuntime,
     },
@@ -107,12 +110,20 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp_options: ArpConfig,
+        udp_options: UdpConfig,
     ) -> Result<Self, Fail> {
         let now: Instant = rt.now();
         let file_table: IoQueueTable = IoQueueTable::new();
         let rng_seed: [u8; 32] = [0; 32];
         let arp: ArpPeer<RT> = ArpPeer::new(now, rt.clone(), local_link_addr, local_ipv4_addr, arp_options)?;
-        let ipv4: Peer<RT> = Peer::new(rt.clone(), arp.clone(), local_link_addr, local_ipv4_addr, rng_seed);
+        let ipv4: Peer<RT> = Peer::new(
+            rt.clone(),
+            arp.clone(),
+            local_link_addr,
+            local_ipv4_addr,
+            rng_seed,
+            udp_options,
+        );
         Ok(Self {
             arp,
             ipv4,

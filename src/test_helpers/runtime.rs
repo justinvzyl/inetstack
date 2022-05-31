@@ -158,10 +158,6 @@ impl NetworkRuntime for TestRuntime {
     fn tcp_options(&self) -> TcpConfig {
         self.tcp_options.clone()
     }
-
-    fn udp_options(&self) -> UdpConfig {
-        self.udp_options.clone()
-    }
 }
 
 impl SchedulerRuntime for TestRuntime {
