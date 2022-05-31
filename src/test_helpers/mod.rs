@@ -56,8 +56,15 @@ pub fn new_alice(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
-    let rt = TestRuntime::new(now, arp_options, udp_options, tcp_options, ALICE_MAC, ALICE_IPV4);
-    Engine::new(rt, ALICE_MAC, ALICE_IPV4).unwrap()
+    let rt = TestRuntime::new(
+        now,
+        arp_options.clone(),
+        udp_options,
+        tcp_options,
+        ALICE_MAC,
+        ALICE_IPV4,
+    );
+    Engine::new(rt, ALICE_MAC, ALICE_IPV4, arp_options).unwrap()
 }
 
 pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
@@ -70,8 +77,8 @@ pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
-    let rt = TestRuntime::new(now, arp_options, udp_options, tcp_options, BOB_MAC, BOB_IPV4);
-    Engine::new(rt, BOB_MAC, BOB_IPV4).unwrap()
+    let rt = TestRuntime::new(now, arp_options.clone(), udp_options, tcp_options, BOB_MAC, BOB_IPV4);
+    Engine::new(rt, BOB_MAC, BOB_IPV4, arp_options).unwrap()
 }
 
 pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
@@ -87,8 +94,15 @@ pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
-    let rt = TestRuntime::new(now, arp_options, udp_options, tcp_options, ALICE_MAC, ALICE_IPV4);
-    Engine::new(rt, ALICE_MAC, ALICE_IPV4).unwrap()
+    let rt = TestRuntime::new(
+        now,
+        arp_options.clone(),
+        udp_options,
+        tcp_options,
+        ALICE_MAC,
+        ALICE_IPV4,
+    );
+    Engine::new(rt, ALICE_MAC, ALICE_IPV4, arp_options).unwrap()
 }
 
 pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
@@ -104,8 +118,8 @@ pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
-    let rt = TestRuntime::new(now, arp_options, udp_options, tcp_options, BOB_MAC, BOB_IPV4);
-    Engine::new(rt, BOB_MAC, BOB_IPV4).unwrap()
+    let rt = TestRuntime::new(now, arp_options.clone(), udp_options, tcp_options, BOB_MAC, BOB_IPV4);
+    Engine::new(rt, BOB_MAC, BOB_IPV4, arp_options).unwrap()
 }
 
 pub fn new_carrie(now: Instant) -> Engine<TestRuntime> {
@@ -119,6 +133,13 @@ pub fn new_carrie(now: Instant) -> Engine<TestRuntime> {
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
 
-    let rt = TestRuntime::new(now, arp_options, udp_options, tcp_options, CARRIE_MAC, CARRIE_IPV4);
-    Engine::new(rt, CARRIE_MAC, CARRIE_IPV4).unwrap()
+    let rt = TestRuntime::new(
+        now,
+        arp_options.clone(),
+        udp_options,
+        tcp_options,
+        CARRIE_MAC,
+        CARRIE_IPV4,
+    );
+    Engine::new(rt, CARRIE_MAC, CARRIE_IPV4, arp_options).unwrap()
 }

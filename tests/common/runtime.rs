@@ -40,7 +40,6 @@ use ::runtime::{
 };
 use ::std::{
     cell::RefCell,
-    collections::HashMap,
     rc::Rc,
     time::{
         Duration,
@@ -88,16 +87,8 @@ impl DummyRuntime {
         ipv4_addr: Ipv4Addr,
         incoming: crossbeam_channel::Receiver<DataBuffer>,
         outgoing: crossbeam_channel::Sender<DataBuffer>,
-        arp: HashMap<Ipv4Addr, MacAddress>,
+        arp_options: ArpConfig,
     ) -> Self {
-        let arp_options: ArpConfig = ArpConfig::new(
-            Some(Duration::from_secs(600)),
-            Some(Duration::from_secs(1)),
-            Some(2),
-            Some(arp),
-            Some(false),
-        );
-
         let inner = SharedDummyRuntime {
             timer: TimerRc(Rc::new(Timer::new(now))),
             incoming,
@@ -147,10 +138,6 @@ impl NetworkRuntime for DummyRuntime {
 
     fn udp_options(&self) -> UdpConfig {
         UdpConfig::default()
-    }
-
-    fn arp_options(&self) -> ArpConfig {
-        self.arp_options.clone()
     }
 }
 

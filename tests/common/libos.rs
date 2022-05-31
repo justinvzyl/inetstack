@@ -17,12 +17,18 @@ use ::runtime::{
         Buffer,
         DataBuffer,
     },
-    network::types::MacAddress,
+    network::{
+        config::ArpConfig,
+        types::MacAddress,
+    },
 };
 use ::std::{
     collections::HashMap,
     net::Ipv4Addr,
-    time::Instant,
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 //==============================================================================
@@ -45,9 +51,16 @@ impl DummyLibOS {
         arp: HashMap<Ipv4Addr, MacAddress>,
     ) -> InetStack<DummyRuntime> {
         let now: Instant = Instant::now();
-        let rt: DummyRuntime = DummyRuntime::new(now, link_addr, ipv4_addr, rx, tx, arp);
+        let arp_options: ArpConfig = ArpConfig::new(
+            Some(Duration::from_secs(600)),
+            Some(Duration::from_secs(1)),
+            Some(2),
+            Some(arp),
+            Some(false),
+        );
+        let rt: DummyRuntime = DummyRuntime::new(now, link_addr, ipv4_addr, rx, tx, arp_options.clone());
         logging::initialize();
-        InetStack::new(rt, link_addr, ipv4_addr).unwrap()
+        InetStack::new(rt, link_addr, ipv4_addr, arp_options).unwrap()
     }
 
     /// Cooks a buffer.

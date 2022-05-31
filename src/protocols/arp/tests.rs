@@ -25,8 +25,8 @@ use ::libc::{
 };
 use ::runtime::{
     network::{
+        config::ArpConfig,
         types::MacAddress,
-        NetworkRuntime,
     },
     task::SchedulerRuntime,
 };
@@ -48,7 +48,7 @@ fn immediate_reply() {
     let mut bob = test_helpers::new_bob(now);
     let mut carrie = test_helpers::new_carrie(now);
 
-    let options = alice.rt().arp_options();
+    let options: ArpConfig = alice.arp_options.clone();
     assert_eq!(options.get_request_timeout(), Duration::from_secs(1));
 
     let mut ctx = Context::from_waker(noop_waker_ref());
@@ -101,7 +101,7 @@ fn slow_reply() {
     let mut carrie = test_helpers::new_carrie(now);
 
     // this test is written based on certain assumptions.
-    let options = alice.rt().arp_options();
+    let options: ArpConfig = alice.arp_options.clone();
     assert!(options.get_retry_count() > 0);
     assert_eq!(options.get_request_timeout(), Duration::from_secs(1));
 
@@ -152,7 +152,7 @@ fn no_reply() {
     // tests to ensure that an are request results in a reply.
     let mut now = Instant::now();
     let mut alice = test_helpers::new_alice(now);
-    let options = alice.rt().arp_options();
+    let options: ArpConfig = alice.arp_options.clone();
 
     assert_eq!(options.get_retry_count(), 2);
     assert_eq!(options.get_request_timeout(), Duration::from_secs(1));

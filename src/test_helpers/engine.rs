@@ -21,6 +21,7 @@ use ::runtime::{
     fail::Fail,
     memory::Buffer,
     network::{
+        config::ArpConfig,
         types::MacAddress,
         NetworkRuntime,
     },
@@ -42,20 +43,27 @@ use ::std::{
 pub struct Engine<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     rt: RT,
     local_link_addr: MacAddress,
+    pub arp_options: ArpConfig,
     pub arp: ArpPeer<RT>,
     pub ipv4: Peer<RT>,
     pub file_table: IoQueueTable,
 }
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
-    pub fn new(rt: RT, local_link_addr: MacAddress, local_ipv4_addr: Ipv4Addr) -> Result<Self, Fail> {
+    pub fn new(
+        rt: RT,
+        local_link_addr: MacAddress,
+        local_ipv4_addr: Ipv4Addr,
+        arp_options: ArpConfig,
+    ) -> Result<Self, Fail> {
         let now = rt.now();
         let file_table = IoQueueTable::new();
-        let arp = ArpPeer::new(now, rt.clone(), local_link_addr, local_ipv4_addr, rt.arp_options())?;
+        let arp = ArpPeer::new(now, rt.clone(), local_link_addr, local_ipv4_addr, arp_options.clone())?;
         let rng_seed: [u8; 32] = [0; 32];
         let ipv4 = Peer::new(rt.clone(), arp.clone(), local_link_addr, local_ipv4_addr, rng_seed);
         Ok(Engine {
             rt,
+            arp_options,
             local_link_addr,
             arp,
             ipv4,

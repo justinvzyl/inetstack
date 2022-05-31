@@ -162,10 +162,6 @@ impl NetworkRuntime for TestRuntime {
     fn udp_options(&self) -> UdpConfig {
         self.udp_options.clone()
     }
-
-    fn arp_options(&self) -> ArpConfig {
-        self.arp_options.clone()
-    }
 }
 
 impl SchedulerRuntime for TestRuntime {
