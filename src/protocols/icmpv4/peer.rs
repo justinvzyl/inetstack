@@ -105,6 +105,8 @@ pub struct Icmpv4Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     /// Underlying Runtime
     rt: RT,
 
+    local_link_addr: MacAddress,
+
     local_ipv4_addr: Ipv4Addr,
 
     /// Underlying ARP Peer
@@ -127,14 +129,21 @@ pub struct Icmpv4Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
     /// Creates a new peer for handling ICMP.
-    pub fn new(rt: RT, local_ipv4_addr: Ipv4Addr, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Icmpv4Peer<RT> {
+    pub fn new(
+        rt: RT,
+        local_link_addr: MacAddress,
+        local_ipv4_addr: Ipv4Addr,
+        arp: ArpPeer<RT>,
+        rng_seed: [u8; 32],
+    ) -> Icmpv4Peer<RT> {
         let (tx, rx) = mpsc::unbounded();
         let requests = ReqQueue::new();
         let rng: Rc<RefCell<SmallRng>> = Rc::new(RefCell::new(SmallRng::from_seed(rng_seed)));
-        let future = Self::background(rt.clone(), local_ipv4_addr, arp.clone(), rx);
+        let future = Self::background(rt.clone(), local_ipv4_addr, local_link_addr, arp.clone(), rx);
         let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         Icmpv4Peer {
             rt,
+            local_link_addr,
             local_ipv4_addr,
             arp,
             tx,
@@ -149,6 +158,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
     async fn background(
         rt: RT,
         local_ipv4_addr: Ipv4Addr,
+        local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
         mut rx: mpsc::UnboundedReceiver<(Ipv4Addr, u16, u16)>,
     ) {
@@ -166,7 +176,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
             debug!("reply ping ({}, {}, {})", dst_ipv4_addr, id, seq_num);
             // Send reply message.
             rt.transmit(Icmpv4Message::new(
-                Ethernet2Header::new(dst_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
+                Ethernet2Header::new(dst_link_addr, local_link_addr, EtherType2::Ipv4),
                 Ipv4Header::new(local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4),
                 Icmpv4Header::new(Icmpv4Type2::EchoReply { id, seq_num }, 0),
             ));
@@ -235,6 +245,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
         let echo_request = Icmpv4Type2::EchoRequest { id, seq_num };
         let arp = self.arp.clone();
         let local_ipv4_addr: Ipv4Addr = self.local_ipv4_addr;
+        let local_link_addr: MacAddress = self.local_link_addr;
         let rt = self.rt.clone();
         let requests = self.requests.clone();
         async move {
@@ -244,7 +255,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
             debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
 
             let msg = Icmpv4Message::new(
-                Ethernet2Header::new(dst_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
+                Ethernet2Header::new(dst_link_addr, local_link_addr, EtherType2::Ipv4),
                 Ipv4Header::new(local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4),
                 Icmpv4Header::new(echo_request, 0),
             );

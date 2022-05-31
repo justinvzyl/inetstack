@@ -60,7 +60,10 @@ use ::runtime::{
         Buffer,
         DataBuffer,
     },
-    network::NetworkRuntime,
+    network::{
+        types::MacAddress,
+        NetworkRuntime,
+    },
     task::SchedulerRuntime,
     QDesc,
 };
@@ -114,6 +117,7 @@ pub struct Inner<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 
     rt: RT,
     local_ipv4_addr: Ipv4Addr,
+    local_link_addr: MacAddress,
     arp: ArpPeer<RT>,
     rng: Rc<RefCell<SmallRng>>,
 
@@ -129,10 +133,17 @@ pub struct TcpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 //==============================================================================
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
-    pub fn new(rt: RT, local_ipv4_addr: Ipv4Addr, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Self {
+    pub fn new(
+        rt: RT,
+        local_link_addr: MacAddress,
+        local_ipv4_addr: Ipv4Addr,
+        arp: ArpPeer<RT>,
+        rng_seed: [u8; 32],
+    ) -> Self {
         let (tx, rx) = mpsc::unbounded();
         let inner = Rc::new(RefCell::new(Inner::new(
             rt.clone(),
+            local_link_addr,
             local_ipv4_addr,
             arp,
             rng_seed,
@@ -223,7 +234,14 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         }
 
         let nonce: u32 = inner.rng.borrow_mut().gen();
-        let socket = PassiveSocket::new(local, backlog, inner.rt.clone(), inner.arp.clone(), nonce);
+        let socket = PassiveSocket::new(
+            local,
+            backlog,
+            inner.rt.clone(),
+            inner.local_link_addr,
+            inner.arp.clone(),
+            nonce,
+        );
         assert!(inner.passive.insert(local, socket).is_none());
         inner.sockets.insert(qd, Socket::Listening { local });
         Ok(())
@@ -290,7 +308,14 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
 
             let local_isn = inner.isn_generator.generate(&local, &remote);
             let key = (local, remote);
-            let socket = ActiveOpenSocket::new(local_isn, local, remote, inner.rt.clone(), inner.arp.clone());
+            let socket = ActiveOpenSocket::new(
+                local_isn,
+                local,
+                remote,
+                inner.rt.clone(),
+                inner.local_link_addr,
+                inner.arp.clone(),
+            );
             assert!(inner.connecting.insert(key, socket).is_none());
             fd
         };
@@ -411,6 +436,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
     fn new(
         rt: RT,
+        local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp: ArpPeer<RT>,
         rng_seed: [u8; 32],
@@ -428,6 +454,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
             connecting: HashMap::new(),
             established: HashMap::new(),
             rt,
+            local_link_addr,
             local_ipv4_addr,
             arp,
             rng: Rc::new(RefCell::new(rng)),
@@ -480,7 +507,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
         tcp_hdr.rst = true;
 
         let segment = TcpSegment {
-            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
+            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
             ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr,
             data: Box::new(DataBuffer::empty()),

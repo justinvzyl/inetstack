@@ -44,7 +44,10 @@ use ::runtime::{
         Buffer,
         DataBuffer,
     },
-    network::NetworkRuntime,
+    network::{
+        types::MacAddress,
+        NetworkRuntime,
+    },
     queue::IoQueueTable,
     scheduler::{
         FutureResult,
@@ -93,21 +96,23 @@ pub struct InetStack<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     ipv4: Peer<RT>,
     file_table: IoQueueTable,
     rt: RT,
+    local_link_addr: MacAddress,
     ts_iters: usize,
 }
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
-    pub fn new(rt: RT, local_ipv4_addr: Ipv4Addr) -> Result<Self, Fail> {
+    pub fn new(rt: RT, local_link_addr: MacAddress, local_ipv4_addr: Ipv4Addr) -> Result<Self, Fail> {
         let now: Instant = rt.now();
         let file_table: IoQueueTable = IoQueueTable::new();
         let rng_seed: [u8; 32] = [0; 32];
-        let arp: ArpPeer<RT> = ArpPeer::new(now, rt.clone(), local_ipv4_addr, rt.arp_options())?;
-        let ipv4: Peer<RT> = Peer::new(rt.clone(), arp.clone(), local_ipv4_addr, rng_seed);
+        let arp: ArpPeer<RT> = ArpPeer::new(now, rt.clone(), local_link_addr, local_ipv4_addr, rt.arp_options())?;
+        let ipv4: Peer<RT> = Peer::new(rt.clone(), arp.clone(), local_link_addr, local_ipv4_addr, rng_seed);
         Ok(Self {
             arp,
             ipv4,
             file_table,
             rt,
+            local_link_addr,
             ts_iters: 0,
         })
     }
@@ -516,7 +521,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
         timer!("inetstack::engine::receive");
         let (header, payload) = Ethernet2Header::parse(bytes)?;
         debug!("Engine received {:?}", header);
-        if self.rt.local_link_addr() != header.dst_addr() && !header.dst_addr().is_broadcast() {
+        if self.local_link_addr != header.dst_addr() && !header.dst_addr().is_broadcast() {
             // ToDo: Add support for is_multicast() to MacAddress type.  Then remove following trace and restore return.
             trace!("Need to add && !header.dst_addr().is_multicast()");
             //return Err(Fail::new(EINVAL, "physical destination address mismatch"));

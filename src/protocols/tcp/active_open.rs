@@ -37,7 +37,10 @@ use ::libc::{
 use ::runtime::{
     fail::Fail,
     memory::DataBuffer,
-    network::NetworkRuntime,
+    network::{
+        types::MacAddress,
+        NetworkRuntime,
+    },
     scheduler::SchedulerHandle,
     task::SchedulerRuntime,
 };
@@ -66,6 +69,7 @@ pub struct ActiveOpenSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'sta
     remote: SocketAddrV4,
 
     rt: RT,
+    local_link_addr: MacAddress,
     arp: ArpPeer<RT>,
 
     #[allow(unused)]
@@ -74,14 +78,29 @@ pub struct ActiveOpenSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'sta
 }
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
-    pub fn new(local_isn: SeqNumber, local: SocketAddrV4, remote: SocketAddrV4, rt: RT, arp: ArpPeer<RT>) -> Self {
+    pub fn new(
+        local_isn: SeqNumber,
+        local: SocketAddrV4,
+        remote: SocketAddrV4,
+        rt: RT,
+        local_link_addr: MacAddress,
+        arp: ArpPeer<RT>,
+    ) -> Self {
         let result = ConnectResult {
             waker: None,
             result: None,
         };
         let result = Rc::new(RefCell::new(result));
 
-        let future = Self::background(local_isn, local, remote, rt.clone(), arp.clone(), result.clone());
+        let future = Self::background(
+            local_isn,
+            local,
+            remote,
+            rt.clone(),
+            local_link_addr,
+            arp.clone(),
+            result.clone(),
+        );
         let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
 
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
@@ -90,6 +109,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             local,
             remote,
             rt,
+            local_link_addr,
             arp,
 
             handle,
@@ -154,7 +174,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
         debug!("Sending ACK: {:?}", tcp_hdr);
 
         let segment = TcpSegment {
-            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
+            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
             ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr,
             data: Box::new(DataBuffer::empty()),
@@ -208,6 +228,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             self.local,
             self.remote,
             self.rt.clone(),
+            self.local_link_addr,
             self.arp.clone(),
             remote_seq_num,
             self.rt.tcp_options().get_ack_delay_timeout(),
@@ -228,6 +249,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
         result: Rc<RefCell<ConnectResult<RT>>>,
     ) -> impl Future<Output = ()> {
@@ -259,7 +281,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
 
                 debug!("Sending SYN {:?}", tcp_hdr);
                 let segment = TcpSegment {
-                    ethernet2_hdr: Ethernet2Header::new(remote_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
+                    ethernet2_hdr: Ethernet2Header::new(remote_link_addr, local_link_addr, EtherType2::Ipv4),
                     ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
                     tcp_hdr,
                     data: Box::new(DataBuffer::empty()),

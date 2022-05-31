@@ -149,6 +149,8 @@ pub struct ControlBlock<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>
 
     rt: Rc<RT>,
 
+    local_link_addr: MacAddress,
+
     // ToDo: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
     // this along with other remote IP information (such as routing, path MTU, etc).
     arp: Rc<ArpPeer<RT>>,
@@ -211,6 +213,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
@@ -228,6 +231,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
             local,
             remote,
             rt: Rc::new(rt),
+            local_link_addr,
             arp: Rc::new(arp),
             sender: sender,
             state: Cell::new(State::Established),
@@ -816,7 +820,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         // Prepare description of TCP segment to send.
         // ToDo: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
         let segment = TcpSegment {
-            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
+            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
             ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr: header,
             data,

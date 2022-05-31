@@ -39,7 +39,10 @@ use ::libc::{
 use ::runtime::{
     fail::Fail,
     memory::DataBuffer,
-    network::NetworkRuntime,
+    network::{
+        types::MacAddress,
+        NetworkRuntime,
+    },
     scheduler::SchedulerHandle,
     task::SchedulerRuntime,
 };
@@ -122,12 +125,20 @@ pub struct PassiveSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static
     isn_generator: IsnGenerator,
 
     local: SocketAddrV4,
+    local_link_addr: MacAddress,
     rt: RT,
     arp: ArpPeer<RT>,
 }
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
-    pub fn new(local: SocketAddrV4, max_backlog: usize, rt: RT, arp: ArpPeer<RT>, nonce: u32) -> Self {
+    pub fn new(
+        local: SocketAddrV4,
+        max_backlog: usize,
+        rt: RT,
+        local_link_addr: MacAddress,
+        arp: ArpPeer<RT>,
+        nonce: u32,
+    ) -> Self {
         let ready = ReadySockets {
             ready: VecDeque::new(),
             endpoints: HashSet::new(),
@@ -141,6 +152,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
             isn_generator: IsnGenerator::new(nonce),
             local,
             rt,
+            local_link_addr,
             arp,
         }
     }
@@ -202,6 +214,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
                 self.local,
                 remote,
                 self.rt.clone(),
+                self.local_link_addr,
                 self.arp.clone(),
                 remote_isn + SeqNumber::from(1),
                 self.rt.tcp_options().get_ack_delay_timeout(),
@@ -235,6 +248,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
             self.local,
             remote,
             self.rt.clone(),
+            self.local_link_addr,
             self.arp.clone(),
             self.ready.clone(),
         );
@@ -273,6 +287,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
         ready: Rc<RefCell<ReadySockets<RT>>>,
     ) -> impl Future<Output = ()> {
@@ -305,7 +320,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
 
                 debug!("Sending SYN+ACK: {:?}", tcp_hdr);
                 let segment = TcpSegment {
-                    ethernet2_hdr: Ethernet2Header::new(remote_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
+                    ethernet2_hdr: Ethernet2Header::new(remote_link_addr, local_link_addr, EtherType2::Ipv4),
                     ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
                     tcp_hdr,
                     data: Box::new(DataBuffer::empty()),

@@ -50,10 +50,11 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
     pub fn new(rt: RT) -> Result<Self, Fail> {
         let now = rt.now();
         let file_table = IoQueueTable::new();
+        let local_link_addr: MacAddress = rt.local_link_addr();
         let local_ipv4_addr: Ipv4Addr = rt.local_ipv4_addr();
-        let arp = ArpPeer::new(now, rt.clone(), local_ipv4_addr, rt.arp_options())?;
+        let arp = ArpPeer::new(now, rt.clone(), local_link_addr, local_ipv4_addr, rt.arp_options())?;
         let rng_seed: [u8; 32] = [0; 32];
-        let ipv4 = Peer::new(rt.clone(), arp.clone(), local_ipv4_addr, rng_seed);
+        let ipv4 = Peer::new(rt.clone(), arp.clone(), local_link_addr, local_ipv4_addr, rng_seed);
         Ok(Engine {
             rt,
             arp,

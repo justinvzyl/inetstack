@@ -64,6 +64,7 @@ use ::std::{
 #[derive(Clone)]
 pub struct ArpPeer<RT: NetworkRuntime> {
     rt: RT,
+    local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     cache: Rc<RefCell<ArpCache>>,
     #[allow(unused)]
@@ -77,7 +78,13 @@ pub struct ArpPeer<RT: NetworkRuntime> {
 //==============================================================================
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
-    pub fn new(now: Instant, rt: RT, local_ipv4_addr: Ipv4Addr, options: ArpConfig) -> Result<ArpPeer<RT>, Fail> {
+    pub fn new(
+        now: Instant,
+        rt: RT,
+        local_link_addr: MacAddress,
+        local_ipv4_addr: Ipv4Addr,
+        options: ArpConfig,
+    ) -> Result<ArpPeer<RT>, Fail> {
         let cache = Rc::new(RefCell::new(ArpCache::new(
             now,
             Some(options.get_cache_ttl()),
@@ -89,6 +96,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
         let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         let peer = ArpPeer {
             rt,
+            local_link_addr,
             local_ipv4_addr,
             cache,
             background: Rc::new(handle),
@@ -186,14 +194,10 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
                 // > Swap hardware and protocol fields, putting the local
                 // > hardware and protocol addresses in the sender fields.
                 let reply = ArpMessage::new(
-                    Ethernet2Header::new(
-                        header.get_sender_hardware_addr(),
-                        self.rt.local_link_addr(),
-                        EtherType2::Arp,
-                    ),
+                    Ethernet2Header::new(header.get_sender_hardware_addr(), self.local_link_addr, EtherType2::Arp),
                     ArpHeader::new(
                         ArpOperation::Reply,
-                        self.rt.local_link_addr(),
+                        self.local_link_addr,
                         self.local_ipv4_addr,
                         header.get_sender_hardware_addr(),
                         header.get_sender_protocol_addr(),
@@ -227,15 +231,16 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
         let cache = self.cache.clone();
         let arp_options = self.options.clone();
         let local_ipv4_addr: Ipv4Addr = self.local_ipv4_addr;
+        let local_link_addr: MacAddress = self.local_link_addr;
         async move {
             if let Some(&link_addr) = cache.borrow().get(ipv4_addr) {
                 return Ok(link_addr);
             }
             let msg = ArpMessage::new(
-                Ethernet2Header::new(MacAddress::broadcast(), rt.local_link_addr(), EtherType2::Arp),
+                Ethernet2Header::new(MacAddress::broadcast(), local_link_addr, EtherType2::Arp),
                 ArpHeader::new(
                     ArpOperation::Request,
-                    rt.local_link_addr(),
+                    local_link_addr,
                     local_ipv4_addr,
                     MacAddress::broadcast(),
                     ipv4_addr,
