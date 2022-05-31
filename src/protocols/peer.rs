@@ -30,15 +30,15 @@ use ::runtime::QDesc;
 
 pub struct Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     rt: RT,
+    local_ipv4_addr: Ipv4Addr,
     icmpv4: Icmpv4Peer<RT>,
     pub tcp: TcpPeer<RT>,
     pub udp: UdpPeer<RT>,
 }
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
-    pub fn new(rt: RT, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Peer<RT> {
+    pub fn new(rt: RT, arp: ArpPeer<RT>, local_ipv4_addr: Ipv4Addr, rng_seed: [u8; 32]) -> Peer<RT> {
         let local_link_addr: MacAddress = rt.local_link_addr();
-        let local_ipv4_addr: Ipv4Addr = rt.local_ipv4_addr();
         let udp_offload_checksum: bool = rt.udp_options().get_tx_checksum_offload();
         let udp: UdpPeer<RT> = UdpPeer::new(
             rt.clone(),
@@ -47,16 +47,22 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
             udp_offload_checksum,
             arp.clone(),
         );
-        let icmpv4: Icmpv4Peer<RT> = Icmpv4Peer::new(rt.clone(), arp.clone(), rng_seed);
-        let tcp: TcpPeer<RT> = TcpPeer::new(rt.clone(), arp, rng_seed);
+        let icmpv4: Icmpv4Peer<RT> = Icmpv4Peer::new(rt.clone(), local_ipv4_addr, arp.clone(), rng_seed);
+        let tcp: TcpPeer<RT> = TcpPeer::new(rt.clone(), local_ipv4_addr, arp, rng_seed);
 
-        Peer { rt, icmpv4, tcp, udp }
+        Peer {
+            rt,
+            local_ipv4_addr,
+            icmpv4,
+            tcp,
+            udp,
+        }
     }
 
     pub fn receive(&mut self, buf: Box<dyn Buffer>) -> Result<(), Fail> {
         let (header, payload) = Ipv4Header::parse(buf)?;
         debug!("Ipv4 received {:?}", header);
-        if header.get_dest_addr() != self.rt.local_ipv4_addr() && !header.get_dest_addr().is_broadcast() {
+        if header.get_dest_addr() != self.local_ipv4_addr && !header.get_dest_addr().is_broadcast() {
             return Err(Fail::new(ENOTCONN, "invalid destination address"));
         }
         match header.get_protocol() {

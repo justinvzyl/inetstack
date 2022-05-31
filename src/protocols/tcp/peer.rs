@@ -70,7 +70,10 @@ use ::std::{
         RefMut,
     },
     collections::HashMap,
-    net::SocketAddrV4,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     rc::Rc,
     task::{
         Context,
@@ -110,6 +113,7 @@ pub struct Inner<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     established: HashMap<(SocketAddrV4, SocketAddrV4), EstablishedSocket<RT>>,
 
     rt: RT,
+    local_ipv4_addr: Ipv4Addr,
     arp: ArpPeer<RT>,
     rng: Rc<RefCell<SmallRng>>,
 
@@ -125,9 +129,16 @@ pub struct TcpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 //==============================================================================
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
-    pub fn new(rt: RT, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Self {
+    pub fn new(rt: RT, local_ipv4_addr: Ipv4Addr, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Self {
         let (tx, rx) = mpsc::unbounded();
-        let inner = Rc::new(RefCell::new(Inner::new(rt.clone(), arp, rng_seed, tx, rx)));
+        let inner = Rc::new(RefCell::new(Inner::new(
+            rt.clone(),
+            local_ipv4_addr,
+            arp,
+            rng_seed,
+            tx,
+            rx,
+        )));
         Self { inner }
     }
 
@@ -272,7 +283,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
 
             // TODO: We need to free these!
             let local_port = inner.ephemeral_ports.alloc()?;
-            let local = SocketAddrV4::new(inner.rt.local_ipv4_addr(), local_port);
+            let local = SocketAddrV4::new(inner.local_ipv4_addr, local_port);
 
             let socket = Socket::Connecting { local, remote };
             inner.sockets.insert(fd, socket);
@@ -400,6 +411,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
     fn new(
         rt: RT,
+        local_ipv4_addr: Ipv4Addr,
         arp: ArpPeer<RT>,
         rng_seed: [u8; 32],
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
@@ -416,6 +428,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
             connecting: HashMap::new(),
             established: HashMap::new(),
             rt,
+            local_ipv4_addr,
             arp,
             rng: Rc::new(RefCell::new(rng)),
             dead_socket_tx,

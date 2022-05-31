@@ -58,7 +58,10 @@ use ::runtime::{
 use ::std::{
     any::Any,
     convert::TryFrom,
-    net::SocketAddrV4,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     time::Instant,
 };
 
@@ -94,12 +97,12 @@ pub struct InetStack<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 }
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
-    pub fn new(rt: RT) -> Result<Self, Fail> {
+    pub fn new(rt: RT, local_ipv4_addr: Ipv4Addr) -> Result<Self, Fail> {
         let now: Instant = rt.now();
         let file_table: IoQueueTable = IoQueueTable::new();
         let rng_seed: [u8; 32] = [0; 32];
-        let arp: ArpPeer<RT> = ArpPeer::new(now, rt.clone(), rt.arp_options())?;
-        let ipv4: Peer<RT> = Peer::new(rt.clone(), arp.clone(), rng_seed);
+        let arp: ArpPeer<RT> = ArpPeer::new(now, rt.clone(), local_ipv4_addr, rt.arp_options())?;
+        let ipv4: Peer<RT> = Peer::new(rt.clone(), arp.clone(), local_ipv4_addr, rng_seed);
         Ok(Self {
             arp,
             ipv4,

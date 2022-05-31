@@ -64,6 +64,7 @@ use ::std::{
 #[derive(Clone)]
 pub struct ArpPeer<RT: NetworkRuntime> {
     rt: RT,
+    local_ipv4_addr: Ipv4Addr,
     cache: Rc<RefCell<ArpCache>>,
     #[allow(unused)]
     background: Rc<SchedulerHandle>,
@@ -76,7 +77,7 @@ pub struct ArpPeer<RT: NetworkRuntime> {
 //==============================================================================
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
-    pub fn new(now: Instant, rt: RT, options: ArpConfig) -> Result<ArpPeer<RT>, Fail> {
+    pub fn new(now: Instant, rt: RT, local_ipv4_addr: Ipv4Addr, options: ArpConfig) -> Result<ArpPeer<RT>, Fail> {
         let cache = Rc::new(RefCell::new(ArpCache::new(
             now,
             Some(options.get_cache_ttl()),
@@ -88,6 +89,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
         let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         let peer = ArpPeer {
             rt,
+            local_ipv4_addr,
             cache,
             background: Rc::new(handle),
             waiters: Rc::new(RefCell::new(HashMap::default())),
@@ -161,7 +163,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
             }
         };
         // from RFC 826: ?Am I the target protocol address?
-        if header.get_destination_protocol_addr() != self.rt.local_ipv4_addr() {
+        if header.get_destination_protocol_addr() != self.local_ipv4_addr {
             if merge_flag {
                 // we did do something.
                 return Ok(());
@@ -192,7 +194,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
                     ArpHeader::new(
                         ArpOperation::Reply,
                         self.rt.local_link_addr(),
-                        self.rt.local_ipv4_addr(),
+                        self.local_ipv4_addr,
                         header.get_sender_hardware_addr(),
                         header.get_sender_protocol_addr(),
                     ),
@@ -224,6 +226,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
         let mut arp = self.clone();
         let cache = self.cache.clone();
         let arp_options = self.options.clone();
+        let local_ipv4_addr: Ipv4Addr = self.local_ipv4_addr;
         async move {
             if let Some(&link_addr) = cache.borrow().get(ipv4_addr) {
                 return Ok(link_addr);
@@ -233,7 +236,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
                 ArpHeader::new(
                     ArpOperation::Request,
                     rt.local_link_addr(),
-                    rt.local_ipv4_addr(),
+                    local_ipv4_addr,
                     MacAddress::broadcast(),
                     ipv4_addr,
                 ),
