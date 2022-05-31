@@ -7,16 +7,6 @@ use crate::{
 };
 use ::arrayvec::ArrayVec;
 use ::futures::FutureExt;
-use ::rand::{
-    distributions::{
-        Distribution,
-        Standard,
-    },
-    rngs::SmallRng,
-    seq::SliceRandom,
-    Rng,
-    SeedableRng,
-};
 use ::runtime::{
     fail::Fail,
     logging,
@@ -48,8 +38,6 @@ use ::runtime::{
         WaitFuture,
     },
     types::demi_sgarray_t,
-    utils::UtilsRuntime,
-    Runtime,
 };
 use ::std::{
     cell::RefCell,
@@ -77,14 +65,12 @@ pub type TestEngine = Engine<TestRuntime>;
 pub struct Inner {
     #[allow(unused)]
     timer: TimerRc,
-    rng: SmallRng,
     incoming: VecDeque<Box<dyn Buffer>>,
     outgoing: VecDeque<Box<dyn Buffer>>,
 }
 
 #[derive(Clone)]
 pub struct TestRuntime {
-    name: &'static str,
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     arp_options: ArpConfig,
@@ -100,7 +86,6 @@ pub struct TestRuntime {
 
 impl TestRuntime {
     pub fn new(
-        name: &'static str,
         now: Instant,
         arp_options: ArpConfig,
         udp_options: UdpConfig,
@@ -112,12 +97,10 @@ impl TestRuntime {
 
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
-            rng: SmallRng::from_seed([0; 32]),
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
         };
         Self {
-            name,
             link_addr,
             ipv4_addr,
             inner: Rc::new(RefCell::new(inner)),
@@ -214,21 +197,6 @@ impl NetworkRuntime for TestRuntime {
     }
 }
 
-impl UtilsRuntime for TestRuntime {
-    fn rng_gen<T>(&self) -> T
-    where
-        Standard: Distribution<T>,
-    {
-        let mut inner = self.inner.borrow_mut();
-        inner.rng.gen()
-    }
-
-    fn rng_shuffle<T>(&self, slice: &mut [T]) {
-        let mut inner = self.inner.borrow_mut();
-        slice.shuffle(&mut inner.rng);
-    }
-}
-
 impl SchedulerRuntime for TestRuntime {
     type WaitFuture = WaitFuture<TimerRc>;
 
@@ -280,5 +248,3 @@ impl SchedulerRuntime for TestRuntime {
         self.scheduler.poll()
     }
 }
-
-impl Runtime for TestRuntime {}

@@ -73,6 +73,7 @@ pub struct Ipv4Header {
     /// Explicit Congestion Notification (2 bits).
     ecn: u8,
     /// Total length of the packet including header and data (16 bits).
+    #[allow(unused)]
     total_length: u16,
     /// Used to identify the datagram to which a fragment belongs (16 bits).
     identification: u16,
@@ -85,6 +86,7 @@ pub struct Ipv4Header {
     /// Protocol used in the data portion of the datagram (8 bits).
     protocol: IpProtocol,
     /// Header-only checksum for error detection (16 bits).
+    #[allow(unused)]
     header_checksum: u16,
     // Source IP address (32 bits).
     src_addr: Ipv4Addr,
@@ -256,7 +258,7 @@ impl Ipv4Header {
         let buf: &mut [u8; (IPV4_HEADER_MIN_SIZE as usize)] = buf.try_into().expect("buffer to small");
 
         // Version + IHL.
-        buf[0] = (IPV4_VERSION << 4) | IPV4_IHL_NO_OPTIONS;
+        buf[0] = (self.version << 4) | self.ihl;
 
         // DSCP + ECN.
         buf[1] = (self.dscp << 2) | (self.ecn & 3);

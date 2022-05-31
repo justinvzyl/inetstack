@@ -37,6 +37,10 @@ use ::libc::{
     EEXIST,
     ENOTCONN,
 };
+use ::rand::{
+    prelude::SmallRng,
+    SeedableRng,
+};
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
@@ -49,7 +53,6 @@ use ::runtime::{
     },
     scheduler::SchedulerHandle,
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
     QDesc,
 };
 use ::std::{
@@ -84,8 +87,11 @@ pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     local_ipv4_addr: Ipv4Addr,
     /// Offload checksum to hardware?
     checksum_offload: bool,
-    /// Handler to background co-routines. Don't drop this.
-    _handle: SchedulerHandle,
+
+    /// The background co-routine sends unset UDP packets.
+    /// We annotate it as unused because the compiler believes that it is never called which is not the case.
+    #[allow(unused)]
+    background: SchedulerHandle,
 }
 
 //==============================================================================
@@ -93,10 +99,11 @@ pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 //==============================================================================
 
 /// Associate functions for [UdpPeer].
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     /// Creates a Udp peer.
     pub fn new(
         rt: RT,
+        rng_seed: [u8; 32],
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         offload_checksum: bool,
@@ -113,17 +120,19 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Udp
             send_queue.clone(),
         );
         let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
+        let ephemeral_ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
         Self {
             rt: rt.clone(),
             arp,
-            ephemeral_ports: EphemeralPorts::new(&rt),
+            ephemeral_ports,
             sockets: HashMap::new(),
             bound: HashMap::new(),
             send_queue,
             local_link_addr,
             local_ipv4_addr,
             checksum_offload: offload_checksum,
-            _handle: handle,
+            background: handle,
         }
     }
 

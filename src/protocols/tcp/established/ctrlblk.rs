@@ -39,7 +39,6 @@ use ::runtime::{
         NetworkRuntime,
     },
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
     watched::{
         WatchFuture,
         WatchedValue,
@@ -144,7 +143,7 @@ impl Receiver {
 
 /// Transmission control block for representing our TCP connection.
 // ToDo: Make all public fields in this structure private.
-pub struct ControlBlock<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
+pub struct ControlBlock<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
@@ -207,7 +206,7 @@ pub struct ControlBlock<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + C
 
 //==============================================================================
 
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,

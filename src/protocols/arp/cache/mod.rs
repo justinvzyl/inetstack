@@ -28,7 +28,6 @@ const DUMMY_MAC_ADDRESS: MacAddress = MacAddress::new([0; 6]);
 #[derive(Debug)]
 struct Record {
     link_addr: MacAddress,
-    ipv4_addr: Ipv4Addr,
 }
 
 ///
@@ -74,7 +73,7 @@ impl ArpCache {
 
     /// Caches an address resolution.
     pub fn insert(&mut self, ipv4_addr: Ipv4Addr, link_addr: MacAddress) -> Option<MacAddress> {
-        let record = Record { link_addr, ipv4_addr };
+        let record = Record { link_addr };
         self.cache.insert(ipv4_addr, record).map(|r| r.link_addr)
     }
 

@@ -59,10 +59,7 @@ fn build_ipv4_header(
     NetworkEndian::write_u16(&mut buf[4..6], id);
 
     // Flags + Offset.
-    NetworkEndian::write_u16(
-        &mut buf[6..8],
-        ((flags as u16 & 7) << 13) | (fragment_offset & 0x1fff),
-    );
+    NetworkEndian::write_u16(&mut buf[6..8], ((flags as u16 & 7) << 13) | (fragment_offset & 0x1fff));
 
     // Time to live.
     buf[8] = ttl;
@@ -273,11 +270,7 @@ fn test_ipv4_header_parse_invalid_flags() {
     // Do it.
     let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
     match Ipv4Header::parse(buf_bytes) {
-        Ok(_) => assert!(
-            false,
-            "parsed ipv4 header with invalid flags={:?}",
-            flags
-        ),
+        Ok(_) => assert!(false, "parsed ipv4 header with invalid flags={:?}", flags),
         Err(_) => {},
     };
 }
@@ -518,7 +511,7 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
 
     // Fragmented packets are unsupported.
     // Fragments are detected by having either the MF bit set in Flags or a non-zero Fragment Offset field.
-    let flags:u8 = 0x1;  // Set MF bit.
+    let flags: u8 = 0x1; // Set MF bit.
     build_ipv4_header(
         &mut buf,
         4,

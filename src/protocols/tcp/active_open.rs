@@ -40,7 +40,6 @@ use ::runtime::{
     network::NetworkRuntime,
     scheduler::SchedulerHandle,
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
 };
 use ::std::{
     cell::RefCell,
@@ -55,12 +54,12 @@ use ::std::{
     },
 };
 
-struct ConnectResult<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
+struct ConnectResult<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     waker: Option<Waker>,
     result: Option<Result<ControlBlock<RT>, Fail>>,
 }
 
-pub struct ActiveOpenSocket<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
+pub struct ActiveOpenSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     local_isn: SeqNumber,
 
     local: SocketAddrV4,
@@ -74,7 +73,7 @@ pub struct ActiveOpenSocket<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime
     result: Rc<RefCell<ConnectResult<RT>>>,
 }
 
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
     pub fn new(local_isn: SeqNumber, local: SocketAddrV4, remote: SocketAddrV4, rt: RT, arp: ArpPeer<RT>) -> Self {
         let result = ConnectResult {
             waker: None,

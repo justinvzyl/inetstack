@@ -10,7 +10,6 @@ use ::runtime::{
     network::NetworkRuntime,
     scheduler::SchedulerFuture,
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
 };
 use ::std::{
     any::Any,
@@ -35,7 +34,7 @@ use ::std::{
 ///
 /// [Background](Operation::Background) tasks are heap-allocated as they are expected to live
 /// long so we allocate them on the heap.
-pub enum FutureOperation<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
+pub enum FutureOperation<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     Tcp(TcpOperation<RT>),
     Udp(UdpOperation),
 
@@ -43,7 +42,7 @@ pub enum FutureOperation<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + 
     Background(Pin<Box<dyn Future<Output = ()>>>),
 }
 
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> SchedulerFuture for FutureOperation<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> SchedulerFuture for FutureOperation<RT> {
     fn as_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }
@@ -59,7 +58,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Sch
 
 /// Simple wrapper which calls the corresponding [poll](Future::poll) method for each enum variant's
 /// type.
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Future for FutureOperation<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Future for FutureOperation<RT> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
@@ -73,7 +72,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Fut
 
 impl<T, RT> From<T> for FutureOperation<RT>
 where
-    RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static,
+    RT: SchedulerRuntime + NetworkRuntime + Clone + 'static,
     T: Into<TcpOperation<RT>>,
 {
     fn from(f: T) -> Self {

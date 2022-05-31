@@ -42,7 +42,6 @@ use ::runtime::{
     network::NetworkRuntime,
     scheduler::SchedulerHandle,
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
 };
 use ::std::{
     cell::RefCell,
@@ -74,13 +73,13 @@ struct InflightAccept {
     handle: SchedulerHandle,
 }
 
-struct ReadySockets<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
+struct ReadySockets<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     ready: VecDeque<Result<ControlBlock<RT>, Fail>>,
     endpoints: HashSet<SocketAddrV4>,
     waker: Option<Waker>,
 }
 
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> ReadySockets<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ReadySockets<RT> {
     fn push_ok(&mut self, cb: ControlBlock<RT>) {
         assert!(self.endpoints.insert(cb.get_remote()));
         self.ready.push_back(Ok(cb));
@@ -115,7 +114,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Rea
     }
 }
 
-pub struct PassiveSocket<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
+pub struct PassiveSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     inflight: HashMap<SocketAddrV4, InflightAccept>,
     ready: Rc<RefCell<ReadySockets<RT>>>,
 
@@ -127,15 +126,14 @@ pub struct PassiveSocket<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + 
     arp: ArpPeer<RT>,
 }
 
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
-    pub fn new(local: SocketAddrV4, max_backlog: usize, rt: RT, arp: ArpPeer<RT>) -> Self {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
+    pub fn new(local: SocketAddrV4, max_backlog: usize, rt: RT, arp: ArpPeer<RT>, nonce: u32) -> Self {
         let ready = ReadySockets {
             ready: VecDeque::new(),
             endpoints: HashSet::new(),
             waker: None,
         };
         let ready = Rc::new(RefCell::new(ready));
-        let nonce = rt.rng_gen();
         Self {
             inflight: HashMap::new(),
             ready,
