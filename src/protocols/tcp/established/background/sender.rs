@@ -15,7 +15,6 @@ use ::runtime::{
     memory::Buffer,
     network::NetworkRuntime,
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
 };
 use ::std::{
     cmp,
@@ -23,7 +22,7 @@ use ::std::{
     time::Duration,
 };
 
-pub async fn sender<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+pub async fn sender<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
     cb: Rc<ControlBlock<RT>>,
 ) -> Result<!, Fail> {
     'top: loop {

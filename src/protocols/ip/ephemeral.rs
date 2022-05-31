@@ -2,11 +2,10 @@
 // Licensed under the MIT license.
 
 use ::libc::EAGAIN;
-use ::runtime::{
-    fail::Fail,
-    network::NetworkRuntime,
-    task::SchedulerRuntime,
-    utils::UtilsRuntime,
+use ::runtime::fail::Fail;
+use rand::prelude::{
+    SliceRandom,
+    SmallRng,
 };
 
 //==============================================================================
@@ -29,13 +28,12 @@ pub struct EphemeralPorts {
 //==============================================================================
 
 impl EphemeralPorts {
-    pub fn new<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(rt: &RT) -> Self {
+    pub fn new(rng: &mut SmallRng) -> Self {
         let mut ports: Vec<u16> = Vec::<u16>::new();
         for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
             ports.push(port);
         }
-
-        rt.rng_shuffle(&mut ports[..]);
+        ports.shuffle(rng);
         Self { ports }
     }
 

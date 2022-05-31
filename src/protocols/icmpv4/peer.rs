@@ -36,6 +36,11 @@ use ::futures::{
     FutureExt,
     StreamExt,
 };
+use ::rand::{
+    prelude::SmallRng,
+    Rng,
+    SeedableRng,
+};
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
@@ -45,7 +50,6 @@ use ::runtime::{
     },
     scheduler::SchedulerHandle,
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
 };
 use ::std::{
     cell::RefCell,
@@ -97,7 +101,7 @@ impl ReqQueue {
 ///
 /// ICMP for IPv4 is defined in RFC 792.
 ///
-pub struct Icmpv4Peer<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
+pub struct Icmpv4Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     /// Underlying Runtime
     rt: RT,
 
@@ -113,15 +117,18 @@ pub struct Icmpv4Peer<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clo
     /// Sequence Number
     seq: Wrapping<u16>,
 
+    rng: Rc<RefCell<SmallRng>>,
+
     #[allow(unused)]
     handle: SchedulerHandle,
 }
 
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
     /// Creates a new peer for handling ICMP.
-    pub fn new(rt: RT, arp: ArpPeer<RT>) -> Icmpv4Peer<RT> {
+    pub fn new(rt: RT, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Icmpv4Peer<RT> {
         let (tx, rx) = mpsc::unbounded();
         let requests = ReqQueue::new();
+        let rng: Rc<RefCell<SmallRng>> = Rc::new(RefCell::new(SmallRng::from_seed(rng_seed)));
         let future = Self::background(rt.clone(), arp.clone(), rx);
         let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         Icmpv4Peer {
@@ -130,6 +137,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Icm
             tx,
             requests: Rc::new(RefCell::new(requests)),
             seq: Wrapping(0),
+            rng,
             handle,
         }
     }
@@ -191,7 +199,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Icm
         state += NetworkEndian::read_u16(&pid_buf[0..2]) as u32;
         state += NetworkEndian::read_u16(&pid_buf[2..4]) as u32;
 
-        let nonce: [u8; 2] = self.rt.rng_gen();
+        let nonce: [u8; 2] = self.rng.borrow_mut().gen();
         state += NetworkEndian::read_u16(&nonce[..]) as u32;
 
         while state > 0xFFFF {

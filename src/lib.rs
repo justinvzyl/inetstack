@@ -51,7 +51,6 @@ use ::runtime::{
         SchedulerHandle,
     },
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
     QDesc,
     QToken,
     QType,
@@ -86,7 +85,7 @@ pub mod protocols;
 const TIMER_RESOLUTION: usize = 64;
 const MAX_RECV_ITERS: usize = 2;
 
-pub struct InetStack<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
+pub struct InetStack<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     arp: ArpPeer<RT>,
     ipv4: Peer<RT>,
     file_table: IoQueueTable,
@@ -94,12 +93,13 @@ pub struct InetStack<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clon
     ts_iters: usize,
 }
 
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
     pub fn new(rt: RT) -> Result<Self, Fail> {
         let now: Instant = rt.now();
         let file_table: IoQueueTable = IoQueueTable::new();
+        let rng_seed: [u8; 32] = [0; 32];
         let arp: ArpPeer<RT> = ArpPeer::new(now, rt.clone(), rt.arp_options())?;
-        let ipv4: Peer<RT> = Peer::new(rt.clone(), arp.clone());
+        let ipv4: Peer<RT> = Peer::new(rt.clone(), arp.clone(), rng_seed);
         Ok(Self {
             arp,
             ipv4,

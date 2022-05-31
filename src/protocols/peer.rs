@@ -18,7 +18,6 @@ use ::runtime::{
         NetworkRuntime,
     },
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
 };
 use ::std::{
     future::Future,
@@ -29,27 +28,28 @@ use ::std::{
 #[cfg(test)]
 use ::runtime::QDesc;
 
-pub struct Peer<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
+pub struct Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     rt: RT,
     icmpv4: Icmpv4Peer<RT>,
     pub tcp: TcpPeer<RT>,
     pub udp: UdpPeer<RT>,
 }
 
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
-    pub fn new(rt: RT, arp: ArpPeer<RT>) -> Peer<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
+    pub fn new(rt: RT, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Peer<RT> {
         let local_link_addr: MacAddress = rt.local_link_addr();
         let local_ipv4_addr: Ipv4Addr = rt.local_ipv4_addr();
         let udp_offload_checksum: bool = rt.udp_options().get_tx_checksum_offload();
-        let udp = UdpPeer::new(
+        let udp: UdpPeer<RT> = UdpPeer::new(
             rt.clone(),
             local_link_addr,
             local_ipv4_addr,
             udp_offload_checksum,
             arp.clone(),
         );
-        let icmpv4 = Icmpv4Peer::new(rt.clone(), arp.clone());
-        let tcp = TcpPeer::new(rt.clone(), arp);
+        let icmpv4: Icmpv4Peer<RT> = Icmpv4Peer::new(rt.clone(), arp.clone(), rng_seed);
+        let tcp: TcpPeer<RT> = TcpPeer::new(rt.clone(), arp, rng_seed);
+
         Peer { rt, icmpv4, tcp, udp }
     }
 
@@ -76,7 +76,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Pee
 }
 
 #[cfg(test)]
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
     pub fn tcp_mss(&self, fd: QDesc) -> Result<usize, Fail> {
         self.tcp.remote_mss(fd)
     }

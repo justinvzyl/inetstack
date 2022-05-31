@@ -47,7 +47,6 @@ use ::runtime::{
     },
     scheduler::SchedulerHandle,
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
     QDesc,
 };
 use ::std::{
@@ -89,7 +88,7 @@ pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 //==============================================================================
 
 /// Associate functions for [UdpPeer].
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     /// Creates a Udp peer.
     pub fn new(
         rt: RT,
