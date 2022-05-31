@@ -18,6 +18,10 @@ use crate::{
         self,
         Engine,
         TestRuntime,
+        ALICE_IPV4,
+        ALICE_MAC,
+        BOB_IPV4,
+        BOB_MAC,
     },
 };
 use ::futures::task::noop_waker_ref;
@@ -41,6 +45,8 @@ use ::std::{
     },
     time::Instant,
 };
+use runtime::network::types::MacAddress;
+use std::net::Ipv4Addr;
 
 //=============================================================================
 
@@ -59,7 +65,11 @@ fn send_data(
     ctx: &mut Context,
     now: &mut Instant,
     receiver: &mut Engine<TestRuntime>,
+    receiver_link_addr: MacAddress,
+    receiver_ipv4_addr: Ipv4Addr,
     sender: &mut Engine<TestRuntime>,
+    sender_link_addr: MacAddress,
+    sender_ipv4_addr: Ipv4Addr,
     sender_fd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
@@ -68,8 +78,8 @@ fn send_data(
 ) -> (Box<dyn Buffer>, usize) {
     trace!(
         "send_data ====> push: {:?} -> {:?}",
-        sender.rt().local_ipv4_addr(),
-        receiver.rt().local_ipv4_addr()
+        sender_ipv4_addr,
+        receiver_ipv4_addr
     );
 
     // Push data.
@@ -78,10 +88,10 @@ fn send_data(
     let bytes: Box<dyn Buffer> = sender.rt().pop_frame();
     let bufsize: usize = check_packet_data(
         bytes.clone(),
-        sender.rt().local_link_addr(),
-        receiver.rt().local_link_addr(),
-        sender.rt().local_ipv4_addr(),
-        receiver.rt().local_ipv4_addr(),
+        sender_link_addr,
+        receiver_link_addr,
+        sender_ipv4_addr,
+        receiver_ipv4_addr,
         window_size,
         seq_no,
         ack_num,
@@ -106,14 +116,15 @@ fn send_data(
 fn recv_data(
     ctx: &mut Context,
     receiver: &mut Engine<TestRuntime>,
-    sender: &mut Engine<TestRuntime>,
+    receiver_ipv4_addr: Ipv4Addr,
+    sender_ipv4_addr: Ipv4Addr,
     receiver_fd: QDesc,
     bytes: Box<dyn Buffer>,
 ) {
     trace!(
         "recv_data ====> pop: {:?} -> {:?}",
-        sender.rt().local_ipv4_addr(),
-        receiver.rt().local_ipv4_addr()
+        sender_ipv4_addr,
+        receiver_ipv4_addr
     );
 
     // Pop data.
@@ -135,13 +146,17 @@ fn recv_data(
 fn recv_pure_ack(
     now: &mut Instant,
     sender: &mut Engine<TestRuntime>,
+    sender_link_addr: MacAddress,
+    sender_ipv4_addr: Ipv4Addr,
     receiver: &mut Engine<TestRuntime>,
+    receiver_link_addr: MacAddress,
+    receiver_ipv4_addr: Ipv4Addr,
     ack_num: SeqNumber,
 ) {
     trace!(
         "recv_pure_ack ====> ack: {:?} -> {:?}",
-        sender.rt().local_ipv4_addr(),
-        receiver.rt().local_ipv4_addr()
+        sender_ipv4_addr,
+        receiver_ipv4_addr
     );
 
     advance_clock(Some(sender), Some(receiver), now);
@@ -151,10 +166,10 @@ fn recv_pure_ack(
     if let Some(bytes) = sender.rt().pop_frame_unchecked() {
         check_packet_pure_ack(
             bytes.clone(),
-            sender.rt().local_link_addr(),
-            receiver.rt().local_link_addr(),
-            sender.rt().local_ipv4_addr(),
-            receiver.rt().local_ipv4_addr(),
+            sender_link_addr,
+            receiver_link_addr,
+            sender_ipv4_addr,
+            receiver_ipv4_addr,
             ack_num,
         );
         receiver.receive(bytes).unwrap();
@@ -168,7 +183,11 @@ fn send_recv(
     ctx: &mut Context,
     now: &mut Instant,
     server: &mut Engine<TestRuntime>,
+    server_link_addr: MacAddress,
+    server_ipv4_addr: Ipv4Addr,
     client: &mut Engine<TestRuntime>,
+    client_link_addr: MacAddress,
+    client_ipv4_addr: Ipv4Addr,
     server_fd: QDesc,
     client_fd: QDesc,
     window_size: u16,
@@ -182,7 +201,11 @@ fn send_recv(
         ctx,
         now,
         server,
+        server_link_addr,
+        server_ipv4_addr,
         client,
+        client_link_addr,
+        client_ipv4_addr,
         client_fd,
         window_size,
         seq_no,
@@ -191,10 +214,19 @@ fn send_recv(
     );
 
     // Pop data.
-    recv_data(ctx, server, client, server_fd, bytes);
+    recv_data(ctx, server, server_ipv4_addr, client_ipv4_addr, server_fd, bytes);
 
     // Pop pure ACK.
-    recv_pure_ack(now, server, client, seq_no + SeqNumber::from(bufsize as u32));
+    recv_pure_ack(
+        now,
+        server,
+        server_link_addr,
+        server_ipv4_addr,
+        client,
+        client_link_addr,
+        client_ipv4_addr,
+        seq_no + SeqNumber::from(bufsize as u32),
+    );
 }
 
 //=============================================================================
@@ -203,7 +235,11 @@ fn send_recv_round(
     ctx: &mut Context,
     now: &mut Instant,
     server: &mut Engine<TestRuntime>,
+    server_link_addr: MacAddress,
+    server_ipv4_addr: Ipv4Addr,
     client: &mut Engine<TestRuntime>,
+    client_link_addr: MacAddress,
+    client_ipv4_addr: Ipv4Addr,
     server_fd: QDesc,
     client_fd: QDesc,
     window_size: u16,
@@ -211,11 +247,31 @@ fn send_recv_round(
     bytes: Box<dyn Buffer>,
 ) {
     // Push Data: Client -> Server
-    let (bytes, bufsize): (Box<dyn Buffer>, usize) =
-        send_data(ctx, now, server, client, client_fd, window_size, seq_no, None, bytes);
+    let (bytes, bufsize): (Box<dyn Buffer>, usize) = send_data(
+        ctx,
+        now,
+        server,
+        server_link_addr,
+        server_ipv4_addr,
+        client,
+        client_link_addr,
+        client_ipv4_addr,
+        client_fd,
+        window_size,
+        seq_no,
+        None,
+        bytes,
+    );
 
     // Pop data.
-    recv_data(ctx, server, client, server_fd, bytes.clone());
+    recv_data(
+        ctx,
+        server,
+        server_ipv4_addr,
+        client_ipv4_addr,
+        server_fd,
+        bytes.clone(),
+    );
 
     // Push Data: Server -> Client
     let bytes: Box<dyn Buffer> = cook_buffer(bufsize, None);
@@ -223,7 +279,11 @@ fn send_recv_round(
         ctx,
         now,
         client,
+        client_link_addr,
+        client_ipv4_addr,
         server,
+        server_link_addr,
+        server_ipv4_addr,
         server_fd,
         window_size,
         seq_no,
@@ -232,7 +292,14 @@ fn send_recv_round(
     );
 
     // Pop data.
-    recv_data(ctx, client, server, client_fd, bytes.clone());
+    recv_data(
+        ctx,
+        client,
+        client_ipv4_addr,
+        server_ipv4_addr,
+        client_fd,
+        bytes.clone(),
+    );
 }
 
 //=============================================================================
@@ -314,7 +381,11 @@ pub fn test_send_recv_loop() {
             &mut ctx,
             &mut now,
             &mut server,
+            BOB_MAC,
+            BOB_IPV4,
             &mut client,
+            ALICE_MAC,
+            ALICE_IPV4,
             server_fd,
             client_fd,
             max_window_size as u16,
@@ -354,7 +425,11 @@ pub fn test_send_recv_round_loop() {
             &mut ctx,
             &mut now,
             &mut server,
+            BOB_MAC,
+            BOB_IPV4,
             &mut client,
+            ALICE_MAC,
+            ALICE_IPV4,
             server_fd,
             client_fd,
             max_window_size as u16,
@@ -401,7 +476,11 @@ pub fn test_send_recv_with_delay() {
             &mut ctx,
             &mut now,
             &mut server,
+            BOB_MAC,
+            BOB_IPV4,
             &mut client,
+            ALICE_MAC,
+            ALICE_IPV4,
             client_fd,
             max_window_size as u16,
             seq_no,
@@ -416,23 +495,41 @@ pub fn test_send_recv_with_delay() {
         // Pop data oftentimes.
         if rand::random() {
             if let Some(bytes) = inflight.pop_front() {
-                recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone());
+                recv_data(&mut ctx, &mut server, BOB_IPV4, ALICE_IPV4, server_fd, bytes.clone());
                 recv_seq_no = recv_seq_no + SeqNumber::from(bufsize as u32);
             }
         }
 
         // Pop pure ACK
-        recv_pure_ack(&mut now, &mut server, &mut client, recv_seq_no);
+        recv_pure_ack(
+            &mut now,
+            &mut server,
+            BOB_MAC,
+            BOB_IPV4,
+            &mut client,
+            ALICE_MAC,
+            ALICE_IPV4,
+            recv_seq_no,
+        );
     }
 
     // Pop inflight packets.
     while let Some(bytes) = inflight.pop_front() {
         // Pop data.
-        recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone());
+        recv_data(&mut ctx, &mut server, BOB_IPV4, ALICE_IPV4, server_fd, bytes.clone());
         recv_seq_no = recv_seq_no + SeqNumber::from(bufsize as u32);
 
         // Send pure ack.
-        recv_pure_ack(&mut now, &mut server, &mut client, recv_seq_no);
+        recv_pure_ack(
+            &mut now,
+            &mut server,
+            BOB_MAC,
+            BOB_IPV4,
+            &mut client,
+            ALICE_MAC,
+            ALICE_IPV4,
+            recv_seq_no,
+        );
     }
 }
 

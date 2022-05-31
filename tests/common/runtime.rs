@@ -141,14 +141,6 @@ impl NetworkRuntime for DummyRuntime {
         out
     }
 
-    fn local_link_addr(&self) -> MacAddress {
-        self.link_addr.clone()
-    }
-
-    fn local_ipv4_addr(&self) -> Ipv4Addr {
-        self.ipv4_addr.clone()
-    }
-
     fn tcp_options(&self) -> TcpConfig {
         self.tcp_options.clone()
     }

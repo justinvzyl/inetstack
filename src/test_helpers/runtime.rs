@@ -155,14 +155,6 @@ impl NetworkRuntime for TestRuntime {
         out
     }
 
-    fn local_link_addr(&self) -> MacAddress {
-        self.link_addr
-    }
-
-    fn local_ipv4_addr(&self) -> Ipv4Addr {
-        self.ipv4_addr
-    }
-
     fn tcp_options(&self) -> TcpConfig {
         self.tcp_options.clone()
     }
