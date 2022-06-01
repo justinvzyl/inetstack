@@ -8,12 +8,10 @@ use crate::{
 use ::arrayvec::ArrayVec;
 use ::futures::FutureExt;
 use ::runtime::{
-    fail::Fail,
     logging,
     memory::{
         Buffer,
         DataBuffer,
-        MemoryRuntime,
     },
     network::{
         config::{
@@ -37,7 +35,6 @@ use ::runtime::{
         TimerRc,
         WaitFuture,
     },
-    types::demi_sgarray_t,
 };
 use ::std::{
     cell::RefCell,
@@ -136,24 +133,6 @@ impl TestRuntime {
 //==============================================================================
 // Trait Implementations
 //==============================================================================
-
-impl MemoryRuntime for TestRuntime {
-    fn into_sgarray(&self, _buf: Box<dyn Buffer>) -> Result<demi_sgarray_t, Fail> {
-        unreachable!()
-    }
-
-    fn alloc_sgarray(&self, _size: usize) -> Result<demi_sgarray_t, Fail> {
-        unreachable!()
-    }
-
-    fn free_sgarray(&self, _sga: demi_sgarray_t) -> Result<(), Fail> {
-        unreachable!()
-    }
-
-    fn clone_sgarray(&self, _sga: &demi_sgarray_t) -> Result<Box<dyn Buffer>, Fail> {
-        unreachable!()
-    }
-}
 
 impl NetworkRuntime for TestRuntime {
     fn transmit(&self, pkt: impl PacketBuf) {
