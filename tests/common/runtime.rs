@@ -43,8 +43,6 @@ use ::std::{
 
 /// Shared Dummy Runtime
 struct SharedDummyRuntime {
-    /// Clock
-    timer: TimerRc,
     /// Random Number Generator
     /// Incoming Queue of Packets
     incoming: crossbeam_channel::Receiver<DataBuffer>,
@@ -72,18 +70,13 @@ pub struct DummyRuntime {
 impl DummyRuntime {
     /// Creates a Dummy Runtime.
     pub fn new(
-        clock: TimerRc,
         link_addr: MacAddress,
         ipv4_addr: Ipv4Addr,
         incoming: crossbeam_channel::Receiver<DataBuffer>,
         outgoing: crossbeam_channel::Sender<DataBuffer>,
         arp_options: ArpConfig,
     ) -> Self {
-        let inner = SharedDummyRuntime {
-            timer: clock,
-            incoming,
-            outgoing,
-        };
+        let inner = SharedDummyRuntime { incoming, outgoing };
         Self {
             inner: Rc::new(RefCell::new(inner)),
             scheduler: Scheduler::default(),

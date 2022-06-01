@@ -57,7 +57,6 @@ impl<RT: NetworkRuntime + Clone + 'static> Peer<RT> {
         let udp_offload_checksum: bool = udp_options.get_tx_checksum_offload();
         let udp: UdpPeer<RT> = UdpPeer::new(
             rt.clone(),
-            clock.clone(),
             scheduler.clone(),
             local_link_addr,
             local_ipv4_addr,

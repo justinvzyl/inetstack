@@ -74,7 +74,7 @@ impl DummyLibOS {
         let tcp_options: TcpConfig = TcpConfig::default();
         let scheduler: Scheduler = Scheduler::default();
         let clock = TimerRc(Rc::new(Timer::new(now)));
-        let rt: DummyRuntime = DummyRuntime::new(clock.clone(), link_addr, ipv4_addr, rx, tx, arp_options.clone());
+        let rt: DummyRuntime = DummyRuntime::new(link_addr, ipv4_addr, rx, tx, arp_options.clone());
         logging::initialize();
         InetStack::new(
             rt,

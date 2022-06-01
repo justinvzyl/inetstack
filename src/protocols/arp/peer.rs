@@ -99,7 +99,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ArpPeer<RT> {
             options.get_disable_arp(),
         )));
 
-        let future = Self::background(rt.clone(), clock.clone(), cache.clone());
+        let future = Self::background(clock.clone(), cache.clone());
         let handle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "failed to insert task in the scheduler")),
@@ -147,7 +147,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ArpPeer<RT> {
     }
 
     /// Background task that cleans up the ARP cache from time to time.
-    async fn background(rt: RT, clock: TimerRc, cache: Rc<RefCell<ArpCache>>) {
+    async fn background(clock: TimerRc, cache: Rc<RefCell<ArpCache>>) {
         loop {
             let current_time = clock.now();
             {

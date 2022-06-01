@@ -272,10 +272,6 @@ impl<RT: NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         self.remote
     }
 
-    pub fn rt(&self) -> Rc<RT> {
-        self.rt.clone()
-    }
-
     // ToDo: Remove this.  ARP doesn't belong at this layer.
     pub fn arp(&self) -> Rc<ArpPeer<RT>> {
         self.arp.clone()
