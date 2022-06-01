@@ -34,12 +34,16 @@ use ::runtime::{
         Buffer,
         DataBuffer,
     },
-    network::types::MacAddress,
+    network::{
+        types::MacAddress,
+        NetworkRuntime,
+    },
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
     watched::{
         WatchFuture,
         WatchedValue,
     },
-    Runtime,
 };
 use ::std::{
     cell::{
@@ -140,7 +144,7 @@ impl Receiver {
 
 /// Transmission control block for representing our TCP connection.
 // ToDo: Make all public fields in this structure private.
-pub struct ControlBlock<RT: Runtime> {
+pub struct ControlBlock<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
@@ -203,7 +207,7 @@ pub struct ControlBlock<RT: Runtime> {
 
 //==============================================================================
 
-impl<RT: Runtime> ControlBlock<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,

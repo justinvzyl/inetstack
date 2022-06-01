@@ -24,9 +24,11 @@ use ::futures::{
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
+    network::NetworkRuntime,
     scheduler::SchedulerHandle,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
     QDesc,
-    Runtime,
 };
 use ::std::{
     net::SocketAddrV4,
@@ -38,13 +40,13 @@ use ::std::{
     time::Duration,
 };
 
-pub struct EstablishedSocket<RT: Runtime> {
+pub struct EstablishedSocket<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     pub cb: Rc<ControlBlock<RT>>,
     #[allow(unused)]
     background_work: SchedulerHandle,
 }
 
-impl<RT: Runtime> EstablishedSocket<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> EstablishedSocket<RT> {
     pub fn new(cb: ControlBlock<RT>, fd: QDesc, dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> Self {
         let cb = Rc::new(cb);
         let future = background(cb.clone(), fd, dead_socket_tx);

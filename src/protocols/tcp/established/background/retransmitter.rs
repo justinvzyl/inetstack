@@ -12,8 +12,12 @@ use ::futures::{
 };
 use ::runtime::{
     fail::Fail,
-    network::types::MacAddress,
-    Runtime,
+    network::{
+        types::MacAddress,
+        NetworkRuntime,
+    },
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
 };
 use ::std::{
     rc::Rc,
@@ -29,7 +33,10 @@ pub enum RetransmitCause {
     FastRetransmit,
 }
 
-async fn retransmit<RT: Runtime>(cause: RetransmitCause, cb: &Rc<ControlBlock<RT>>) -> Result<(), Fail> {
+async fn retransmit<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+    cause: RetransmitCause,
+    cb: &Rc<ControlBlock<RT>>,
+) -> Result<(), Fail> {
     // ToDo: Handle retransmission of FIN.
 
     // ToDo: Fix this routine.  It is currently trashing our unacknowledged queue state.  It shouldn't remove any
@@ -81,7 +88,9 @@ async fn retransmit<RT: Runtime>(cause: RetransmitCause, cb: &Rc<ControlBlock<RT
     Ok(())
 }
 
-pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
+pub async fn retransmitter<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+    cb: Rc<ControlBlock<RT>>,
+) -> Result<!, Fail> {
     loop {
         // Pin future for timeout retransmission.
         let (rtx_deadline, rtx_deadline_changed) = cb.watch_retransmit_deadline();

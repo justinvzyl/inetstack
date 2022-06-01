@@ -55,8 +55,10 @@ use ::runtime::{
         Buffer,
         DataBuffer,
     },
+    network::NetworkRuntime,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
     QDesc,
-    Runtime,
 };
 use ::std::{
     cell::{
@@ -91,7 +93,7 @@ enum Socket {
 // Structures
 //==============================================================================
 
-pub struct Inner<RT: Runtime> {
+pub struct Inner<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     isn_generator: IsnGenerator,
 
     ephemeral_ports: EphemeralPorts,
@@ -109,7 +111,7 @@ pub struct Inner<RT: Runtime> {
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
-pub struct TcpPeer<RT: Runtime> {
+pub struct TcpPeer<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     pub(super) inner: Rc<RefCell<Inner<RT>>>,
 }
 
@@ -117,7 +119,7 @@ pub struct TcpPeer<RT: Runtime> {
 // Associated FUnctions
 //==============================================================================
 
-impl<RT: Runtime> TcpPeer<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
     pub fn new(rt: RT, arp: ArpPeer<RT>) -> Self {
         let (tx, rx) = mpsc::unbounded();
         let inner = Rc::new(RefCell::new(Inner::new(rt.clone(), arp, tx, rx)));
@@ -389,7 +391,7 @@ impl<RT: Runtime> TcpPeer<RT> {
     }
 }
 
-impl<RT: Runtime> Inner<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
     fn new(
         rt: RT,
         arp: ArpPeer<RT>,

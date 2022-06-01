@@ -39,9 +39,13 @@ use ::futures::{
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
-    network::types::MacAddress,
+    network::{
+        types::MacAddress,
+        NetworkRuntime,
+    },
     scheduler::SchedulerHandle,
-    Runtime,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
 };
 use ::std::{
     cell::RefCell,
@@ -93,7 +97,7 @@ impl ReqQueue {
 ///
 /// ICMP for IPv4 is defined in RFC 792.
 ///
-pub struct Icmpv4Peer<RT: Runtime> {
+pub struct Icmpv4Peer<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     /// Underlying Runtime
     rt: RT,
 
@@ -113,7 +117,7 @@ pub struct Icmpv4Peer<RT: Runtime> {
     handle: SchedulerHandle,
 }
 
-impl<RT: Runtime> Icmpv4Peer<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
     /// Creates a new peer for handling ICMP.
     pub fn new(rt: RT, arp: ArpPeer<RT>) -> Icmpv4Peer<RT> {
         let (tx, rx) = mpsc::unbounded();

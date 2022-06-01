@@ -39,8 +39,10 @@ use ::libc::{
 use ::runtime::{
     fail::Fail,
     memory::DataBuffer,
+    network::NetworkRuntime,
     scheduler::SchedulerHandle,
-    Runtime,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
 };
 use ::std::{
     cell::RefCell,
@@ -72,13 +74,13 @@ struct InflightAccept {
     handle: SchedulerHandle,
 }
 
-struct ReadySockets<RT: Runtime> {
+struct ReadySockets<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     ready: VecDeque<Result<ControlBlock<RT>, Fail>>,
     endpoints: HashSet<SocketAddrV4>,
     waker: Option<Waker>,
 }
 
-impl<RT: Runtime> ReadySockets<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> ReadySockets<RT> {
     fn push_ok(&mut self, cb: ControlBlock<RT>) {
         assert!(self.endpoints.insert(cb.get_remote()));
         self.ready.push_back(Ok(cb));
@@ -113,7 +115,7 @@ impl<RT: Runtime> ReadySockets<RT> {
     }
 }
 
-pub struct PassiveSocket<RT: Runtime> {
+pub struct PassiveSocket<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     inflight: HashMap<SocketAddrV4, InflightAccept>,
     ready: Rc<RefCell<ReadySockets<RT>>>,
 
@@ -125,7 +127,7 @@ pub struct PassiveSocket<RT: Runtime> {
     arp: ArpPeer<RT>,
 }
 
-impl<RT: Runtime> PassiveSocket<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
     pub fn new(local: SocketAddrV4, max_backlog: usize, rt: RT, arp: ArpPeer<RT>) -> Self {
         let ready = ReadySockets {
             ready: VecDeque::new(),

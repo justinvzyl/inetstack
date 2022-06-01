@@ -40,7 +40,8 @@ use ::runtime::{
         NetworkRuntime,
     },
     scheduler::SchedulerHandle,
-    Runtime,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
 };
 use ::std::{
     cell::RefCell,
@@ -74,7 +75,7 @@ pub struct ArpPeer<RT: NetworkRuntime> {
 // Associate Functions
 //==============================================================================
 
-impl<RT: Runtime> ArpPeer<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
     pub fn new(now: Instant, rt: RT, options: ArpConfig) -> Result<ArpPeer<RT>, Fail> {
         let cache = Rc::new(RefCell::new(ArpCache::new(
             now,

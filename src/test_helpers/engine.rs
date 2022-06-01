@@ -20,11 +20,15 @@ use ::libc::EBADMSG;
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
-    network::types::MacAddress,
+    network::{
+        types::MacAddress,
+        NetworkRuntime,
+    },
     queue::IoQueueTable,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
     QDesc,
     QType,
-    Runtime,
 };
 use ::std::{
     collections::HashMap,
@@ -36,14 +40,14 @@ use ::std::{
     time::Duration,
 };
 
-pub struct Engine<RT: Runtime> {
+pub struct Engine<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     rt: RT,
     pub arp: ArpPeer<RT>,
     pub ipv4: Peer<RT>,
     pub file_table: IoQueueTable,
 }
 
-impl<RT: Runtime> Engine<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
     pub fn new(rt: RT) -> Result<Self, Fail> {
         let now = rt.now();
         let file_table = IoQueueTable::new();

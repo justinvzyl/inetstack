@@ -4,7 +4,9 @@
 use ::libc::EAGAIN;
 use ::runtime::{
     fail::Fail,
-    Runtime,
+    network::NetworkRuntime,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
 };
 
 //==============================================================================
@@ -27,7 +29,7 @@ pub struct EphemeralPorts {
 //==============================================================================
 
 impl EphemeralPorts {
-    pub fn new<RT: Runtime>(rt: &RT) -> Self {
+    pub fn new<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(rt: &RT) -> Self {
         let mut ports: Vec<u16> = Vec::<u16>::new();
         for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
             ports.push(port);

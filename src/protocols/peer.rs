@@ -13,8 +13,12 @@ use ::libc::ENOTCONN;
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
-    network::types::MacAddress,
-    Runtime,
+    network::{
+        types::MacAddress,
+        NetworkRuntime,
+    },
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
 };
 use ::std::{
     future::Future,
@@ -25,14 +29,14 @@ use ::std::{
 #[cfg(test)]
 use ::runtime::QDesc;
 
-pub struct Peer<RT: Runtime> {
+pub struct Peer<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     rt: RT,
     icmpv4: Icmpv4Peer<RT>,
     pub tcp: TcpPeer<RT>,
     pub udp: UdpPeer<RT>,
 }
 
-impl<RT: Runtime> Peer<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
     pub fn new(rt: RT, arp: ArpPeer<RT>) -> Peer<RT> {
         let local_link_addr: MacAddress = rt.local_link_addr();
         let local_ipv4_addr: Ipv4Addr = rt.local_ipv4_addr();
@@ -72,7 +76,7 @@ impl<RT: Runtime> Peer<RT> {
 }
 
 #[cfg(test)]
-impl<RT: Runtime> Peer<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
     pub fn tcp_mss(&self, fd: QDesc) -> Result<usize, Fail> {
         self.tcp.remote_mss(fd)
     }

@@ -11,11 +11,15 @@ use ::futures::{
 };
 use ::runtime::{
     fail::Fail,
-    Runtime,
+    network::NetworkRuntime,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
 };
 use std::rc::Rc;
 
-pub async fn acknowledger<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
+pub async fn acknowledger<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+    cb: Rc<ControlBlock<RT>>,
+) -> Result<!, Fail> {
     loop {
         // TODO: Implement TCP delayed ACKs, subject to restrictions from RFC 1122
         // - TCP should implement a delayed ACK
