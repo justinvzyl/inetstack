@@ -7,8 +7,8 @@ mod options;
 
 use crate::protocols::tcp::SeqNumber;
 use ::runtime::{
+    network::NetworkRuntime,
     watched::WatchFuture,
-    Runtime,
 };
 use ::std::{
     fmt::Debug,
@@ -24,7 +24,7 @@ pub use self::{
     },
 };
 
-pub trait SlowStartCongestionAvoidance<RT: Runtime> {
+pub trait SlowStartCongestionAvoidance<RT: NetworkRuntime> {
     fn get_cwnd(&self) -> u32 {
         u32::MAX
     }
@@ -45,7 +45,7 @@ pub trait SlowStartCongestionAvoidance<RT: Runtime> {
     fn on_send(&self, _rto: Duration, _num_sent_bytes: u32) {}
 }
 
-pub trait FastRetransmitRecovery<RT: Runtime>
+pub trait FastRetransmitRecovery<RT: NetworkRuntime>
 where
     Self: SlowStartCongestionAvoidance<RT>,
 {
@@ -63,7 +63,7 @@ where
     fn on_fast_retransmit(&self) {}
 }
 
-pub trait LimitedTransmit<RT: Runtime>
+pub trait LimitedTransmit<RT: NetworkRuntime>
 where
     Self: SlowStartCongestionAvoidance<RT>,
 {
@@ -75,7 +75,7 @@ where
     }
 }
 
-pub trait CongestionControl<RT: Runtime>:
+pub trait CongestionControl<RT: NetworkRuntime>:
     SlowStartCongestionAvoidance<RT> + FastRetransmitRecovery<RT> + LimitedTransmit<RT> + Debug
 {
     fn new(mss: usize, seq_no: SeqNumber, options: Option<options::Options>) -> Box<dyn CongestionControl<RT>>
