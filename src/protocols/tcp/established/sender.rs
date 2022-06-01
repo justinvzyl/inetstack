@@ -14,7 +14,6 @@ use ::runtime::{
     fail::Fail,
     memory::Buffer,
     network::NetworkRuntime,
-    task::SchedulerRuntime,
     watched::{
         WatchFuture,
         WatchedValue,
@@ -158,7 +157,7 @@ impl Sender {
 
     // This is the main TCP send routine.
     //
-    pub fn send<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
+    pub fn send<RT: NetworkRuntime + Clone + 'static>(
         &self,
         buf: Box<dyn Buffer>,
         cb: &ControlBlock<RT>,
@@ -246,14 +245,14 @@ impl Sender {
                     // Put the segment we just sent on the retransmission queue.
                     let unacked_segment = UnackedSegment {
                         bytes: buf,
-                        initial_tx: Some(cb.rt().now()),
+                        initial_tx: Some(cb.clock.now()),
                     };
                     self.unacked_queue.borrow_mut().push_back(unacked_segment);
 
                     // Start the retransmission timer if it isn't already running.
                     if cb.get_retransmit_deadline().is_none() {
                         let rto: Duration = cb.rto_estimate();
-                        cb.set_retransmit_deadline(Some(cb.rt().now() + rto));
+                        cb.set_retransmit_deadline(Some(cb.clock.now() + rto));
                     }
 
                     return Ok(());
@@ -279,7 +278,7 @@ impl Sender {
 
     // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
     //
-    pub fn remove_acknowledged_data<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
+    pub fn remove_acknowledged_data<RT: NetworkRuntime + Clone + 'static>(
         &self,
         cb: &ControlBlock<RT>,
         bytes_acknowledged: u32,

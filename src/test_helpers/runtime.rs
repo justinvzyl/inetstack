@@ -23,7 +23,6 @@ use ::runtime::{
     scheduler::Scheduler,
     task::SchedulerRuntime,
     timer::{
-        Timer,
         TimerRc,
         WaitFuture,
     },
@@ -33,10 +32,6 @@ use ::std::{
     collections::VecDeque,
     net::Ipv4Addr,
     rc::Rc,
-    time::{
-        Duration,
-        Instant,
-    },
 };
 
 //==============================================================================
@@ -75,7 +70,7 @@ pub struct TestRuntime {
 impl TestRuntime {
     pub fn new(
         scheduler: Scheduler,
-        now: Instant,
+        clock: TimerRc,
         arp_options: ArpConfig,
         udp_options: UdpConfig,
         tcp_options: TcpConfig,
@@ -85,7 +80,7 @@ impl TestRuntime {
         logging::initialize();
 
         let inner = Inner {
-            timer: TimerRc(Rc::new(Timer::new(now))),
+            timer: clock,
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
         };
@@ -150,23 +145,4 @@ impl NetworkRuntime for TestRuntime {
 
 impl SchedulerRuntime for TestRuntime {
     type WaitFuture = WaitFuture<TimerRc>;
-
-    fn advance_clock(&self, now: Instant) {
-        self.inner.borrow_mut().timer.0.advance_clock(now);
-    }
-
-    fn wait(&self, duration: Duration) -> Self::WaitFuture {
-        let inner = self.inner.borrow_mut();
-        let now = inner.timer.0.now();
-        inner.timer.0.wait_until(inner.timer.clone(), now + duration)
-    }
-
-    fn wait_until(&self, when: Instant) -> Self::WaitFuture {
-        let inner = self.inner.borrow_mut();
-        inner.timer.0.wait_until(inner.timer.clone(), when)
-    }
-
-    fn now(&self) -> Instant {
-        self.inner.borrow().timer.0.now()
-    }
 }

@@ -30,7 +30,6 @@ use ::runtime::{
         NetworkRuntime,
     },
     queue::IoQueueTable,
-    task::SchedulerRuntime,
     QDesc,
     QType,
 };
@@ -43,10 +42,14 @@ use ::std::{
     },
     time::Duration,
 };
-use runtime::scheduler::Scheduler;
+use runtime::{
+    scheduler::Scheduler,
+    timer::TimerRc,
+};
 
-pub struct Engine<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct Engine<RT: NetworkRuntime + Clone + 'static> {
     rt: RT,
+    pub clock: TimerRc,
     local_link_addr: MacAddress,
     pub arp_options: ArpConfig,
     pub arp: ArpPeer<RT>,
@@ -55,9 +58,10 @@ pub struct Engine<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     pub file_table: IoQueueTable,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> Engine<RT> {
     pub fn new(
         rt: RT,
+        clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -65,11 +69,12 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
         udp_options: UdpConfig,
         tcp_options: TcpConfig,
     ) -> Result<Self, Fail> {
-        let now = rt.now();
+        let now = clock.now();
         let file_table = IoQueueTable::new();
         let arp = ArpPeer::new(
             now,
             rt.clone(),
+            clock.clone(),
             scheduler.clone(),
             local_link_addr,
             local_ipv4_addr,
@@ -78,6 +83,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
         let rng_seed: [u8; 32] = [0; 32];
         let ipv4 = Peer::new(
             rt.clone(),
+            clock.clone(),
             scheduler.clone(),
             arp.clone(),
             local_link_addr,
@@ -88,6 +94,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
         );
         Ok(Engine {
             rt,
+            clock: clock.clone(),
             arp_options,
             local_link_addr,
             arp,

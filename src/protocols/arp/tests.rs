@@ -23,12 +23,9 @@ use ::libc::{
     EBADMSG,
     ETIMEDOUT,
 };
-use ::runtime::{
-    network::{
-        config::ArpConfig,
-        types::MacAddress,
-    },
-    task::SchedulerRuntime,
+use ::runtime::network::{
+    config::ArpConfig,
+    types::MacAddress,
 };
 use ::std::{
     future::Future,
@@ -56,7 +53,7 @@ fn immediate_reply() {
     let now = now + Duration::from_micros(1);
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
-    alice.rt().advance_clock(now);
+    alice.clock.advance_clock(now);
     let rt: &mut TestRuntime = alice.rt();
     let request = rt.pop_frame();
 
@@ -77,13 +74,13 @@ fn immediate_reply() {
     let cache = carrie.export_arp_cache();
     assert_eq!(cache.get(&test_helpers::ALICE_IPV4), Some(&test_helpers::ALICE_MAC));
 
-    carrie.rt().advance_clock(now);
+    carrie.clock.advance_clock(now);
     let reply = carrie.rt().pop_frame();
 
     info!("passing ARP reply back to alice...");
     alice.receive(reply).unwrap();
     let now = now + Duration::from_micros(1);
-    alice.rt().advance_clock(now);
+    alice.clock.advance_clock(now);
     let link_addr = match Future::poll(fut.as_mut(), &mut ctx) {
         Poll::Ready(Ok(link_addr)) => Ok(link_addr),
         _ => Err(()),
@@ -110,7 +107,7 @@ fn slow_reply() {
 
     // move time forward enough to trigger a timeout.
     now += Duration::from_secs(1);
-    alice.rt().advance_clock(now);
+    alice.clock.advance_clock(now);
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let request = alice.rt().pop_frame();
@@ -133,12 +130,12 @@ fn slow_reply() {
     let cache = carrie.export_arp_cache();
     assert_eq!(cache.get(&test_helpers::ALICE_IPV4), Some(&test_helpers::ALICE_MAC));
 
-    carrie.rt().advance_clock(now);
+    carrie.clock.advance_clock(now);
     let reply = carrie.rt().pop_frame();
 
     alice.receive(reply).unwrap();
     now += Duration::from_micros(1);
-    alice.rt().advance_clock(now);
+    alice.clock.advance_clock(now);
     let link_addr: MacAddress = match Future::poll(fut.as_mut(), &mut ctx) {
         Poll::Ready(Ok(link_addr)) => Ok(link_addr),
         _ => Err(()),
@@ -168,7 +165,7 @@ fn no_reply() {
 
     for i in 0..options.get_retry_count() {
         now += options.get_request_timeout();
-        alice.rt().advance_clock(now);
+        alice.clock.advance_clock(now);
         assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
         info!("no_reply(): retry #{}", i + 1);
         let bytes = alice.rt().pop_frame();
@@ -179,7 +176,7 @@ fn no_reply() {
 
     // timeout
     now += options.get_request_timeout();
-    alice.rt().advance_clock(now);
+    alice.clock.advance_clock(now);
     match Future::poll(fut.as_mut(), &mut ctx) {
         Poll::Ready(Err(error)) if error.errno == ETIMEDOUT => Ok(()),
         _ => Err(()),

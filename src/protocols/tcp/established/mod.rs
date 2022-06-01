@@ -26,7 +26,6 @@ use ::runtime::{
     memory::Buffer,
     network::NetworkRuntime,
     scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
     QDesc,
 };
 use ::std::{
@@ -39,13 +38,13 @@ use ::std::{
     time::Duration,
 };
 
-pub struct EstablishedSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct EstablishedSocket<RT: NetworkRuntime + Clone + 'static> {
     pub cb: Rc<ControlBlock<RT>>,
     #[allow(unused)]
     background_work: SchedulerHandle,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> EstablishedSocket<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> EstablishedSocket<RT> {
     pub fn new(cb: ControlBlock<RT>, fd: QDesc, dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> Self {
         let cb = Rc::new(cb);
         let future = background(cb.clone(), fd, dead_socket_tx);

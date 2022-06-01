@@ -46,14 +46,16 @@ use ::runtime::{
         NetworkRuntime,
     },
     scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
     QDesc,
 };
 use ::std::{
     collections::HashMap,
     net::SocketAddrV4,
 };
-use runtime::scheduler::Scheduler;
+use runtime::{
+    scheduler::Scheduler,
+    timer::TimerRc,
+};
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
@@ -63,9 +65,10 @@ use ::runtime::perftools::timer;
 //==============================================================================
 
 /// UDP Peer
-pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct UdpPeer<RT: NetworkRuntime + Clone + 'static> {
     /// Underlying runtime.
     rt: RT,
+    clock: TimerRc,
     /// Underlying ARP peer.
     arp: ArpPeer<RT>,
     /// Opened sockets.
@@ -89,10 +92,11 @@ pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 //==============================================================================
 
 /// Associate functions for [UdpPeer].
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     /// Creates a Udp peer.
     pub fn new(
         rt: RT,
+        clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -104,6 +108,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
 
         let future = Self::background_sender(
             rt.clone(),
+            clock.clone(),
             local_ipv4_addr,
             local_link_addr,
             offload_checksum,
@@ -117,6 +122,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
 
         Self {
             rt,
+            clock: clock.clone(),
             arp,
             sockets: HashMap::new(),
             bound: HashMap::new(),
@@ -131,6 +137,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     /// Asynchronously send unsent datagrams to remote peer.
     async fn background_sender(
         rt: RT,
+        clock: TimerRc,
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
         offload_checksum: bool,

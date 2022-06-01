@@ -21,28 +21,31 @@ use ::runtime::{
         types::MacAddress,
         NetworkRuntime,
     },
-    task::SchedulerRuntime,
 };
 use ::std::{
     future::Future,
     net::Ipv4Addr,
     time::Duration,
 };
-use runtime::scheduler::Scheduler;
+use runtime::{
+    scheduler::Scheduler,
+    timer::TimerRc,
+};
 
 #[cfg(test)]
 use ::runtime::QDesc;
 
-pub struct Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct Peer<RT: NetworkRuntime + Clone + 'static> {
     local_ipv4_addr: Ipv4Addr,
     icmpv4: Icmpv4Peer<RT>,
     pub tcp: TcpPeer<RT>,
     pub udp: UdpPeer<RT>,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> Peer<RT> {
     pub fn new(
         rt: RT,
+        clock: TimerRc,
         scheduler: Scheduler,
         arp: ArpPeer<RT>,
         local_link_addr: MacAddress,
@@ -54,6 +57,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
         let udp_offload_checksum: bool = udp_options.get_tx_checksum_offload();
         let udp: UdpPeer<RT> = UdpPeer::new(
             rt.clone(),
+            clock.clone(),
             scheduler.clone(),
             local_link_addr,
             local_ipv4_addr,
@@ -62,6 +66,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
         );
         let icmpv4: Icmpv4Peer<RT> = Icmpv4Peer::new(
             rt.clone(),
+            clock.clone(),
             scheduler.clone(),
             local_link_addr,
             local_ipv4_addr,
@@ -70,6 +75,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
         );
         let tcp: TcpPeer<RT> = TcpPeer::new(
             rt.clone(),
+            clock.clone(),
             scheduler.clone(),
             local_link_addr,
             local_ipv4_addr,
@@ -109,7 +115,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
 }
 
 #[cfg(test)]
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> Peer<RT> {
     pub fn tcp_mss(&self, fd: QDesc) -> Result<usize, Fail> {
         self.tcp.remote_mss(fd)
     }

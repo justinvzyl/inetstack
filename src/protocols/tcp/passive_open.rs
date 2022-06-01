@@ -45,7 +45,6 @@ use ::runtime::{
         NetworkRuntime,
     },
     scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
 };
 use ::std::{
     cell::RefCell,
@@ -65,7 +64,10 @@ use ::std::{
     },
     time::Duration,
 };
-use runtime::scheduler::Scheduler;
+use runtime::{
+    scheduler::Scheduler,
+    timer::TimerRc,
+};
 
 struct InflightAccept {
     local_isn: SeqNumber,
@@ -78,13 +80,13 @@ struct InflightAccept {
     handle: SchedulerHandle,
 }
 
-struct ReadySockets<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+struct ReadySockets<RT: NetworkRuntime + Clone + 'static> {
     ready: VecDeque<Result<ControlBlock<RT>, Fail>>,
     endpoints: HashSet<SocketAddrV4>,
     waker: Option<Waker>,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ReadySockets<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> ReadySockets<RT> {
     fn push_ok(&mut self, cb: ControlBlock<RT>) {
         assert!(self.endpoints.insert(cb.get_remote()));
         self.ready.push_back(Ok(cb));
@@ -119,7 +121,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ReadySockets<RT> {
     }
 }
 
-pub struct PassiveSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct PassiveSocket<RT: NetworkRuntime + Clone + 'static> {
     inflight: HashMap<SocketAddrV4, InflightAccept>,
     ready: Rc<RefCell<ReadySockets<RT>>>,
 
@@ -129,16 +131,18 @@ pub struct PassiveSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static
     local: SocketAddrV4,
     local_link_addr: MacAddress,
     rt: RT,
+    clock: TimerRc,
     scheduler: Scheduler,
     arp: ArpPeer<RT>,
     tcp_options: TcpConfig,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
     pub fn new(
         local: SocketAddrV4,
         max_backlog: usize,
         rt: RT,
+        clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
@@ -158,6 +162,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
             isn_generator: IsnGenerator::new(nonce),
             local,
             rt,
+            clock,
             scheduler,
             local_link_addr,
             arp,
@@ -221,6 +226,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
                 self.local,
                 remote,
                 self.rt.clone(),
+                self.clock.clone(),
                 self.scheduler.clone(),
                 self.local_link_addr,
                 self.tcp_options.clone(),
@@ -257,6 +263,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
             self.local,
             remote,
             self.rt.clone(),
+            self.clock.clone(),
             self.local_link_addr,
             self.arp.clone(),
             self.ready.clone(),
@@ -303,6 +310,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        clock: TimerRc,
         local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
         ready: Rc<RefCell<ReadySockets<RT>>>,
@@ -343,7 +351,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
                 };
                 rt.transmit(segment);
-                rt.wait(handshake_timeout).await;
+                clock.wait(clock.clone(), handshake_timeout).await;
             }
             ready.borrow_mut().push_err(Fail::new(ETIMEDOUT, "handshake timeout"));
         }

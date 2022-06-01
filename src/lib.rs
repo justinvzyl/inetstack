@@ -57,7 +57,6 @@ use ::runtime::{
         FutureResult,
         SchedulerHandle,
     },
-    task::SchedulerRuntime,
     QDesc,
     QToken,
     QType,
@@ -71,7 +70,11 @@ use ::std::{
     },
     time::Instant,
 };
-use runtime::scheduler::Scheduler;
+use runtime::{
+    self,
+    scheduler::Scheduler,
+    timer::TimerRc,
+};
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
@@ -96,19 +99,21 @@ pub mod protocols;
 const TIMER_RESOLUTION: usize = 64;
 const MAX_RECV_ITERS: usize = 2;
 
-pub struct InetStack<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct InetStack<RT: NetworkRuntime + Clone + 'static> {
     arp: ArpPeer<RT>,
     ipv4: Peer<RT>,
     file_table: IoQueueTable,
     rt: RT,
+    clock: TimerRc,
     scheduler: Scheduler,
     local_link_addr: MacAddress,
     ts_iters: usize,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
     pub fn new(
         rt: RT,
+        clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -116,12 +121,13 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
         udp_options: UdpConfig,
         tcp_options: TcpConfig,
     ) -> Result<Self, Fail> {
-        let now: Instant = rt.now();
+        let now: Instant = clock.now();
         let file_table: IoQueueTable = IoQueueTable::new();
         let rng_seed: [u8; 32] = [0; 32];
         let arp: ArpPeer<RT> = ArpPeer::new(
             now,
             rt.clone(),
+            clock.clone(),
             scheduler.clone(),
             local_link_addr,
             local_ipv4_addr,
@@ -129,6 +135,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
         )?;
         let ipv4: Peer<RT> = Peer::new(
             rt.clone(),
+            clock.clone(),
             scheduler.clone(),
             arp.clone(),
             local_link_addr,
@@ -142,6 +149,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
             ipv4,
             file_table,
             rt,
+            clock,
             scheduler: scheduler.clone(),
             local_link_addr,
             ts_iters: 0,
@@ -627,7 +635,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
         }
 
         if self.ts_iters == 0 {
-            self.rt.advance_clock(Instant::now());
+            self.clock.advance_clock(Instant::now());
         }
         self.ts_iters = (self.ts_iters + 1) % TIMER_RESOLUTION;
     }

@@ -65,7 +65,6 @@ use ::runtime::{
         types::MacAddress,
         NetworkRuntime,
     },
-    task::SchedulerRuntime,
     QDesc,
 };
 use ::std::{
@@ -85,7 +84,10 @@ use ::std::{
     },
     time::Duration,
 };
-use runtime::scheduler::Scheduler;
+use runtime::{
+    scheduler::Scheduler,
+    timer::TimerRc,
+};
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
@@ -105,7 +107,7 @@ enum Socket {
 // Structures
 //==============================================================================
 
-pub struct Inner<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct Inner<RT: NetworkRuntime + Clone + 'static> {
     isn_generator: IsnGenerator,
 
     ephemeral_ports: EphemeralPorts,
@@ -118,6 +120,7 @@ pub struct Inner<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     established: HashMap<(SocketAddrV4, SocketAddrV4), EstablishedSocket<RT>>,
 
     rt: RT,
+    clock: TimerRc,
     scheduler: Scheduler,
     local_ipv4_addr: Ipv4Addr,
     local_link_addr: MacAddress,
@@ -128,7 +131,7 @@ pub struct Inner<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
-pub struct TcpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct TcpPeer<RT: NetworkRuntime + Clone + 'static> {
     pub(super) inner: Rc<RefCell<Inner<RT>>>,
 }
 
@@ -136,9 +139,10 @@ pub struct TcpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 // Associated FUnctions
 //==============================================================================
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
     pub fn new(
         rt: RT,
+        clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -149,6 +153,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         let (tx, rx) = mpsc::unbounded();
         let inner = Rc::new(RefCell::new(Inner::new(
             rt.clone(),
+            clock.clone(),
             scheduler,
             local_link_addr,
             local_ipv4_addr,
@@ -246,6 +251,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
             local,
             backlog,
             inner.rt.clone(),
+            inner.clock.clone(),
             inner.scheduler.clone(),
             inner.local_link_addr,
             inner.arp.clone(),
@@ -323,6 +329,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
                 local,
                 remote,
                 inner.rt.clone(),
+                inner.clock.clone(),
                 inner.scheduler.clone(),
                 inner.local_link_addr,
                 inner.arp.clone(),
@@ -445,9 +452,10 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
     }
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> Inner<RT> {
     fn new(
         rt: RT,
+        clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -468,6 +476,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
             connecting: HashMap::new(),
             established: HashMap::new(),
             rt,
+            clock: clock.clone(),
             scheduler,
             local_link_addr,
             local_ipv4_addr,

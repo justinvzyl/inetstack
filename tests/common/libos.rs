@@ -34,7 +34,14 @@ use ::std::{
         Instant,
     },
 };
-use runtime::scheduler::Scheduler;
+use runtime::{
+    scheduler::Scheduler,
+    timer::{
+        Timer,
+        TimerRc,
+    },
+};
+use std::rc::Rc;
 
 //==============================================================================
 // Structures
@@ -66,10 +73,12 @@ impl DummyLibOS {
         let udp_options: UdpConfig = UdpConfig::default();
         let tcp_options: TcpConfig = TcpConfig::default();
         let scheduler: Scheduler = Scheduler::default();
-        let rt: DummyRuntime = DummyRuntime::new(now, link_addr, ipv4_addr, rx, tx, arp_options.clone());
+        let clock = TimerRc(Rc::new(Timer::new(now)));
+        let rt: DummyRuntime = DummyRuntime::new(clock.clone(), link_addr, ipv4_addr, rx, tx, arp_options.clone());
         logging::initialize();
         InetStack::new(
             rt,
+            clock.clone(),
             scheduler.clone(),
             link_addr,
             ipv4_addr,

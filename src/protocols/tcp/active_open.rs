@@ -43,7 +43,6 @@ use ::runtime::{
         NetworkRuntime,
     },
     scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
 };
 use ::std::{
     cell::RefCell,
@@ -57,20 +56,24 @@ use ::std::{
         Waker,
     },
 };
-use runtime::scheduler::Scheduler;
+use runtime::{
+    scheduler::Scheduler,
+    timer::TimerRc,
+};
 
-struct ConnectResult<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+struct ConnectResult<RT: NetworkRuntime + Clone + 'static> {
     waker: Option<Waker>,
     result: Option<Result<ControlBlock<RT>, Fail>>,
 }
 
-pub struct ActiveOpenSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct ActiveOpenSocket<RT: NetworkRuntime + Clone + 'static> {
     local_isn: SeqNumber,
 
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
     rt: RT,
+    clock: TimerRc,
     scheduler: Scheduler,
     local_link_addr: MacAddress,
     arp: ArpPeer<RT>,
@@ -81,12 +84,13 @@ pub struct ActiveOpenSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'sta
     result: Rc<RefCell<ConnectResult<RT>>>,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
     pub fn new(
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
@@ -103,6 +107,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             local,
             remote,
             rt.clone(),
+            clock.clone(),
             local_link_addr,
             arp.clone(),
             result.clone(),
@@ -119,6 +124,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             local,
             remote,
             rt,
+            clock: clock.clone(),
             scheduler,
             local_link_addr,
             arp,
@@ -237,6 +243,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             self.local,
             self.remote,
             self.rt.clone(),
+            self.clock.clone(),
             self.scheduler.clone(),
             self.local_link_addr,
             self.tcp_options.clone(),
@@ -260,6 +267,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        clock: TimerRc,
         local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
         result: Rc<RefCell<ConnectResult<RT>>>,
@@ -299,7 +307,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
                 };
                 rt.transmit(segment);
-                rt.wait(handshake_timeout).await;
+                clock.wait(clock.clone(), handshake_timeout).await;
             }
             let mut r = result.borrow_mut();
             if let Some(w) = r.waker.take() {

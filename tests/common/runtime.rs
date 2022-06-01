@@ -28,7 +28,6 @@ use ::runtime::{
     scheduler::Scheduler,
     task::SchedulerRuntime,
     timer::{
-        Timer,
         TimerRc,
         WaitFuture,
     },
@@ -36,10 +35,6 @@ use ::runtime::{
 use ::std::{
     cell::RefCell,
     rc::Rc,
-    time::{
-        Duration,
-        Instant,
-    },
 };
 
 //==============================================================================
@@ -77,7 +72,7 @@ pub struct DummyRuntime {
 impl DummyRuntime {
     /// Creates a Dummy Runtime.
     pub fn new(
-        now: Instant,
+        clock: TimerRc,
         link_addr: MacAddress,
         ipv4_addr: Ipv4Addr,
         incoming: crossbeam_channel::Receiver<DataBuffer>,
@@ -85,7 +80,7 @@ impl DummyRuntime {
         arp_options: ArpConfig,
     ) -> Self {
         let inner = SharedDummyRuntime {
-            timer: TimerRc(Rc::new(Timer::new(now))),
+            timer: clock,
             incoming,
             outgoing,
         };
@@ -131,23 +126,4 @@ impl NetworkRuntime for DummyRuntime {
 /// Scheduler Runtime Trait Implementation for Dummy Runtime
 impl SchedulerRuntime for DummyRuntime {
     type WaitFuture = WaitFuture<TimerRc>;
-
-    fn advance_clock(&self, now: Instant) {
-        self.inner.borrow_mut().timer.0.advance_clock(now);
-    }
-
-    fn wait(&self, duration: Duration) -> Self::WaitFuture {
-        let inner = self.inner.borrow_mut();
-        let now = inner.timer.0.now();
-        inner.timer.0.wait_until(inner.timer.clone(), now + duration)
-    }
-
-    fn wait_until(&self, when: Instant) -> Self::WaitFuture {
-        let inner = self.inner.borrow_mut();
-        inner.timer.0.wait_until(inner.timer.clone(), when)
-    }
-
-    fn now(&self) -> Instant {
-        self.inner.borrow().timer.0.now()
-    }
 }

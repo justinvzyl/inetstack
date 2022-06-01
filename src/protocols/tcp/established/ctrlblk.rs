@@ -39,7 +39,6 @@ use ::runtime::{
         types::MacAddress,
         NetworkRuntime,
     },
-    task::SchedulerRuntime,
     watched::{
         WatchFuture,
         WatchedValue,
@@ -64,7 +63,10 @@ use ::std::{
         Instant,
     },
 };
-use runtime::scheduler::Scheduler;
+use runtime::{
+    scheduler::Scheduler,
+    timer::TimerRc,
+};
 
 // ToDo: Review this value (and its purpose).  It (2048 segments) of 8 KB jumbo packets would limit the unread data to
 // just 16 MB.  If we don't want to lie, that is also about the max window size we should ever advertise.  Whereas TCP
@@ -145,11 +147,12 @@ impl Receiver {
 
 /// Transmission control block for representing our TCP connection.
 // ToDo: Make all public fields in this structure private.
-pub struct ControlBlock<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct ControlBlock<RT: NetworkRuntime + Clone + 'static> {
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
     rt: Rc<RT>,
+    pub clock: TimerRc,
     pub scheduler: Scheduler,
 
     local_link_addr: MacAddress,
@@ -213,11 +216,12 @@ pub struct ControlBlock<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>
 
 //==============================================================================
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> ControlBlock<RT> {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         tcp_options: TcpConfig,
@@ -239,6 +243,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
             remote,
             rt: Rc::new(rt),
             scheduler,
+            clock,
             local_link_addr,
             tcp_options,
             arp: Rc::new(arp),
@@ -398,7 +403,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
 
         // ToDo: We're probably getting "now" here in order to get a timestamp as close as possible to when we received
         // the packet.  However, this is wasteful if we don't take a path below that actually uses it.  Review this.
-        let now: Instant = self.rt.now();
+        let now: Instant = self.clock.now();
 
         // Check to see if the segment is acceptable sequence-wise (i.e. contains some data that fits within the receive
         // window, or is a non-data segment with a sequence number that falls within the window).  Unacceptable segments

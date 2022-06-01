@@ -40,7 +40,6 @@ use ::runtime::{
         NetworkRuntime,
     },
     scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
 };
 use ::std::{
     cell::RefCell,
@@ -53,7 +52,10 @@ use ::std::{
         Instant,
     },
 };
-use runtime::scheduler::Scheduler;
+use runtime::{
+    scheduler::Scheduler,
+    timer::TimerRc,
+};
 
 //==============================================================================
 // Structures
@@ -65,6 +67,7 @@ use runtime::scheduler::Scheduler;
 #[derive(Clone)]
 pub struct ArpPeer<RT: NetworkRuntime> {
     rt: RT,
+    clock: TimerRc,
     scheduler: Scheduler,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
@@ -79,10 +82,11 @@ pub struct ArpPeer<RT: NetworkRuntime> {
 // Associate Functions
 //==============================================================================
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> ArpPeer<RT> {
     pub fn new(
         now: Instant,
         rt: RT,
+        clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -95,7 +99,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
             options.get_disable_arp(),
         )));
 
-        let future = Self::background(rt.clone(), cache.clone());
+        let future = Self::background(rt.clone(), clock.clone(), cache.clone());
         let handle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "failed to insert task in the scheduler")),
@@ -103,6 +107,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
 
         let peer = ArpPeer {
             rt,
+            clock: clock.clone(),
             scheduler,
             local_link_addr,
             local_ipv4_addr,
@@ -142,16 +147,16 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
     }
 
     /// Background task that cleans up the ARP cache from time to time.
-    async fn background(rt: RT, cache: Rc<RefCell<ArpCache>>) {
+    async fn background(rt: RT, clock: TimerRc, cache: Rc<RefCell<ArpCache>>) {
         loop {
-            let current_time = rt.now();
+            let current_time = clock.now();
             {
                 let mut cache = cache.borrow_mut();
                 cache.advance_clock(current_time);
                 // TODO: re-enable eviction once TCP/IP stack is fully functional.
                 // cache.clear();
             }
-            rt.wait(Duration::from_secs(1)).await;
+            clock.wait(clock.clone(), Duration::from_secs(1)).await;
         }
     }
 
@@ -240,6 +245,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
         let arp_options = self.options.clone();
         let local_ipv4_addr: Ipv4Addr = self.local_ipv4_addr;
         let local_link_addr: MacAddress = self.local_link_addr;
+        let clock: TimerRc = self.clock.clone();
         async move {
             if let Some(&link_addr) = cache.borrow().get(ipv4_addr) {
                 return Ok(link_addr);
@@ -262,7 +268,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
             let result = {
                 for i in 0..arp_options.get_retry_count() + 1 {
                     rt.transmit(msg.clone());
-                    let timer = rt.wait(arp_options.get_request_timeout());
+                    let timer = clock.wait(clock.clone(), arp_options.get_request_timeout());
 
                     match arp_response.with_timeout(timer).await {
                         Ok(link_addr) => {

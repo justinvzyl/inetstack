@@ -6,7 +6,6 @@ use ::futures::task::{
     noop_waker_ref,
     Context,
 };
-use ::runtime::task::SchedulerRuntime;
 use ::std::{
     future::Future,
     pin::Pin,
@@ -39,8 +38,8 @@ fn ipv4_ping() {
     .unwrap();
 
     now += Duration::from_secs(1);
-    alice.rt().advance_clock(now);
-    bob.rt().advance_clock(now);
+    alice.clock.advance_clock(now);
+    bob.clock.advance_clock(now);
 
     // Bob receives ping request from Alice.
     bob.receive(alice.rt().pop_frame()).unwrap();
@@ -49,8 +48,8 @@ fn ipv4_ping() {
     bob.rt().poll_scheduler();
 
     now += Duration::from_secs(1);
-    alice.rt().advance_clock(now);
-    bob.rt().advance_clock(now);
+    alice.clock.advance_clock(now);
+    bob.clock.advance_clock(now);
 
     // Alice receives reply from Bob.
     alice.receive(bob.rt().pop_frame()).unwrap();
@@ -82,8 +81,8 @@ fn ipv4_ping_loop() {
         .unwrap();
 
         now += Duration::from_secs(1);
-        alice.rt().advance_clock(now);
-        bob.rt().advance_clock(now);
+        alice.clock.advance_clock(now);
+        bob.clock.advance_clock(now);
 
         // Bob receives ping request from Alice.
         bob.receive(alice.rt().pop_frame()).unwrap();
@@ -92,8 +91,8 @@ fn ipv4_ping_loop() {
         bob.rt().poll_scheduler();
 
         now += Duration::from_secs(1);
-        alice.rt().advance_clock(now);
-        bob.rt().advance_clock(now);
+        alice.clock.advance_clock(now);
+        bob.clock.advance_clock(now);
 
         // Alice receives reply from Bob.
         alice.receive(bob.rt().pop_frame()).unwrap();

@@ -49,7 +49,6 @@ use ::runtime::{
         NetworkRuntime,
     },
     scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
 };
 use ::std::{
     cell::RefCell,
@@ -61,7 +60,10 @@ use ::std::{
     rc::Rc,
     time::Duration,
 };
-use runtime::scheduler::Scheduler;
+use runtime::{
+    scheduler::Scheduler,
+    timer::TimerRc,
+};
 
 //==============================================================================
 // ReqQueue
@@ -102,9 +104,10 @@ impl ReqQueue {
 ///
 /// ICMP for IPv4 is defined in RFC 792.
 ///
-pub struct Icmpv4Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct Icmpv4Peer<RT: NetworkRuntime + Clone + 'static> {
     /// Underlying Runtime
     rt: RT,
+    clock: TimerRc,
 
     local_link_addr: MacAddress,
 
@@ -128,10 +131,11 @@ pub struct Icmpv4Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     handle: SchedulerHandle,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
     /// Creates a new peer for handling ICMP.
     pub fn new(
         rt: RT,
+        clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -150,6 +154,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
 
         Icmpv4Peer {
             rt,
+            clock: clock.clone(),
             local_link_addr,
             local_ipv4_addr,
             arp,
@@ -255,8 +260,9 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
         let local_link_addr: MacAddress = self.local_link_addr;
         let rt = self.rt.clone();
         let requests = self.requests.clone();
+        let clock = self.clock.clone();
         async move {
-            let t0 = rt.now();
+            let t0 = clock.now();
             debug!("initiating ARP query");
             let dst_link_addr = arp.query(dst_ipv4_addr).await?;
             debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
@@ -273,9 +279,9 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
                 rx
             };
             // TODO: Handle cancellation here and unregister the completion in `requests`.
-            let timer = rt.wait(timeout);
+            let timer = clock.wait(clock.clone(), timeout);
             let _ = rx.fuse().with_timeout(timer).await?;
-            Ok(rt.now() - t0)
+            Ok(clock.now() - t0)
         }
     }
 }
