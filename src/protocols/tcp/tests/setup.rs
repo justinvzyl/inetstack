@@ -23,7 +23,6 @@ use crate::{
     test_helpers::{
         self,
         Engine,
-        TestRuntime,
     },
 };
 use ::futures::task::noop_waker_ref;

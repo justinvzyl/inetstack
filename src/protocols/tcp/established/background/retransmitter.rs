@@ -12,10 +12,7 @@ use ::futures::{
 };
 use ::runtime::{
     fail::Fail,
-    network::{
-        types::MacAddress,
-        NetworkRuntime,
-    },
+    network::types::MacAddress,
 };
 use ::std::{
     rc::Rc,

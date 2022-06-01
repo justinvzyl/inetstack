@@ -12,7 +12,6 @@ mod common;
 use crate::common::{
     arp,
     libos::*,
-    runtime::DummyRuntime,
     ALICE_IPV4,
     ALICE_MAC,
     BOB_IPV4,

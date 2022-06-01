@@ -15,10 +15,7 @@ use ::futures::{
     channel::mpsc,
     FutureExt,
 };
-use ::runtime::{
-    network::NetworkRuntime,
-    QDesc,
-};
+use ::runtime::QDesc;
 use ::std::{
     future::Future,
     rc::Rc,

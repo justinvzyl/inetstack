@@ -6,10 +6,7 @@ mod none;
 mod options;
 
 use crate::protocols::tcp::SeqNumber;
-use ::runtime::{
-    network::NetworkRuntime,
-    watched::WatchFuture,
-};
+use ::runtime::watched::WatchFuture;
 use ::std::{
     fmt::Debug,
     time::Duration,

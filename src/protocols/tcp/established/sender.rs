@@ -13,7 +13,6 @@ use ::libc::{
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
-    network::NetworkRuntime,
     watched::{
         WatchFuture,
         WatchedValue,

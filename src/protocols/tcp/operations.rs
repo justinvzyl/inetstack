@@ -9,7 +9,6 @@ use crate::operations::OperationResult;
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
-    network::NetworkRuntime,
     scheduler::FutureResult,
     QDesc,
 };

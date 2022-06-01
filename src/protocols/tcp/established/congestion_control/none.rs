@@ -9,7 +9,6 @@ use super::{
     SlowStartCongestionAvoidance,
 };
 use crate::protocols::tcp::SeqNumber;
-use ::runtime::network::NetworkRuntime;
 use ::std::fmt::Debug;
 
 // Implementation of congestion control which does nothing.

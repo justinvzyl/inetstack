@@ -13,7 +13,6 @@ use ::futures::FutureExt;
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
-    network::NetworkRuntime,
 };
 use ::std::{
     cmp,

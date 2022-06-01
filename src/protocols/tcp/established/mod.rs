@@ -24,7 +24,6 @@ use ::futures::{
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
-    network::NetworkRuntime,
     scheduler::SchedulerHandle,
     QDesc,
 };

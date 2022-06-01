@@ -6,10 +6,7 @@ use crate::protocols::{
     udp::UdpOperation,
 };
 use ::futures::Future;
-use ::runtime::{
-    network::NetworkRuntime,
-    scheduler::SchedulerFuture,
-};
+use ::runtime::scheduler::SchedulerFuture;
 use ::std::{
     any::Any,
     pin::Pin,

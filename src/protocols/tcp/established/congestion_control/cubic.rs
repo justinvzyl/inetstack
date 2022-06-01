@@ -17,12 +17,9 @@ use super::{
     SlowStartCongestionAvoidance,
 };
 use crate::protocols::tcp::SeqNumber;
-use ::runtime::{
-    network::NetworkRuntime,
-    watched::{
-        WatchFuture,
-        WatchedValue,
-    },
+use ::runtime::watched::{
+    WatchFuture,
+    WatchedValue,
 };
 use ::std::{
     cell::Cell,

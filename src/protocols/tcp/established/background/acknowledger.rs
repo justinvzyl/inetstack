@@ -9,10 +9,7 @@ use ::futures::{
     },
     FutureExt,
 };
-use ::runtime::{
-    fail::Fail,
-    network::NetworkRuntime,
-};
+use ::runtime::fail::Fail;
 use std::rc::Rc;
 
 pub async fn acknowledger(cb: Rc<ControlBlock>) -> Result<!, Fail> {
