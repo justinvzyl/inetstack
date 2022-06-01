@@ -28,6 +28,7 @@ use ::std::{
     net::Ipv4Addr,
     time::Duration,
 };
+use runtime::scheduler::Scheduler;
 
 #[cfg(test)]
 use ::runtime::QDesc;
@@ -42,6 +43,7 @@ pub struct Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
     pub fn new(
         rt: RT,
+        scheduler: Scheduler,
         arp: ArpPeer<RT>,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -52,14 +54,29 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
         let udp_offload_checksum: bool = udp_options.get_tx_checksum_offload();
         let udp: UdpPeer<RT> = UdpPeer::new(
             rt.clone(),
+            scheduler.clone(),
             local_link_addr,
             local_ipv4_addr,
             udp_offload_checksum,
             arp.clone(),
         );
-        let icmpv4: Icmpv4Peer<RT> =
-            Icmpv4Peer::new(rt.clone(), local_link_addr, local_ipv4_addr, arp.clone(), rng_seed);
-        let tcp: TcpPeer<RT> = TcpPeer::new(rt.clone(), local_link_addr, local_ipv4_addr, arp, rng_seed, tcp_options);
+        let icmpv4: Icmpv4Peer<RT> = Icmpv4Peer::new(
+            rt.clone(),
+            scheduler.clone(),
+            local_link_addr,
+            local_ipv4_addr,
+            arp.clone(),
+            rng_seed,
+        );
+        let tcp: TcpPeer<RT> = TcpPeer::new(
+            rt.clone(),
+            scheduler.clone(),
+            local_link_addr,
+            local_ipv4_addr,
+            arp,
+            rng_seed,
+            tcp_options,
+        );
 
         Peer {
             local_ipv4_addr,

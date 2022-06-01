@@ -53,6 +53,7 @@ use ::std::{
         Instant,
     },
 };
+use runtime::scheduler::Scheduler;
 
 //==============================================================================
 // Structures
@@ -64,6 +65,7 @@ use ::std::{
 #[derive(Clone)]
 pub struct ArpPeer<RT: NetworkRuntime> {
     rt: RT,
+    scheduler: Scheduler,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     cache: Rc<RefCell<ArpCache>>,
@@ -81,6 +83,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
     pub fn new(
         now: Instant,
         rt: RT,
+        scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         options: ArpConfig,
@@ -93,9 +96,14 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
         )));
 
         let future = Self::background(rt.clone(), cache.clone());
-        let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EAGAIN, "failed to insert task in the scheduler")),
+        };
+
         let peer = ArpPeer {
             rt,
+            scheduler,
             local_link_addr,
             local_ipv4_addr,
             cache,

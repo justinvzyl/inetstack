@@ -61,6 +61,7 @@ use ::std::{
     rc::Rc,
     time::Duration,
 };
+use runtime::scheduler::Scheduler;
 
 //==============================================================================
 // ReqQueue
@@ -131,6 +132,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
     /// Creates a new peer for handling ICMP.
     pub fn new(
         rt: RT,
+        scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp: ArpPeer<RT>,
@@ -139,8 +141,13 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
         let (tx, rx) = mpsc::unbounded();
         let requests = ReqQueue::new();
         let rng: Rc<RefCell<SmallRng>> = Rc::new(RefCell::new(SmallRng::from_seed(rng_seed)));
+
         let future = Self::background(rt.clone(), local_ipv4_addr, local_link_addr, arp.clone(), rx);
-        let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
+            Some(handle) => handle,
+            None => panic!("failed to insert task in the scheduler"),
+        };
+
         Icmpv4Peer {
             rt,
             local_link_addr,

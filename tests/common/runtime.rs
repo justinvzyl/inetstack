@@ -25,11 +25,7 @@ use ::runtime::{
         NetworkRuntime,
         PacketBuf,
     },
-    scheduler::{
-        Scheduler,
-        SchedulerFuture,
-        SchedulerHandle,
-    },
+    scheduler::Scheduler,
     task::SchedulerRuntime,
     timer::{
         Timer,
@@ -153,31 +149,5 @@ impl SchedulerRuntime for DummyRuntime {
 
     fn now(&self) -> Instant {
         self.inner.borrow().timer.0.now()
-    }
-
-    fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        match self.scheduler.insert(future) {
-            Some(handle) => handle,
-            None => panic!("could not insert future in scheduling queue"),
-        }
-    }
-
-    fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        match self.scheduler.insert(future) {
-            Some(handle) => handle,
-            None => panic!("could not insert future in scheduling queue"),
-        }
-    }
-
-    fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {
-        self.scheduler.from_raw_handle(key)
-    }
-
-    fn take(&self, handle: SchedulerHandle) -> Box<dyn SchedulerFuture> {
-        self.scheduler.take(handle)
-    }
-
-    fn poll(&self) {
-        self.scheduler.poll()
     }
 }

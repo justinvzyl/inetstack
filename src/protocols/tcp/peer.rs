@@ -85,6 +85,7 @@ use ::std::{
     },
     time::Duration,
 };
+use runtime::scheduler::Scheduler;
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
@@ -117,6 +118,7 @@ pub struct Inner<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     established: HashMap<(SocketAddrV4, SocketAddrV4), EstablishedSocket<RT>>,
 
     rt: RT,
+    scheduler: Scheduler,
     local_ipv4_addr: Ipv4Addr,
     local_link_addr: MacAddress,
     arp: ArpPeer<RT>,
@@ -137,6 +139,7 @@ pub struct TcpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
     pub fn new(
         rt: RT,
+        scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp: ArpPeer<RT>,
@@ -146,6 +149,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         let (tx, rx) = mpsc::unbounded();
         let inner = Rc::new(RefCell::new(Inner::new(
             rt.clone(),
+            scheduler,
             local_link_addr,
             local_ipv4_addr,
             arp,
@@ -242,6 +246,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
             local,
             backlog,
             inner.rt.clone(),
+            inner.scheduler.clone(),
             inner.local_link_addr,
             inner.arp.clone(),
             inner.tcp_options.clone(),
@@ -318,6 +323,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
                 local,
                 remote,
                 inner.rt.clone(),
+                inner.scheduler.clone(),
                 inner.local_link_addr,
                 inner.arp.clone(),
                 inner.tcp_options.clone(),
@@ -442,6 +448,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
     fn new(
         rt: RT,
+        scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp: ArpPeer<RT>,
@@ -461,6 +468,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
             connecting: HashMap::new(),
             established: HashMap::new(),
             rt,
+            scheduler,
             local_link_addr,
             local_ipv4_addr,
             arp,

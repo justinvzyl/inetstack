@@ -7,13 +7,16 @@ pub mod runtime;
 pub use self::runtime::TestRuntime;
 pub use engine::Engine;
 
-use ::runtime::network::{
-    config::{
-        ArpConfig,
-        TcpConfig,
-        UdpConfig,
+use ::runtime::{
+    network::{
+        config::{
+            ArpConfig,
+            TcpConfig,
+            UdpConfig,
+        },
+        types::MacAddress,
     },
-    types::MacAddress,
+    scheduler::Scheduler,
 };
 use ::std::{
     collections::HashMap,
@@ -56,7 +59,9 @@ pub fn new_alice(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
+    let scheduler: Scheduler = Scheduler::default();
     let rt = TestRuntime::new(
+        scheduler.clone(),
         now,
         arp_options.clone(),
         udp_options.clone(),
@@ -64,7 +69,16 @@ pub fn new_alice(now: Instant) -> Engine<TestRuntime> {
         ALICE_MAC,
         ALICE_IPV4,
     );
-    Engine::new(rt, ALICE_MAC, ALICE_IPV4, arp_options, udp_options, tcp_options).unwrap()
+    Engine::new(
+        rt,
+        scheduler.clone(),
+        ALICE_MAC,
+        ALICE_IPV4,
+        arp_options,
+        udp_options,
+        tcp_options,
+    )
+    .unwrap()
 }
 
 pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
@@ -77,7 +91,9 @@ pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
+    let scheduler: Scheduler = Scheduler::default();
     let rt = TestRuntime::new(
+        scheduler.clone(),
         now,
         arp_options.clone(),
         udp_options.clone(),
@@ -85,7 +101,16 @@ pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
         BOB_MAC,
         BOB_IPV4,
     );
-    Engine::new(rt, BOB_MAC, BOB_IPV4, arp_options, udp_options, tcp_options).unwrap()
+    Engine::new(
+        rt,
+        scheduler.clone(),
+        BOB_MAC,
+        BOB_IPV4,
+        arp_options,
+        udp_options,
+        tcp_options,
+    )
+    .unwrap()
 }
 
 pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
@@ -101,7 +126,9 @@ pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
+    let scheduler: Scheduler = Scheduler::default();
     let rt = TestRuntime::new(
+        scheduler.clone(),
         now,
         arp_options.clone(),
         udp_options.clone(),
@@ -109,7 +136,16 @@ pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
         ALICE_MAC,
         ALICE_IPV4,
     );
-    Engine::new(rt, ALICE_MAC, ALICE_IPV4, arp_options, udp_options, tcp_options).unwrap()
+    Engine::new(
+        rt,
+        scheduler.clone(),
+        ALICE_MAC,
+        ALICE_IPV4,
+        arp_options,
+        udp_options,
+        tcp_options,
+    )
+    .unwrap()
 }
 
 pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
@@ -125,7 +161,10 @@ pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
+    let scheduler: Scheduler = Scheduler::default();
+
     let rt = TestRuntime::new(
+        scheduler.clone(),
         now,
         arp_options.clone(),
         udp_options.clone(),
@@ -133,7 +172,16 @@ pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
         BOB_MAC,
         BOB_IPV4,
     );
-    Engine::new(rt, BOB_MAC, BOB_IPV4, arp_options, udp_options, tcp_options).unwrap()
+    Engine::new(
+        rt,
+        scheduler.clone(),
+        BOB_MAC,
+        BOB_IPV4,
+        arp_options,
+        udp_options,
+        tcp_options,
+    )
+    .unwrap()
 }
 
 pub fn new_carrie(now: Instant) -> Engine<TestRuntime> {
@@ -146,8 +194,10 @@ pub fn new_carrie(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
+    let scheduler: Scheduler = Scheduler::default();
 
     let rt = TestRuntime::new(
+        scheduler.clone(),
         now,
         arp_options.clone(),
         udp_options.clone(),
@@ -155,5 +205,14 @@ pub fn new_carrie(now: Instant) -> Engine<TestRuntime> {
         CARRIE_MAC,
         CARRIE_IPV4,
     );
-    Engine::new(rt, CARRIE_MAC, CARRIE_IPV4, arp_options, udp_options, tcp_options).unwrap()
+    Engine::new(
+        rt,
+        scheduler.clone(),
+        CARRIE_MAC,
+        CARRIE_IPV4,
+        arp_options,
+        udp_options,
+        tcp_options,
+    )
+    .unwrap()
 }

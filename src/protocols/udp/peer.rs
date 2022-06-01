@@ -53,6 +53,7 @@ use ::std::{
     collections::HashMap,
     net::SocketAddrV4,
 };
+use runtime::scheduler::Scheduler;
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
@@ -92,6 +93,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     /// Creates a Udp peer.
     pub fn new(
         rt: RT,
+        scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         offload_checksum: bool,
@@ -99,6 +101,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     ) -> Self {
         let send_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> =
             SharedQueue::<SharedQueueSlot<Box<dyn Buffer>>>::new();
+
         let future = Self::background_sender(
             rt.clone(),
             local_ipv4_addr,
@@ -107,7 +110,11 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
             arp.clone(),
             send_queue.clone(),
         );
-        let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
+            Some(handle) => handle,
+            None => panic!("failed to insert task in the scheduler"),
+        };
+
         Self {
             rt,
             arp,

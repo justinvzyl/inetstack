@@ -57,6 +57,7 @@ use ::std::{
         Waker,
     },
 };
+use runtime::scheduler::Scheduler;
 
 struct ConnectResult<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     waker: Option<Waker>,
@@ -70,6 +71,7 @@ pub struct ActiveOpenSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'sta
     remote: SocketAddrV4,
 
     rt: RT,
+    scheduler: Scheduler,
     local_link_addr: MacAddress,
     arp: ArpPeer<RT>,
     tcp_options: TcpConfig,
@@ -85,6 +87,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        scheduler: Scheduler,
         local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
         tcp_options: TcpConfig,
@@ -105,7 +108,10 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             result.clone(),
             tcp_options.clone(),
         );
-        let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
+            Some(handle) => handle,
+            None => panic!("failed to insert task in the scheduler"),
+        };
 
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
         Self {
@@ -113,6 +119,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             local,
             remote,
             rt,
+            scheduler,
             local_link_addr,
             arp,
             tcp_options,
@@ -230,6 +237,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             self.local,
             self.remote,
             self.rt.clone(),
+            self.scheduler.clone(),
             self.local_link_addr,
             self.tcp_options.clone(),
             self.arp.clone(),

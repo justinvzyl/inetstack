@@ -64,6 +64,7 @@ use ::std::{
         Instant,
     },
 };
+use runtime::scheduler::Scheduler;
 
 // ToDo: Review this value (and its purpose).  It (2048 segments) of 8 KB jumbo packets would limit the unread data to
 // just 16 MB.  If we don't want to lie, that is also about the max window size we should ever advertise.  Whereas TCP
@@ -149,6 +150,7 @@ pub struct ControlBlock<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>
     remote: SocketAddrV4,
 
     rt: Rc<RT>,
+    pub scheduler: Scheduler,
 
     local_link_addr: MacAddress,
 
@@ -216,6 +218,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        scheduler: Scheduler,
         local_link_addr: MacAddress,
         tcp_options: TcpConfig,
         arp: ArpPeer<RT>,
@@ -235,6 +238,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
             local,
             remote,
             rt: Rc::new(rt),
+            scheduler,
             local_link_addr,
             tcp_options,
             arp: Rc::new(arp),

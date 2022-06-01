@@ -65,6 +65,7 @@ use ::std::{
     },
     time::Duration,
 };
+use runtime::scheduler::Scheduler;
 
 struct InflightAccept {
     local_isn: SeqNumber,
@@ -128,6 +129,7 @@ pub struct PassiveSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static
     local: SocketAddrV4,
     local_link_addr: MacAddress,
     rt: RT,
+    scheduler: Scheduler,
     arp: ArpPeer<RT>,
     tcp_options: TcpConfig,
 }
@@ -137,6 +139,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
         local: SocketAddrV4,
         max_backlog: usize,
         rt: RT,
+        scheduler: Scheduler,
         local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
         tcp_options: TcpConfig,
@@ -155,6 +158,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
             isn_generator: IsnGenerator::new(nonce),
             local,
             rt,
+            scheduler,
             local_link_addr,
             arp,
             tcp_options,
@@ -217,6 +221,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
                 self.local,
                 remote,
                 self.rt.clone(),
+                self.scheduler.clone(),
                 self.local_link_addr,
                 self.tcp_options.clone(),
                 self.arp.clone(),
@@ -257,7 +262,13 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
             self.ready.clone(),
             self.tcp_options.clone(),
         );
-        let handle: SchedulerHandle = self.rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle = match self
+            .scheduler
+            .insert(FutureOperation::Background::<RT>(future.boxed_local()))
+        {
+            Some(handle) => handle,
+            None => panic!("failed to insert task in the scheduler"),
+        };
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;

@@ -1,12 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    futures::operation::FutureOperation,
-    test_helpers::Engine,
-};
+use crate::test_helpers::Engine;
 use ::arrayvec::ArrayVec;
-use ::futures::FutureExt;
 use ::runtime::{
     logging,
     memory::{
@@ -24,11 +20,7 @@ use ::runtime::{
         NetworkRuntime,
         PacketBuf,
     },
-    scheduler::{
-        Scheduler,
-        SchedulerFuture,
-        SchedulerHandle,
-    },
+    scheduler::Scheduler,
     task::SchedulerRuntime,
     timer::{
         Timer,
@@ -39,7 +31,6 @@ use ::runtime::{
 use ::std::{
     cell::RefCell,
     collections::VecDeque,
-    future::Future,
     net::Ipv4Addr,
     rc::Rc,
     time::{
@@ -83,6 +74,7 @@ pub struct TestRuntime {
 
 impl TestRuntime {
     pub fn new(
+        scheduler: Scheduler,
         now: Instant,
         arp_options: ArpConfig,
         udp_options: UdpConfig,
@@ -101,7 +93,7 @@ impl TestRuntime {
             link_addr,
             ipv4_addr,
             inner: Rc::new(RefCell::new(inner)),
-            scheduler: Scheduler::default(),
+            scheduler,
             arp_options,
             udp_options,
             tcp_options,
@@ -176,34 +168,5 @@ impl SchedulerRuntime for TestRuntime {
 
     fn now(&self) -> Instant {
         self.inner.borrow().timer.0.now()
-    }
-
-    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
-        match self
-            .scheduler
-            .insert(FutureOperation::Background::<TestRuntime>(future.boxed_local()))
-        {
-            Some(handle) => handle,
-            None => panic!("could not insert future in scheduling queue"),
-        }
-    }
-
-    fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        match self.scheduler.insert(future) {
-            Some(handle) => handle,
-            None => panic!("could not insert future in scheduling queue"),
-        }
-    }
-
-    fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {
-        self.scheduler.from_raw_handle(key)
-    }
-
-    fn take(&self, handle: SchedulerHandle) -> Box<dyn SchedulerFuture> {
-        self.scheduler.take(handle)
-    }
-
-    fn poll(&self) {
-        self.scheduler.poll()
     }
 }
