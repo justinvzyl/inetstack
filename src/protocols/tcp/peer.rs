@@ -61,6 +61,7 @@ use ::runtime::{
         DataBuffer,
     },
     network::{
+        config::TcpConfig,
         types::MacAddress,
         NetworkRuntime,
     },
@@ -120,6 +121,7 @@ pub struct Inner<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     local_link_addr: MacAddress,
     arp: ArpPeer<RT>,
     rng: Rc<RefCell<SmallRng>>,
+    tcp_options: TcpConfig,
 
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
@@ -139,6 +141,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         local_ipv4_addr: Ipv4Addr,
         arp: ArpPeer<RT>,
         rng_seed: [u8; 32],
+        tcp_options: TcpConfig,
     ) -> Self {
         let (tx, rx) = mpsc::unbounded();
         let inner = Rc::new(RefCell::new(Inner::new(
@@ -147,6 +150,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
             local_ipv4_addr,
             arp,
             rng_seed,
+            tcp_options,
             tx,
             rx,
         )));
@@ -240,6 +244,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
             inner.rt.clone(),
             inner.local_link_addr,
             inner.arp.clone(),
+            inner.tcp_options.clone(),
             nonce,
         );
         assert!(inner.passive.insert(local, socket).is_none());
@@ -315,6 +320,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
                 inner.rt.clone(),
                 inner.local_link_addr,
                 inner.arp.clone(),
+                inner.tcp_options.clone(),
             );
             assert!(inner.connecting.insert(key, socket).is_none());
             fd
@@ -440,6 +446,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
         local_ipv4_addr: Ipv4Addr,
         arp: ArpPeer<RT>,
         rng_seed: [u8; 32],
+        tcp_options: TcpConfig,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         _dead_socket_rx: mpsc::UnboundedReceiver<QDesc>,
     ) -> Self {
@@ -458,13 +465,13 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
             local_ipv4_addr,
             arp,
             rng: Rc::new(RefCell::new(rng)),
+            tcp_options,
             dead_socket_tx,
         }
     }
 
     fn receive(&mut self, ip_hdr: &Ipv4Header, buf: Box<dyn Buffer>) -> Result<(), Fail> {
-        let tcp_options = self.rt.tcp_options();
-        let (mut tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, tcp_options.get_rx_checksum_offload())?;
+        let (mut tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, self.tcp_options.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
         let local = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
         let remote = SocketAddrV4::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
@@ -511,7 +518,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
             ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr,
             data: Box::new(DataBuffer::empty()),
-            tx_checksum_offload: self.rt.tcp_options().get_rx_checksum_offload(),
+            tx_checksum_offload: self.tcp_options.get_rx_checksum_offload(),
         };
         self.rt.transmit(segment);
 

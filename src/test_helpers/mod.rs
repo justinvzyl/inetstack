@@ -60,11 +60,11 @@ pub fn new_alice(now: Instant) -> Engine<TestRuntime> {
         now,
         arp_options.clone(),
         udp_options.clone(),
-        tcp_options,
+        tcp_options.clone(),
         ALICE_MAC,
         ALICE_IPV4,
     );
-    Engine::new(rt, ALICE_MAC, ALICE_IPV4, arp_options, udp_options).unwrap()
+    Engine::new(rt, ALICE_MAC, ALICE_IPV4, arp_options, udp_options, tcp_options).unwrap()
 }
 
 pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
@@ -81,11 +81,11 @@ pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
         now,
         arp_options.clone(),
         udp_options.clone(),
-        tcp_options,
+        tcp_options.clone(),
         BOB_MAC,
         BOB_IPV4,
     );
-    Engine::new(rt, BOB_MAC, BOB_IPV4, arp_options, udp_options).unwrap()
+    Engine::new(rt, BOB_MAC, BOB_IPV4, arp_options, udp_options, tcp_options).unwrap()
 }
 
 pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
@@ -105,11 +105,11 @@ pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
         now,
         arp_options.clone(),
         udp_options.clone(),
-        tcp_options,
+        tcp_options.clone(),
         ALICE_MAC,
         ALICE_IPV4,
     );
-    Engine::new(rt, ALICE_MAC, ALICE_IPV4, arp_options, udp_options).unwrap()
+    Engine::new(rt, ALICE_MAC, ALICE_IPV4, arp_options, udp_options, tcp_options).unwrap()
 }
 
 pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
@@ -129,11 +129,11 @@ pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
         now,
         arp_options.clone(),
         udp_options.clone(),
-        tcp_options,
+        tcp_options.clone(),
         BOB_MAC,
         BOB_IPV4,
     );
-    Engine::new(rt, BOB_MAC, BOB_IPV4, arp_options, udp_options).unwrap()
+    Engine::new(rt, BOB_MAC, BOB_IPV4, arp_options, udp_options, tcp_options).unwrap()
 }
 
 pub fn new_carrie(now: Instant) -> Engine<TestRuntime> {
@@ -151,9 +151,9 @@ pub fn new_carrie(now: Instant) -> Engine<TestRuntime> {
         now,
         arp_options.clone(),
         udp_options.clone(),
-        tcp_options,
+        tcp_options.clone(),
         CARRIE_MAC,
         CARRIE_IPV4,
     );
-    Engine::new(rt, CARRIE_MAC, CARRIE_IPV4, arp_options, udp_options).unwrap()
+    Engine::new(rt, CARRIE_MAC, CARRIE_IPV4, arp_options, udp_options, tcp_options).unwrap()
 }

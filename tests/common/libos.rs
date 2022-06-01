@@ -20,6 +20,7 @@ use ::runtime::{
     network::{
         config::{
             ArpConfig,
+            TcpConfig,
             UdpConfig,
         },
         types::MacAddress,
@@ -62,9 +63,10 @@ impl DummyLibOS {
             Some(false),
         );
         let udp_options: UdpConfig = UdpConfig::default();
+        let tcp_options: TcpConfig = TcpConfig::default();
         let rt: DummyRuntime = DummyRuntime::new(now, link_addr, ipv4_addr, rx, tx, arp_options.clone());
         logging::initialize();
-        InetStack::new(rt, link_addr, ipv4_addr, arp_options, udp_options).unwrap()
+        InetStack::new(rt, link_addr, ipv4_addr, arp_options, udp_options, tcp_options).unwrap()
     }
 
     /// Cooks a buffer.

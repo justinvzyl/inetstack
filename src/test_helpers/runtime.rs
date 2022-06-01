@@ -154,10 +154,6 @@ impl NetworkRuntime for TestRuntime {
         }
         out
     }
-
-    fn tcp_options(&self) -> TcpConfig {
-        self.tcp_options.clone()
-    }
 }
 
 impl SchedulerRuntime for TestRuntime {

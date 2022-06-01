@@ -23,6 +23,7 @@ use ::runtime::{
     network::{
         config::{
             ArpConfig,
+            TcpConfig,
             UdpConfig,
         },
         types::MacAddress,
@@ -49,6 +50,7 @@ pub struct Engine<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     pub arp_options: ArpConfig,
     pub arp: ArpPeer<RT>,
     pub ipv4: Peer<RT>,
+    pub tcp_options: TcpConfig,
     pub file_table: IoQueueTable,
 }
 
@@ -59,6 +61,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
         local_ipv4_addr: Ipv4Addr,
         arp_options: ArpConfig,
         udp_options: UdpConfig,
+        tcp_options: TcpConfig,
     ) -> Result<Self, Fail> {
         let now = rt.now();
         let file_table = IoQueueTable::new();
@@ -71,6 +74,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
             local_ipv4_addr,
             rng_seed,
             udp_options,
+            tcp_options.clone(),
         );
         Ok(Engine {
             rt,
@@ -79,6 +83,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
             arp,
             ipv4,
             file_table,
+            tcp_options,
         })
     }
 

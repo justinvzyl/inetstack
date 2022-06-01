@@ -14,7 +14,10 @@ use ::runtime::{
     fail::Fail,
     memory::Buffer,
     network::{
-        config::UdpConfig,
+        config::{
+            TcpConfig,
+            UdpConfig,
+        },
         types::MacAddress,
         NetworkRuntime,
     },
@@ -44,6 +47,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
         local_ipv4_addr: Ipv4Addr,
         rng_seed: [u8; 32],
         udp_options: UdpConfig,
+        tcp_options: TcpConfig,
     ) -> Peer<RT> {
         let udp_offload_checksum: bool = udp_options.get_tx_checksum_offload();
         let udp: UdpPeer<RT> = UdpPeer::new(
@@ -55,7 +59,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
         );
         let icmpv4: Icmpv4Peer<RT> =
             Icmpv4Peer::new(rt.clone(), local_link_addr, local_ipv4_addr, arp.clone(), rng_seed);
-        let tcp: TcpPeer<RT> = TcpPeer::new(rt.clone(), local_link_addr, local_ipv4_addr, arp, rng_seed);
+        let tcp: TcpPeer<RT> = TcpPeer::new(rt.clone(), local_link_addr, local_ipv4_addr, arp, rng_seed, tcp_options);
 
         Peer {
             local_ipv4_addr,

@@ -47,6 +47,7 @@ use ::runtime::{
     network::{
         config::{
             ArpConfig,
+            TcpConfig,
             UdpConfig,
         },
         types::MacAddress,
@@ -111,6 +112,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
         local_ipv4_addr: Ipv4Addr,
         arp_options: ArpConfig,
         udp_options: UdpConfig,
+        tcp_options: TcpConfig,
     ) -> Result<Self, Fail> {
         let now: Instant = rt.now();
         let file_table: IoQueueTable = IoQueueTable::new();
@@ -123,6 +125,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
             local_ipv4_addr,
             rng_seed,
             udp_options,
+            tcp_options,
         );
         Ok(Self {
             arp,

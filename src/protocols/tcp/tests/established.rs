@@ -31,7 +31,6 @@ use ::runtime::{
         Buffer,
         DataBuffer,
     },
-    network::NetworkRuntime,
     QDesc,
 };
 use ::std::{
@@ -365,8 +364,8 @@ pub fn test_send_recv_loop() {
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
     let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
-    let window_scale: u8 = client.rt().tcp_options().get_window_scale();
-    let max_window_size: u32 = (client.rt().tcp_options().get_receive_window_size() as u32)
+    let window_scale: u8 = client.tcp_options.get_window_scale();
+    let max_window_size: u32 = (client.tcp_options.get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
         .unwrap();
 
@@ -409,8 +408,8 @@ pub fn test_send_recv_round_loop() {
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
     let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
-    let window_scale: u8 = client.rt().tcp_options().get_window_scale();
-    let max_window_size: u32 = (client.rt().tcp_options().get_receive_window_size() as u32)
+    let window_scale: u8 = client.tcp_options.get_window_scale();
+    let max_window_size: u32 = (client.tcp_options.get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
         .unwrap();
 
@@ -456,8 +455,8 @@ pub fn test_send_recv_with_delay() {
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
     let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
-    let window_scale: u8 = client.rt().tcp_options().get_window_scale();
-    let max_window_size: u32 = (client.rt().tcp_options().get_receive_window_size() as u32)
+    let window_scale: u8 = client.tcp_options.get_window_scale();
+    let max_window_size: u32 = (client.tcp_options.get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
         .unwrap();
 

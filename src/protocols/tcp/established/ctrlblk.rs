@@ -35,6 +35,7 @@ use ::runtime::{
         DataBuffer,
     },
     network::{
+        config::TcpConfig,
         types::MacAddress,
         NetworkRuntime,
     },
@@ -151,6 +152,8 @@ pub struct ControlBlock<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>
 
     local_link_addr: MacAddress,
 
+    tcp_options: TcpConfig,
+
     // ToDo: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
     // this along with other remote IP information (such as routing, path MTU, etc).
     arp: Rc<ArpPeer<RT>>,
@@ -214,6 +217,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         remote: SocketAddrV4,
         rt: RT,
         local_link_addr: MacAddress,
+        tcp_options: TcpConfig,
         arp: ArpPeer<RT>,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
@@ -232,6 +236,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
             remote,
             rt: Rc::new(rt),
             local_link_addr,
+            tcp_options,
             arp: Rc::new(arp),
             sender: sender,
             state: Cell::new(State::Established),
@@ -824,7 +829,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
             ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr: header,
             data,
-            tx_checksum_offload: self.rt.tcp_options().get_tx_checksum_offload(),
+            tx_checksum_offload: self.tcp_options.get_tx_checksum_offload(),
         };
 
         // Call the runtime to send the segment.

@@ -130,10 +130,6 @@ impl NetworkRuntime for DummyRuntime {
         }
         out
     }
-
-    fn tcp_options(&self) -> TcpConfig {
-        self.tcp_options.clone()
-    }
 }
 
 /// Scheduler Runtime Trait Implementation for Dummy Runtime

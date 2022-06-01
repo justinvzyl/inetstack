@@ -40,6 +40,7 @@ use ::runtime::{
     fail::Fail,
     memory::DataBuffer,
     network::{
+        config::TcpConfig,
         types::MacAddress,
         NetworkRuntime,
     },
@@ -128,6 +129,7 @@ pub struct PassiveSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static
     local_link_addr: MacAddress,
     rt: RT,
     arp: ArpPeer<RT>,
+    tcp_options: TcpConfig,
 }
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
@@ -137,6 +139,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
         rt: RT,
         local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
+        tcp_options: TcpConfig,
         nonce: u32,
     ) -> Self {
         let ready = ReadySockets {
@@ -154,6 +157,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
             rt,
             local_link_addr,
             arp,
+            tcp_options,
         }
     }
 
@@ -187,9 +191,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
                 return Err(Fail::new(EBADMSG, "invalid SYN+ACK seq num"));
             }
 
-            let tcp_options = self.rt.tcp_options();
             let (local_window_scale, remote_window_scale) = match remote_window_scale {
-                Some(w) => (tcp_options.get_window_scale() as u32, w),
+                Some(w) => (self.tcp_options.get_window_scale() as u32, w),
                 None => (0, 0),
             };
             let remote_window_size = (header_window_size)
@@ -197,7 +200,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
                 .expect("TODO: Window size overflow")
                 .try_into()
                 .expect("TODO: Window size overflow");
-            let local_window_size = (tcp_options.get_receive_window_size() as u32)
+            let local_window_size = (self.tcp_options.get_receive_window_size() as u32)
                 .checked_shl(local_window_scale as u32)
                 .expect("TODO: Window size overflow");
             info!(
@@ -215,9 +218,10 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
                 remote,
                 self.rt.clone(),
                 self.local_link_addr,
+                self.tcp_options.clone(),
                 self.arp.clone(),
                 remote_isn + SeqNumber::from(1),
-                self.rt.tcp_options().get_ack_delay_timeout(),
+                self.tcp_options.get_ack_delay_timeout(),
                 local_window_size,
                 local_window_scale,
                 local_isn + SeqNumber::from(1),
@@ -251,6 +255,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
             self.local_link_addr,
             self.arp.clone(),
             self.ready.clone(),
+            self.tcp_options.clone(),
         );
         let handle: SchedulerHandle = self.rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
 
@@ -290,8 +295,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
         local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
         ready: Rc<RefCell<ReadySockets<RT>>>,
+        tcp_options: TcpConfig,
     ) -> impl Future<Output = ()> {
-        let tcp_options = rt.tcp_options();
         let handshake_retries: usize = tcp_options.get_handshake_retries();
         let handshake_timeout: Duration = tcp_options.get_handshake_timeout();
 

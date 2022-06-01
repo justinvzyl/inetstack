@@ -38,6 +38,7 @@ use ::runtime::{
     fail::Fail,
     memory::DataBuffer,
     network::{
+        config::TcpConfig,
         types::MacAddress,
         NetworkRuntime,
     },
@@ -71,6 +72,7 @@ pub struct ActiveOpenSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'sta
     rt: RT,
     local_link_addr: MacAddress,
     arp: ArpPeer<RT>,
+    tcp_options: TcpConfig,
 
     #[allow(unused)]
     handle: SchedulerHandle,
@@ -85,6 +87,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
         rt: RT,
         local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
+        tcp_options: TcpConfig,
     ) -> Self {
         let result = ConnectResult {
             waker: None,
@@ -100,6 +103,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             local_link_addr,
             arp.clone(),
             result.clone(),
+            tcp_options.clone(),
         );
         let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
 
@@ -111,7 +115,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             rt,
             local_link_addr,
             arp,
-
+            tcp_options,
             handle,
             result,
         }
@@ -164,12 +168,10 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
         };
         let remote_seq_num = header.seq_num + SeqNumber::from(1);
 
-        let tcp_options = self.rt.tcp_options();
-
         let mut tcp_hdr = TcpHeader::new(self.local.port(), self.remote.port());
         tcp_hdr.ack = true;
         tcp_hdr.ack_num = remote_seq_num;
-        tcp_hdr.window_size = tcp_options.get_receive_window_size();
+        tcp_hdr.window_size = self.tcp_options.get_receive_window_size();
         tcp_hdr.seq_num = self.local_isn + SeqNumber::from(1);
         debug!("Sending ACK: {:?}", tcp_hdr);
 
@@ -178,7 +180,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr,
             data: Box::new(DataBuffer::empty()),
-            tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
+            tx_checksum_offload: self.tcp_options.get_rx_checksum_offload(),
         };
         self.rt.transmit(segment);
 
@@ -199,14 +201,14 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
         }
 
         let (local_window_scale, remote_window_scale) = match remote_window_scale {
-            Some(w) => (tcp_options.get_window_scale() as u32, w),
+            Some(w) => (self.tcp_options.get_window_scale() as u32, w),
             None => (0, 0),
         };
 
         // TODO(RFC1323): Clamp the scale to 14 instead of panicking.
         assert!(local_window_scale <= 14 && remote_window_scale <= 14);
 
-        let rx_window_size: u32 = (tcp_options.get_receive_window_size())
+        let rx_window_size: u32 = (self.tcp_options.get_receive_window_size())
             .checked_shl(local_window_scale as u32)
             .expect("TODO: Window size overflow")
             .try_into()
@@ -229,9 +231,10 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             self.remote,
             self.rt.clone(),
             self.local_link_addr,
+            self.tcp_options.clone(),
             self.arp.clone(),
             remote_seq_num,
-            self.rt.tcp_options().get_ack_delay_timeout(),
+            self.tcp_options.get_ack_delay_timeout(),
             rx_window_size,
             local_window_scale,
             expected_seq,
@@ -252,8 +255,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
         local_link_addr: MacAddress,
         arp: ArpPeer<RT>,
         result: Rc<RefCell<ConnectResult<RT>>>,
+        tcp_options: TcpConfig,
     ) -> impl Future<Output = ()> {
-        let tcp_options = rt.tcp_options();
         let handshake_retries: usize = tcp_options.get_handshake_retries();
         let handshake_timeout = tcp_options.get_handshake_timeout();
 
