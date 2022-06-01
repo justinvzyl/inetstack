@@ -55,7 +55,7 @@ use ::std::{
 #[test]
 fn tcp_connection_setup() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let port: u16 = PORT_BASE;
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -78,7 +78,7 @@ fn tcp_establish_connection() {
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         let port: u16 = PORT_BASE;
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -101,7 +101,7 @@ fn tcp_establish_connection() {
     });
 
     let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: u16 = PORT_BASE;
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -134,7 +134,7 @@ fn tcp_push_remote() {
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         let port: u16 = PORT_BASE;
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -164,7 +164,7 @@ fn tcp_push_remote() {
     });
 
     let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: u16 = PORT_BASE;
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -205,7 +205,7 @@ fn tcp_push_remote() {
 #[test]
 fn tcp_bad_socket() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let domains: Vec<libc::c_int> = vec![
         libc::AF_ALG,
@@ -289,7 +289,7 @@ fn tcp_bad_socket() {
 #[test]
 fn tcp_bad_bind() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
     let local2: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE + 1);
@@ -331,7 +331,7 @@ fn tcp_bad_bind() {
 #[test]
 fn tcp_bad_listen() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let port: u16 = PORT_BASE;
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -381,7 +381,7 @@ fn tcp_bad_listen() {
 #[test]
 fn tcp_bad_accept() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     // Invalid queue descriptor.
     match libos.accept(QDesc::from(0)) {
@@ -401,7 +401,7 @@ fn tcp_bad_connect() {
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
         let port: u16 = PORT_BASE;
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
@@ -422,7 +422,7 @@ fn tcp_bad_connect() {
     });
 
     let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: u16 = PORT_BASE;
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -472,7 +472,7 @@ fn tcp_bad_close() {
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         let port: u16 = PORT_BASE;
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -506,7 +506,7 @@ fn tcp_bad_close() {
     });
 
     let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: u16 = PORT_BASE;
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -551,7 +551,7 @@ fn tcp_bad_push() {
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         let port: u16 = PORT_BASE;
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -581,7 +581,7 @@ fn tcp_bad_push() {
     });
 
     let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: u16 = PORT_BASE;
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -638,7 +638,7 @@ fn tcp_bad_pop() {
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         let port: u16 = PORT_BASE;
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -674,7 +674,7 @@ fn tcp_bad_pop() {
     });
 
     let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: u16 = PORT_BASE;
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -712,7 +712,7 @@ fn tcp_bad_pop() {
 //======================================================================================================================
 
 /// Safe call to `socket()`.
-fn safe_socket(libos: &mut InetStack<DummyRuntime>) -> QDesc {
+fn safe_socket(libos: &mut InetStack) -> QDesc {
     match libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
         Ok(sockqd) => sockqd,
         Err(e) => panic!("failed to create socket: {:?}", e),
@@ -720,7 +720,7 @@ fn safe_socket(libos: &mut InetStack<DummyRuntime>) -> QDesc {
 }
 
 /// Safe call to `connect()`.
-fn safe_connect(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, remote: SocketAddrV4) -> QToken {
+fn safe_connect(libos: &mut InetStack, sockqd: QDesc, remote: SocketAddrV4) -> QToken {
     match libos.connect(sockqd, remote) {
         Ok(qt) => qt,
         Err(e) => panic!("failed to establish connection: {:?}", e),
@@ -728,7 +728,7 @@ fn safe_connect(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, remote: Sock
 }
 
 /// Safe call to `bind()`.
-fn safe_bind(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, local: SocketAddrV4) {
+fn safe_bind(libos: &mut InetStack, sockqd: QDesc, local: SocketAddrV4) {
     match libos.bind(sockqd, local) {
         Ok(_) => (),
         Err(e) => panic!("bind() failed: {:?}", e),
@@ -736,7 +736,7 @@ fn safe_bind(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, local: SocketAd
 }
 
 /// Safe call to `listen()`.
-fn safe_listen(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc) {
+fn safe_listen(libos: &mut InetStack, sockqd: QDesc) {
     match libos.listen(sockqd, 8) {
         Ok(_) => (),
         Err(e) => panic!("listen() failed: {:?}", e),
@@ -744,7 +744,7 @@ fn safe_listen(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc) {
 }
 
 /// Safe call to `accept()`.
-fn safe_accept(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc) -> QToken {
+fn safe_accept(libos: &mut InetStack, sockqd: QDesc) -> QToken {
     match libos.accept(sockqd) {
         Ok(qt) => qt,
         Err(e) => panic!("accept() failed: {:?}", e),
@@ -752,7 +752,7 @@ fn safe_accept(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc) -> QToken {
 }
 
 /// Safe call to `pop()`.
-fn safe_pop(libos: &mut InetStack<DummyRuntime>, qd: QDesc) -> QToken {
+fn safe_pop(libos: &mut InetStack, qd: QDesc) -> QToken {
     match libos.pop(qd) {
         Ok(qt) => qt,
         Err(e) => panic!("pop() failed: {:?}", e),
@@ -760,7 +760,7 @@ fn safe_pop(libos: &mut InetStack<DummyRuntime>, qd: QDesc) -> QToken {
 }
 
 /// Safe call to `push2()`
-fn safe_push2(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, bytes: &[u8]) -> QToken {
+fn safe_push2(libos: &mut InetStack, sockqd: QDesc, bytes: &[u8]) -> QToken {
     match libos.push2(sockqd, bytes) {
         Ok(qt) => qt,
         Err(e) => panic!("failed to push: {:?}", e),
@@ -768,7 +768,7 @@ fn safe_push2(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, bytes: &[u8]) 
 }
 
 /// Safe call to `wait2()`.
-fn safe_wait2(libos: &mut InetStack<DummyRuntime>, qt: QToken) -> (QDesc, OperationResult) {
+fn safe_wait2(libos: &mut InetStack, qt: QToken) -> (QDesc, OperationResult) {
     match libos.wait2(qt) {
         Ok((qd, qr)) => (qd, qr),
         Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -776,7 +776,7 @@ fn safe_wait2(libos: &mut InetStack<DummyRuntime>, qt: QToken) -> (QDesc, Operat
 }
 
 /// Safe call to `close()` on passive socket.
-fn safe_close_passive(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc) {
+fn safe_close_passive(libos: &mut InetStack, sockqd: QDesc) {
     match libos.close(sockqd) {
         Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
         Err(_) => (),
@@ -784,7 +784,7 @@ fn safe_close_passive(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc) {
 }
 
 /// Safe call to `close()` on active socket.
-fn safe_close_active(libos: &mut InetStack<DummyRuntime>, qd: QDesc) {
+fn safe_close_active(libos: &mut InetStack, qd: QDesc) {
     match libos.close(qd) {
         Ok(_) => (),
         Err(_) => panic!("close() on passive socket has failed"),

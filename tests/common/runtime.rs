@@ -94,7 +94,7 @@ impl DummyRuntime {
 
 /// Network Runtime Trait Implementation for Dummy Runtime
 impl NetworkRuntime for DummyRuntime {
-    fn transmit(&self, pkt: impl PacketBuf) {
+    fn transmit(&self, pkt: Box<dyn PacketBuf>) {
         let header_size = pkt.header_size();
         let body_size = pkt.body_size();
 

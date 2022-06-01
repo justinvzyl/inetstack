@@ -61,39 +61,38 @@ use runtime::{
     timer::TimerRc,
 };
 
-struct ConnectResult<RT: NetworkRuntime + Clone + 'static> {
+struct ConnectResult {
     waker: Option<Waker>,
-    result: Option<Result<ControlBlock<RT>, Fail>>,
+    result: Option<Result<ControlBlock, Fail>>,
 }
 
-pub struct ActiveOpenSocket<RT: NetworkRuntime + Clone + 'static> {
+pub struct ActiveOpenSocket {
     local_isn: SeqNumber,
 
     local: SocketAddrV4,
     remote: SocketAddrV4,
-
-    rt: RT,
+    network: Rc<dyn NetworkRuntime>,
     clock: TimerRc,
     scheduler: Scheduler,
     local_link_addr: MacAddress,
-    arp: ArpPeer<RT>,
+    arp: ArpPeer,
     tcp_options: TcpConfig,
 
     #[allow(unused)]
     handle: SchedulerHandle,
-    result: Rc<RefCell<ConnectResult<RT>>>,
+    result: Rc<RefCell<ConnectResult>>,
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
+impl ActiveOpenSocket {
     pub fn new(
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
-        arp: ArpPeer<RT>,
+        arp: ArpPeer,
         tcp_options: TcpConfig,
     ) -> Self {
         let result = ConnectResult {
@@ -106,14 +105,14 @@ impl<RT: NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
             local_isn,
             local,
             remote,
-            rt.clone(),
+            network.clone(),
             clock.clone(),
             local_link_addr,
             arp.clone(),
             result.clone(),
             tcp_options.clone(),
         );
-        let handle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
+        let handle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
             Some(handle) => handle,
             None => panic!("failed to insert task in the scheduler"),
         };
@@ -123,7 +122,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
             local_isn,
             local,
             remote,
-            rt,
+            network: network.clone(),
             clock: clock.clone(),
             scheduler,
             local_link_addr,
@@ -134,7 +133,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
         }
     }
 
-    pub fn poll_result(&mut self, context: &mut Context) -> Poll<Result<ControlBlock<RT>, Fail>> {
+    pub fn poll_result(&mut self, context: &mut Context) -> Poll<Result<ControlBlock, Fail>> {
         let mut r = self.result.borrow_mut();
         match r.result.take() {
             None => {
@@ -145,7 +144,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
         }
     }
 
-    fn set_result(&mut self, result: Result<ControlBlock<RT>, Fail>) {
+    fn set_result(&mut self, result: Result<ControlBlock, Fail>) {
         let mut r = self.result.borrow_mut();
         if let Some(w) = r.waker.take() {
             w.wake()
@@ -195,7 +194,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
             data: Box::new(DataBuffer::empty()),
             tx_checksum_offload: self.tcp_options.get_rx_checksum_offload(),
         };
-        self.rt.transmit(segment);
+        self.network.transmit(Box::new(segment));
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
@@ -242,7 +241,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
         let cb = ControlBlock::new(
             self.local,
             self.remote,
-            self.rt.clone(),
+            self.network.clone(),
             self.clock.clone(),
             self.scheduler.clone(),
             self.local_link_addr,
@@ -266,11 +265,11 @@ impl<RT: NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         clock: TimerRc,
         local_link_addr: MacAddress,
-        arp: ArpPeer<RT>,
-        result: Rc<RefCell<ConnectResult<RT>>>,
+        arp: ArpPeer,
+        result: Rc<RefCell<ConnectResult>>,
         tcp_options: TcpConfig,
     ) -> impl Future<Output = ()> {
         let handshake_retries: usize = tcp_options.get_handshake_retries();
@@ -306,7 +305,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
                     data: Box::new(DataBuffer::empty()),
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
                 };
-                rt.transmit(segment);
+                network.transmit(Box::new(segment));
                 clock.wait(clock.clone(), handshake_timeout).await;
             }
             let mut r = result.borrow_mut();

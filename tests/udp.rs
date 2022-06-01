@@ -53,7 +53,7 @@ use ::std::{
 #[test]
 fn udp_connect_remote() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let port: u16 = PORT_BASE;
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -68,7 +68,7 @@ fn udp_connect_remote() {
 #[test]
 fn udp_connect_loopback() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let port: u16 = PORT_BASE;
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -96,7 +96,7 @@ fn udp_push_remote() {
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, alice_port);
 
     let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         // Open connection.
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
@@ -132,7 +132,7 @@ fn udp_push_remote() {
     });
 
     let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         // Open connection.
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
@@ -180,7 +180,7 @@ fn udp_loopback() {
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, alice_port);
 
     let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         // Open connection.
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
@@ -216,7 +216,7 @@ fn udp_loopback() {
     });
 
     let bob = thread::spawn(move || {
-        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, bob_tx, alice_rx, arp());
 
         // Open connection.
         let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();

@@ -80,14 +80,14 @@ struct InflightAccept {
     handle: SchedulerHandle,
 }
 
-struct ReadySockets<RT: NetworkRuntime + Clone + 'static> {
-    ready: VecDeque<Result<ControlBlock<RT>, Fail>>,
+struct ReadySockets {
+    ready: VecDeque<Result<ControlBlock, Fail>>,
     endpoints: HashSet<SocketAddrV4>,
     waker: Option<Waker>,
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> ReadySockets<RT> {
-    fn push_ok(&mut self, cb: ControlBlock<RT>) {
+impl ReadySockets {
+    fn push_ok(&mut self, cb: ControlBlock) {
         assert!(self.endpoints.insert(cb.get_remote()));
         self.ready.push_back(Ok(cb));
         if let Some(w) = self.waker.take() {
@@ -102,7 +102,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ReadySockets<RT> {
         }
     }
 
-    fn poll(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock<RT>, Fail>> {
+    fn poll(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock, Fail>> {
         let r = match self.ready.pop_front() {
             Some(r) => r,
             None => {
@@ -121,31 +121,32 @@ impl<RT: NetworkRuntime + Clone + 'static> ReadySockets<RT> {
     }
 }
 
-pub struct PassiveSocket<RT: NetworkRuntime + Clone + 'static> {
+pub struct PassiveSocket {
     inflight: HashMap<SocketAddrV4, InflightAccept>,
-    ready: Rc<RefCell<ReadySockets<RT>>>,
+    ready: Rc<RefCell<ReadySockets>>,
 
     max_backlog: usize,
     isn_generator: IsnGenerator,
 
     local: SocketAddrV4,
     local_link_addr: MacAddress,
-    rt: RT,
+    network: Rc<dyn NetworkRuntime>,
+
     clock: TimerRc,
     scheduler: Scheduler,
-    arp: ArpPeer<RT>,
+    arp: ArpPeer,
     tcp_options: TcpConfig,
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
+impl PassiveSocket {
     pub fn new(
         local: SocketAddrV4,
         max_backlog: usize,
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
-        arp: ArpPeer<RT>,
+        arp: ArpPeer,
         tcp_options: TcpConfig,
         nonce: u32,
     ) -> Self {
@@ -161,7 +162,7 @@ impl<RT: NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
             max_backlog,
             isn_generator: IsnGenerator::new(nonce),
             local,
-            rt,
+            network,
             clock,
             scheduler,
             local_link_addr,
@@ -170,7 +171,7 @@ impl<RT: NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
         }
     }
 
-    pub fn poll_accept(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock<RT>, Fail>> {
+    pub fn poll_accept(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock, Fail>> {
         self.ready.borrow_mut().poll(ctx)
     }
 
@@ -225,7 +226,7 @@ impl<RT: NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
             let cb = ControlBlock::new(
                 self.local,
                 remote,
-                self.rt.clone(),
+                self.network.clone(),
                 self.clock.clone(),
                 self.scheduler.clone(),
                 self.local_link_addr,
@@ -262,17 +263,14 @@ impl<RT: NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
             remote_isn,
             self.local,
             remote,
-            self.rt.clone(),
+            self.network.clone(),
             self.clock.clone(),
             self.local_link_addr,
             self.arp.clone(),
             self.ready.clone(),
             self.tcp_options.clone(),
         );
-        let handle = match self
-            .scheduler
-            .insert(FutureOperation::Background::<RT>(future.boxed_local()))
-        {
+        let handle = match self.scheduler.insert(FutureOperation::Background(future.boxed_local())) {
             Some(handle) => handle,
             None => panic!("failed to insert task in the scheduler"),
         };
@@ -309,11 +307,11 @@ impl<RT: NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
         remote_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         clock: TimerRc,
         local_link_addr: MacAddress,
-        arp: ArpPeer<RT>,
-        ready: Rc<RefCell<ReadySockets<RT>>>,
+        arp: ArpPeer,
+        ready: Rc<RefCell<ReadySockets>>,
         tcp_options: TcpConfig,
     ) -> impl Future<Output = ()> {
         let handshake_retries: usize = tcp_options.get_handshake_retries();
@@ -350,7 +348,7 @@ impl<RT: NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
                     data: Box::new(DataBuffer::empty()),
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
                 };
-                rt.transmit(segment);
+                network.transmit(Box::new(segment));
                 clock.wait(clock.clone(), handshake_timeout).await;
             }
             ready.borrow_mut().push_err(Fail::new(ETIMEDOUT, "handshake timeout"));

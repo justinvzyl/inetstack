@@ -80,7 +80,7 @@ fn test_connection_timeout() {
     advance_clock(None, Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, mut connect_future, bytes): (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) =
+    let (_, mut connect_future, bytes): (QDesc, ConnectFuture, Box<dyn Buffer>) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Sanity check packet.
@@ -97,7 +97,7 @@ fn test_connection_timeout() {
         for _ in 0..timeout.as_secs() {
             advance_clock(None, Some(&mut client), &mut now);
         }
-        client.rt().poll_scheduler();
+        client.rt.poll_scheduler();
     }
 
     match Future::poll(Pin::new(&mut connect_future), &mut ctx) {
@@ -124,13 +124,13 @@ fn test_refuse_connection_early_rst() {
     let mut client = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture<TestRuntime> = connection_setup_closed_listen(&mut server, listen_addr);
+    let _: AcceptFuture = connection_setup_closed_listen(&mut server, listen_addr);
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) =
+    let (_, _, bytes): (QDesc, ConnectFuture, Box<dyn Buffer>) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Temper packet.
@@ -193,13 +193,13 @@ fn test_refuse_connection_early_ack() {
     let mut client = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture<TestRuntime> = connection_setup_closed_listen(&mut server, listen_addr);
+    let _: AcceptFuture = connection_setup_closed_listen(&mut server, listen_addr);
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) =
+    let (_, _, bytes): (QDesc, ConnectFuture, Box<dyn Buffer>) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Temper packet.
@@ -262,13 +262,13 @@ fn test_refuse_connection_missing_syn() {
     let mut client = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture<TestRuntime> = connection_setup_closed_listen(&mut server, listen_addr);
+    let _: AcceptFuture = connection_setup_closed_listen(&mut server, listen_addr);
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) =
+    let (_, _, bytes): (QDesc, ConnectFuture, Box<dyn Buffer>) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Sanity check packet.
@@ -353,56 +353,53 @@ fn serialize_segment(pkt: TcpSegment) -> Box<dyn Buffer> {
 
 /// Triggers LISTEN -> SYN_SENT state transition.
 fn connection_setup_listen_syn_sent(
-    client: &mut Engine<TestRuntime>,
+    client: &mut Engine,
     listen_addr: SocketAddrV4,
-) -> (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) {
+) -> (QDesc, ConnectFuture, Box<dyn Buffer>) {
     // Issue CONNECT operation.
     let client_fd: QDesc = client.tcp_socket().unwrap();
-    let connect_future: ConnectFuture<TestRuntime> = client.tcp_connect(client_fd, listen_addr);
+    let connect_future: ConnectFuture = client.tcp_connect(client_fd, listen_addr);
 
     // SYN_SENT state.
-    client.rt().poll_scheduler();
-    let bytes: Box<dyn Buffer> = client.rt().pop_frame();
+    client.rt.poll_scheduler();
+    let bytes: Box<dyn Buffer> = client.rt.pop_frame();
 
     (client_fd, connect_future, bytes)
 }
 
 /// Triggers CLOSED -> LISTEN state transition.
-fn connection_setup_closed_listen(
-    server: &mut Engine<TestRuntime>,
-    listen_addr: SocketAddrV4,
-) -> AcceptFuture<TestRuntime> {
+fn connection_setup_closed_listen(server: &mut Engine, listen_addr: SocketAddrV4) -> AcceptFuture {
     // Issue ACCEPT operation.
     let socket_fd: QDesc = server.tcp_socket().unwrap();
     server.tcp_bind(socket_fd, listen_addr).unwrap();
     server.tcp_listen(socket_fd, 1).unwrap();
-    let accept_future: AcceptFuture<TestRuntime> = server.tcp_accept(socket_fd);
+    let accept_future: AcceptFuture = server.tcp_accept(socket_fd);
 
     // LISTEN state.
-    server.rt().poll_scheduler();
+    server.rt.poll_scheduler();
 
     accept_future
 }
 
 /// Triggers LISTEN -> SYN_RCVD state transition.
-fn connection_setup_listen_syn_rcvd(server: &mut Engine<TestRuntime>, bytes: Box<dyn Buffer>) -> Box<dyn Buffer> {
+fn connection_setup_listen_syn_rcvd(server: &mut Engine, bytes: Box<dyn Buffer>) -> Box<dyn Buffer> {
     // SYN_RCVD state.
     server.receive(bytes).unwrap();
-    server.rt().poll_scheduler();
-    server.rt().pop_frame()
+    server.rt.poll_scheduler();
+    server.rt.pop_frame()
 }
 
 /// Triggers SYN_SENT -> ESTABLISHED state transition.
-fn connection_setup_syn_sent_established(client: &mut Engine<TestRuntime>, bytes: Box<dyn Buffer>) -> Box<dyn Buffer> {
+fn connection_setup_syn_sent_established(client: &mut Engine, bytes: Box<dyn Buffer>) -> Box<dyn Buffer> {
     client.receive(bytes).unwrap();
-    client.rt().poll_scheduler();
-    client.rt().pop_frame()
+    client.rt.poll_scheduler();
+    client.rt.pop_frame()
 }
 
 /// Triggers SYN_RCVD -> ESTABLISHED state transition.
-fn connection_setup_sync_rcvd_established(server: &mut Engine<TestRuntime>, bytes: Box<dyn Buffer>) {
+fn connection_setup_sync_rcvd_established(server: &mut Engine, bytes: Box<dyn Buffer>) {
     server.receive(bytes).unwrap();
-    server.rt().poll_scheduler();
+    server.rt.poll_scheduler();
 }
 
 /// Checks for a pure SYN packet. This packet is sent by the sender side (active
@@ -479,11 +476,7 @@ fn check_packet_pure_ack_on_syn_ack(
 }
 
 /// Advances clock by one second.
-pub fn advance_clock(
-    server: Option<&mut Engine<TestRuntime>>,
-    client: Option<&mut Engine<TestRuntime>>,
-    now: &mut Instant,
-) {
+pub fn advance_clock(server: Option<&mut Engine>, client: Option<&mut Engine>, now: &mut Instant) {
     *now += Duration::from_secs(1);
     if let Some(server) = server {
         server.clock.advance_clock(*now);
@@ -497,19 +490,19 @@ pub fn advance_clock(
 pub fn connection_setup(
     ctx: &mut Context,
     now: &mut Instant,
-    server: &mut Engine<TestRuntime>,
-    client: &mut Engine<TestRuntime>,
+    server: &mut Engine,
+    client: &mut Engine,
     listen_port: u16,
     listen_addr: SocketAddrV4,
 ) -> (QDesc, QDesc) {
     // Server: LISTEN state at T(0).
-    let mut accept_future: AcceptFuture<TestRuntime> = connection_setup_closed_listen(server, listen_addr);
+    let mut accept_future: AcceptFuture = connection_setup_closed_listen(server, listen_addr);
 
     // T(0) -> T(1)
     advance_clock(Some(server), Some(client), now);
 
     // Client: SYN_SENT state at T(1).
-    let (client_fd, mut connect_future, mut bytes): (QDesc, ConnectFuture<TestRuntime>, Box<dyn Buffer>) =
+    let (client_fd, mut connect_future, mut bytes): (QDesc, ConnectFuture, Box<dyn Buffer>) =
         connection_setup_listen_syn_sent(client, listen_addr);
 
     // Sanity check packet.

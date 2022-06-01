@@ -75,6 +75,7 @@ use runtime::{
     scheduler::Scheduler,
     timer::TimerRc,
 };
+use std::rc::Rc;
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
@@ -99,20 +100,20 @@ pub mod protocols;
 const TIMER_RESOLUTION: usize = 64;
 const MAX_RECV_ITERS: usize = 2;
 
-pub struct InetStack<RT: NetworkRuntime + Clone + 'static> {
-    arp: ArpPeer<RT>,
-    ipv4: Peer<RT>,
+pub struct InetStack {
+    arp: ArpPeer,
+    ipv4: Peer,
     file_table: IoQueueTable,
-    rt: RT,
+    network: Rc<dyn NetworkRuntime>,
     clock: TimerRc,
     scheduler: Scheduler,
     local_link_addr: MacAddress,
     ts_iters: usize,
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
+impl InetStack {
     pub fn new(
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
@@ -124,17 +125,17 @@ impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
         let now: Instant = clock.now();
         let file_table: IoQueueTable = IoQueueTable::new();
         let rng_seed: [u8; 32] = [0; 32];
-        let arp: ArpPeer<RT> = ArpPeer::new(
+        let arp: ArpPeer = ArpPeer::new(
             now,
-            rt.clone(),
+            network.clone(),
             clock.clone(),
             scheduler.clone(),
             local_link_addr,
             local_ipv4_addr,
             arp_options,
         )?;
-        let ipv4: Peer<RT> = Peer::new(
-            rt.clone(),
+        let ipv4: Peer = Peer::new(
+            network.clone(),
             clock.clone(),
             scheduler.clone(),
             arp.clone(),
@@ -148,16 +149,12 @@ impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
             arp,
             ipv4,
             file_table,
-            rt,
+            network: network.clone(),
             clock,
             scheduler: scheduler.clone(),
             local_link_addr,
             ts_iters: 0,
         })
-    }
-
-    pub fn rt(&self) -> &RT {
-        &self.rt
     }
 
     ///
@@ -295,7 +292,7 @@ impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
                 // It does, so allocate a new queue descriptor and issue accept operation.
                 Ok(QType::TcpSocket) => {
                     let new_qd: QDesc = self.file_table.alloc(QType::TcpSocket.into());
-                    let future: FutureOperation<RT> = FutureOperation::from(self.ipv4.tcp.do_accept(qd, new_qd));
+                    let future: FutureOperation = FutureOperation::from(self.ipv4.tcp.do_accept(qd, new_qd));
                     let handle: SchedulerHandle = match self.scheduler.insert(future) {
                         Some(handle) => handle,
                         None => panic!("failed to insert future in the scheduler"),
@@ -374,7 +371,7 @@ impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
 
     /// Pushes a buffer to a TCP socket.
     /// TODO: Rename this function to push() once we have a common representation across all libOSes.
-    pub fn do_push(&mut self, qd: QDesc, buf: Box<dyn Buffer>) -> Result<FutureOperation<RT>, Fail> {
+    pub fn do_push(&mut self, qd: QDesc, buf: Box<dyn Buffer>) -> Result<FutureOperation, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.push(qd, buf))),
@@ -398,7 +395,7 @@ impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
         }
 
         // Issue operation.
-        let future: FutureOperation<RT> = self.do_push(qd, buf)?;
+        let future: FutureOperation = self.do_push(qd, buf)?;
         let handle: SchedulerHandle = match self.scheduler.insert(future) {
             Some(handle) => handle,
             None => panic!("failed to insert future in the scheduler"),
@@ -410,12 +407,7 @@ impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
 
     /// Pushes a buffer to a UDP socket.
     /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
-    pub fn do_pushto(
-        &mut self,
-        qd: QDesc,
-        buf: Box<dyn Buffer>,
-        to: SocketAddrV4,
-    ) -> Result<FutureOperation<RT>, Fail> {
+    pub fn do_pushto(&mut self, qd: QDesc, buf: Box<dyn Buffer>, to: SocketAddrV4) -> Result<FutureOperation, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::UdpSocket) => {
@@ -442,7 +434,7 @@ impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
         }
 
         // Issue operation.
-        let future: FutureOperation<RT> = self.do_pushto(qd, buf, remote)?;
+        let future: FutureOperation = self.do_pushto(qd, buf, remote)?;
         let handle: SchedulerHandle = match self.scheduler.insert(future) {
             Some(handle) => handle,
             None => panic!("failed to insert future in the scheduler"),
@@ -543,8 +535,7 @@ impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
     /// This function will panic if the specified future had not completed or is _background_ future.
     pub fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
         let boxed_future: Box<dyn Any> = self.scheduler.take(handle).as_any();
-        let boxed_concrete_type: FutureOperation<RT> =
-            *boxed_future.downcast::<FutureOperation<RT>>().expect("Wrong type!");
+        let boxed_concrete_type: FutureOperation = *boxed_future.downcast::<FutureOperation>().expect("Wrong type!");
 
         match boxed_concrete_type {
             FutureOperation::Tcp(f) => {
@@ -612,7 +603,7 @@ impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
                     #[cfg(feature = "profiler")]
                     timer!("inetstack::poll_bg_work::for::receive");
 
-                    self.rt.receive()
+                    self.network.receive()
                 };
 
                 {

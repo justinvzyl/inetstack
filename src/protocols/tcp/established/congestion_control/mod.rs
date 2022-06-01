@@ -24,7 +24,7 @@ pub use self::{
     },
 };
 
-pub trait SlowStartCongestionAvoidance<RT: NetworkRuntime> {
+pub trait SlowStartCongestionAvoidance {
     fn get_cwnd(&self) -> u32 {
         u32::MAX
     }
@@ -45,9 +45,9 @@ pub trait SlowStartCongestionAvoidance<RT: NetworkRuntime> {
     fn on_send(&self, _rto: Duration, _num_sent_bytes: u32) {}
 }
 
-pub trait FastRetransmitRecovery<RT: NetworkRuntime>
+pub trait FastRetransmitRecovery
 where
-    Self: SlowStartCongestionAvoidance<RT>,
+    Self: SlowStartCongestionAvoidance,
 {
     fn get_duplicate_ack_count(&self) -> u32 {
         0
@@ -63,9 +63,9 @@ where
     fn on_fast_retransmit(&self) {}
 }
 
-pub trait LimitedTransmit<RT: NetworkRuntime>
+pub trait LimitedTransmit
 where
-    Self: SlowStartCongestionAvoidance<RT>,
+    Self: SlowStartCongestionAvoidance,
 {
     fn get_limited_transmit_cwnd_increase(&self) -> u32 {
         0
@@ -75,13 +75,10 @@ where
     }
 }
 
-pub trait CongestionControl<RT: NetworkRuntime>:
-    SlowStartCongestionAvoidance<RT> + FastRetransmitRecovery<RT> + LimitedTransmit<RT> + Debug
-{
-    fn new(mss: usize, seq_no: SeqNumber, options: Option<options::Options>) -> Box<dyn CongestionControl<RT>>
+pub trait CongestionControl: SlowStartCongestionAvoidance + FastRetransmitRecovery + LimitedTransmit + Debug {
+    fn new(mss: usize, seq_no: SeqNumber, options: Option<options::Options>) -> Box<dyn CongestionControl>
     where
         Self: Sized;
 }
 
-pub type CongestionControlConstructor<T> =
-    fn(usize, SeqNumber, Option<options::Options>) -> Box<dyn CongestionControl<T>>;
+pub type CongestionControlConstructor = fn(usize, SeqNumber, Option<options::Options>) -> Box<dyn CongestionControl>;

@@ -16,12 +16,12 @@ use ::std::fmt::Debug;
 #[derive(Debug)]
 pub struct None {}
 
-impl<RT: NetworkRuntime> CongestionControl<RT> for None {
-    fn new(_mss: usize, _seq_no: SeqNumber, _options: Option<Options>) -> Box<dyn CongestionControl<RT>> {
+impl CongestionControl for None {
+    fn new(_mss: usize, _seq_no: SeqNumber, _options: Option<Options>) -> Box<dyn CongestionControl> {
         Box::new(Self {})
     }
 }
 
-impl<RT: NetworkRuntime> SlowStartCongestionAvoidance<RT> for None {}
-impl<RT: NetworkRuntime> FastRetransmitRecovery<RT> for None {}
-impl<RT: NetworkRuntime> LimitedTransmit<RT> for None {}
+impl SlowStartCongestionAvoidance for None {}
+impl FastRetransmitRecovery for None {}
+impl LimitedTransmit for None {}

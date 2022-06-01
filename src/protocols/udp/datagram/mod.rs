@@ -110,8 +110,8 @@ impl PacketBuf for UdpDatagram {
     }
 
     /// Returns the payload of the target UDP datagram.
-    fn take_body(self) -> Option<Box<dyn Buffer>> {
-        Some(self.data)
+    fn take_body(&self) -> Option<Box<dyn Buffer>> {
+        Some(self.data.clone())
     }
 }
 

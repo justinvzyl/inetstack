@@ -53,6 +53,7 @@ use ::std::{
     net::SocketAddrV4,
 };
 use runtime::scheduler::Scheduler;
+use std::rc::Rc;
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
@@ -62,11 +63,10 @@ use ::runtime::perftools::timer;
 //==============================================================================
 
 /// UDP Peer
-pub struct UdpPeer<RT: NetworkRuntime + Clone + 'static> {
-    /// Underlying runtime.
-    rt: RT,
+pub struct UdpPeer {
+    network: Rc<dyn NetworkRuntime>,
     /// Underlying ARP peer.
-    arp: ArpPeer<RT>,
+    arp: ArpPeer,
     /// Opened sockets.
     sockets: HashMap<QDesc, Option<SocketAddrV4>>,
     /// Bound sockets.
@@ -88,34 +88,34 @@ pub struct UdpPeer<RT: NetworkRuntime + Clone + 'static> {
 //==============================================================================
 
 /// Associate functions for [UdpPeer].
-impl<RT: NetworkRuntime + Clone + 'static> UdpPeer<RT> {
+impl UdpPeer {
     /// Creates a Udp peer.
     pub fn new(
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         offload_checksum: bool,
-        arp: ArpPeer<RT>,
+        arp: ArpPeer,
     ) -> Self {
         let send_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> =
             SharedQueue::<SharedQueueSlot<Box<dyn Buffer>>>::new();
 
         let future = Self::background_sender(
-            rt.clone(),
+            network.clone(),
             local_ipv4_addr,
             local_link_addr,
             offload_checksum,
             arp.clone(),
             send_queue.clone(),
         );
-        let handle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
+        let handle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
             Some(handle) => handle,
             None => panic!("failed to insert task in the scheduler"),
         };
 
         Self {
-            rt,
+            network,
             arp,
             sockets: HashMap::new(),
             bound: HashMap::new(),
@@ -129,11 +129,11 @@ impl<RT: NetworkRuntime + Clone + 'static> UdpPeer<RT> {
 
     /// Asynchronously send unsent datagrams to remote peer.
     async fn background_sender(
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
         offload_checksum: bool,
-        arp: ArpPeer<RT>,
+        arp: ArpPeer,
         mut rx: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>,
     ) {
         loop {
@@ -144,7 +144,7 @@ impl<RT: NetworkRuntime + Clone + 'static> UdpPeer<RT> {
                     // Send datagram.
                     Ok(link_addr) => {
                         Self::do_send(
-                            rt.clone(),
+                            network.clone(),
                             local_ipv4_addr,
                             local_link_addr,
                             link_addr,
@@ -241,7 +241,7 @@ impl<RT: NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         // Fast path: try to send the datagram immediately.
         if let Some(link_addr) = self.arp.try_query(remote.ip().clone()) {
             Self::do_send(
-                self.rt.clone(),
+                self.network.clone(),
                 self.local_ipv4_addr,
                 self.local_link_addr,
                 link_addr,
@@ -304,7 +304,7 @@ impl<RT: NetworkRuntime + Clone + 'static> UdpPeer<RT> {
 
     /// Sends a UDP datagram.
     fn do_send(
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
         remote_link_addr: MacAddress,
@@ -322,6 +322,6 @@ impl<RT: NetworkRuntime + Clone + 'static> UdpPeer<RT> {
             buf,
             offload_checksum,
         );
-        rt.transmit(datagram);
+        network.transmit(Box::new(datagram));
     }
 }

@@ -38,7 +38,7 @@ use ::std::{
 // Types
 //==============================================================================
 
-pub type TestEngine = Engine<TestRuntime>;
+pub type TestEngine = Engine;
 
 //==============================================================================
 // Structures
@@ -122,7 +122,7 @@ impl TestRuntime {
 //==============================================================================
 
 impl NetworkRuntime for TestRuntime {
-    fn transmit(&self, pkt: impl PacketBuf) {
+    fn transmit(&self, pkt: Box<dyn PacketBuf>) {
         let header_size = pkt.header_size();
         let body_size = pkt.body_size();
 

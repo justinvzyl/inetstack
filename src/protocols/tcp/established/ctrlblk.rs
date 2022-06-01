@@ -147,11 +147,11 @@ impl Receiver {
 
 /// Transmission control block for representing our TCP connection.
 // ToDo: Make all public fields in this structure private.
-pub struct ControlBlock<RT: NetworkRuntime + Clone + 'static> {
+pub struct ControlBlock {
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
-    rt: Rc<RT>,
+    network: Rc<dyn NetworkRuntime>,
     pub clock: TimerRc,
     pub scheduler: Scheduler,
 
@@ -161,7 +161,7 @@ pub struct ControlBlock<RT: NetworkRuntime + Clone + 'static> {
 
     // ToDo: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
     // this along with other remote IP information (such as routing, path MTU, etc).
-    arp: Rc<ArpPeer<RT>>,
+    arp: Rc<ArpPeer>,
 
     // Send-side state information.  ToDo: Consider incorporating this directly into ControlBlock.
     sender: Sender,
@@ -204,7 +204,7 @@ pub struct ControlBlock<RT: NetworkRuntime + Clone + 'static> {
 
     // Congestion control trait implementation we're currently using.
     // ToDo: Consider switching this to a static implementation to avoid V-table call overhead.
-    cc: Box<dyn congestion_control::CongestionControl<RT>>,
+    cc: Box<dyn congestion_control::CongestionControl>,
 
     // Current retransmission timer expiration time.
     // ToDo: Consider storing this directly in the RtoCalculator.
@@ -216,16 +216,16 @@ pub struct ControlBlock<RT: NetworkRuntime + Clone + 'static> {
 
 //==============================================================================
 
-impl<RT: NetworkRuntime + Clone + 'static> ControlBlock<RT> {
+impl ControlBlock {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         tcp_options: TcpConfig,
-        arp: ArpPeer<RT>,
+        arp: ArpPeer,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
         receiver_window_size: u32,
@@ -234,14 +234,14 @@ impl<RT: NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         sender_window_size: u32,
         sender_window_scale: u8,
         sender_mss: usize,
-        cc_constructor: CongestionControlConstructor<RT>,
+        cc_constructor: CongestionControlConstructor,
         congestion_control_options: Option<congestion_control::Options>,
     ) -> Self {
         let sender = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
         Self {
             local,
             remote,
-            rt: Rc::new(rt),
+            network: network.clone(),
             scheduler,
             clock,
             local_link_addr,
@@ -273,7 +273,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ControlBlock<RT> {
     }
 
     // ToDo: Remove this.  ARP doesn't belong at this layer.
-    pub fn arp(&self) -> Rc<ArpPeer<RT>> {
+    pub fn arp(&self) -> Rc<ArpPeer> {
         self.arp.clone()
     }
 
@@ -838,7 +838,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         };
 
         // Call the runtime to send the segment.
-        self.rt.transmit(segment);
+        self.network.transmit(Box::new(segment));
 
         // Post-send operations follow.
         // Review: We perform these after the send, in order to keep send latency as low as possible.

@@ -42,18 +42,18 @@ fn ipv4_ping() {
     bob.clock.advance_clock(now);
 
     // Bob receives ping request from Alice.
-    bob.receive(alice.rt().pop_frame()).unwrap();
+    bob.receive(alice.rt.pop_frame()).unwrap();
 
     // Bob replies to Alice.
-    bob.rt().poll_scheduler();
+    bob.rt.poll_scheduler();
 
     now += Duration::from_secs(1);
     alice.clock.advance_clock(now);
     bob.clock.advance_clock(now);
 
     // Alice receives reply from Bob.
-    alice.receive(bob.rt().pop_frame()).unwrap();
-    alice.rt().poll_scheduler();
+    alice.receive(bob.rt.pop_frame()).unwrap();
+    &mut alice.rt.poll_scheduler();
     let latency: Duration = match Future::poll(Pin::new(&mut ping_fut), &mut ctx) {
         Poll::Ready(Ok(latency)) => Ok(latency),
         _ => Err(()),
@@ -85,18 +85,18 @@ fn ipv4_ping_loop() {
         bob.clock.advance_clock(now);
 
         // Bob receives ping request from Alice.
-        bob.receive(alice.rt().pop_frame()).unwrap();
+        bob.receive(alice.rt.pop_frame()).unwrap();
 
         // Bob replies to Alice.
-        bob.rt().poll_scheduler();
+        bob.rt.poll_scheduler();
 
         now += Duration::from_secs(1);
         alice.clock.advance_clock(now);
         bob.clock.advance_clock(now);
 
         // Alice receives reply from Bob.
-        alice.receive(bob.rt().pop_frame()).unwrap();
-        alice.rt().poll_scheduler();
+        alice.receive(bob.rt.pop_frame()).unwrap();
+        &mut alice.rt.poll_scheduler();
         let latency: Duration = match Future::poll(Pin::new(&mut ping_fut), &mut ctx) {
             Poll::Ready(Ok(latency)) => Ok(latency),
             _ => Err(()),

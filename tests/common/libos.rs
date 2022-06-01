@@ -35,6 +35,7 @@ use ::std::{
     },
 };
 use runtime::{
+    network::NetworkRuntime,
     scheduler::Scheduler,
     timer::{
         Timer,
@@ -61,7 +62,7 @@ impl DummyLibOS {
         tx: Sender<DataBuffer>,
         rx: Receiver<DataBuffer>,
         arp: HashMap<Ipv4Addr, MacAddress>,
-    ) -> InetStack<DummyRuntime> {
+    ) -> InetStack {
         let now: Instant = Instant::now();
         let arp_options: ArpConfig = ArpConfig::new(
             Some(Duration::from_secs(600)),
@@ -77,7 +78,7 @@ impl DummyLibOS {
         let rt: DummyRuntime = DummyRuntime::new(link_addr, ipv4_addr, rx, tx, arp_options.clone());
         logging::initialize();
         InetStack::new(
-            rt,
+            Rc::new(rt.clone()) as Rc<dyn NetworkRuntime>,
             clock.clone(),
             scheduler.clone(),
             link_addr,

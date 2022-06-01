@@ -24,13 +24,9 @@ use ::std::{
     rc::Rc,
 };
 
-pub type BackgroundFuture<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> = impl Future<Output = ()>;
+pub type BackgroundFuture = impl Future<Output = ()>;
 
-pub fn background<RT: NetworkRuntime + Clone + 'static>(
-    cb: Rc<ControlBlock<RT>>,
-    fd: QDesc,
-    _dead_socket_tx: mpsc::UnboundedSender<QDesc>,
-) -> BackgroundFuture<RT> {
+pub fn background(cb: Rc<ControlBlock>, fd: QDesc, _dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> BackgroundFuture {
     async move {
         let acknowledger = acknowledger(cb.clone()).fuse();
         futures::pin_mut!(acknowledger);

@@ -21,7 +21,7 @@ use ::std::{
     time::Duration,
 };
 
-pub async fn sender<RT: NetworkRuntime + Clone + 'static>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
+pub async fn sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
         // ToDo: Change this to just look at the unsent queue to see if it is empty or not.

@@ -48,13 +48,13 @@ pub const CARRIE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 3);
 // Types
 //==============================================================================
 
-pub type TestEngine = Engine<TestRuntime>;
+pub type TestEngine = Engine;
 
 //==============================================================================
 // Standalone Functions
 //==============================================================================
 
-pub fn new_alice(now: Instant) -> Engine<TestRuntime> {
+pub fn new_alice(now: Instant) -> Engine {
     let arp_options = ArpConfig::new(
         Some(Duration::from_secs(600)),
         Some(Duration::from_secs(1)),
@@ -88,7 +88,7 @@ pub fn new_alice(now: Instant) -> Engine<TestRuntime> {
     .unwrap()
 }
 
-pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
+pub fn new_bob(now: Instant) -> Engine {
     let arp_options = ArpConfig::new(
         Some(Duration::from_secs(600)),
         Some(Duration::from_secs(1)),
@@ -122,7 +122,7 @@ pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
     .unwrap()
 }
 
-pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
+pub fn new_alice2(now: Instant) -> Engine {
     let mut arp: HashMap<Ipv4Addr, MacAddress> = HashMap::<Ipv4Addr, MacAddress>::new();
     arp.insert(ALICE_IPV4, ALICE_MAC);
     arp.insert(BOB_IPV4, BOB_MAC);
@@ -159,7 +159,7 @@ pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
     .unwrap()
 }
 
-pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
+pub fn new_bob2(now: Instant) -> Engine {
     let mut arp: HashMap<Ipv4Addr, MacAddress> = HashMap::<Ipv4Addr, MacAddress>::new();
     arp.insert(BOB_IPV4, BOB_MAC);
     arp.insert(ALICE_IPV4, ALICE_MAC);
@@ -197,7 +197,7 @@ pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
     .unwrap()
 }
 
-pub fn new_carrie(now: Instant) -> Engine<TestRuntime> {
+pub fn new_carrie(now: Instant) -> Engine {
     let arp_options = ArpConfig::new(
         Some(Duration::from_secs(600)),
         Some(Duration::from_secs(1)),

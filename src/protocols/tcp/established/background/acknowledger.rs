@@ -15,7 +15,7 @@ use ::runtime::{
 };
 use std::rc::Rc;
 
-pub async fn acknowledger<RT: NetworkRuntime + Clone + 'static>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
+pub async fn acknowledger(cb: Rc<ControlBlock>) -> Result<!, Fail> {
     loop {
         // TODO: Implement TCP delayed ACKs, subject to restrictions from RFC 1122
         // - TCP should implement a delayed ACK

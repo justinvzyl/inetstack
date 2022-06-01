@@ -46,21 +46,24 @@ use runtime::{
     scheduler::Scheduler,
     timer::TimerRc,
 };
+use std::rc::Rc;
 
-pub struct Engine<RT: NetworkRuntime + Clone + 'static> {
-    rt: RT,
+use super::TestRuntime;
+
+pub struct Engine {
     pub clock: TimerRc,
     local_link_addr: MacAddress,
+    pub rt: TestRuntime,
     pub arp_options: ArpConfig,
-    pub arp: ArpPeer<RT>,
-    pub ipv4: Peer<RT>,
+    pub arp: ArpPeer,
+    pub ipv4: Peer,
     pub tcp_options: TcpConfig,
     pub file_table: IoQueueTable,
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> Engine<RT> {
+impl Engine {
     pub fn new(
-        rt: RT,
+        rt: TestRuntime,
         clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
@@ -71,9 +74,10 @@ impl<RT: NetworkRuntime + Clone + 'static> Engine<RT> {
     ) -> Result<Self, Fail> {
         let now = clock.now();
         let file_table = IoQueueTable::new();
+        let network = Rc::new(rt.clone()) as Rc<dyn NetworkRuntime>;
         let arp = ArpPeer::new(
             now,
-            rt.clone(),
+            network.clone(),
             clock.clone(),
             scheduler.clone(),
             local_link_addr,
@@ -82,7 +86,7 @@ impl<RT: NetworkRuntime + Clone + 'static> Engine<RT> {
         )?;
         let rng_seed: [u8; 32] = [0; 32];
         let ipv4 = Peer::new(
-            rt.clone(),
+            network.clone(),
             clock.clone(),
             scheduler.clone(),
             arp.clone(),
@@ -102,10 +106,6 @@ impl<RT: NetworkRuntime + Clone + 'static> Engine<RT> {
             file_table,
             tcp_options,
         })
-    }
-
-    pub fn rt(&mut self) -> &mut RT {
-        &mut self.rt
     }
 
     pub fn receive(&mut self, bytes: Box<dyn Buffer>) -> Result<(), Fail> {
@@ -157,7 +157,7 @@ impl<RT: NetworkRuntime + Clone + 'static> Engine<RT> {
         Ok(fd)
     }
 
-    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddrV4) -> ConnectFuture<RT> {
+    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddrV4) -> ConnectFuture {
         self.ipv4.tcp.connect(socket_fd, remote_endpoint)
     }
 
@@ -165,7 +165,7 @@ impl<RT: NetworkRuntime + Clone + 'static> Engine<RT> {
         self.ipv4.tcp.bind(socket_fd, endpoint)
     }
 
-    pub fn tcp_accept(&mut self, fd: QDesc) -> AcceptFuture<RT> {
+    pub fn tcp_accept(&mut self, fd: QDesc) -> AcceptFuture {
         let newfd = self.file_table.alloc(QType::TcpSocket.into());
         self.ipv4.tcp.do_accept(fd, newfd)
     }
@@ -174,7 +174,7 @@ impl<RT: NetworkRuntime + Clone + 'static> Engine<RT> {
         self.ipv4.tcp.push(socket_fd, buf)
     }
 
-    pub fn tcp_pop(&mut self, socket_fd: QDesc) -> PopFuture<RT> {
+    pub fn tcp_pop(&mut self, socket_fd: QDesc) -> PopFuture {
         self.ipv4.tcp.pop(socket_fd)
     }
 

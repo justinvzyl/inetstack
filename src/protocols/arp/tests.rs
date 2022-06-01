@@ -54,7 +54,7 @@ fn immediate_reply() {
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     alice.clock.advance_clock(now);
-    let rt: &mut TestRuntime = alice.rt();
+    let rt: &mut TestRuntime = &mut alice.rt;
     let request = rt.pop_frame();
 
     // bob hasn't heard of alice before, so he will ignore the request.
@@ -75,7 +75,7 @@ fn immediate_reply() {
     assert_eq!(cache.get(&test_helpers::ALICE_IPV4), Some(&test_helpers::ALICE_MAC));
 
     carrie.clock.advance_clock(now);
-    let reply = carrie.rt().pop_frame();
+    let reply = carrie.rt.pop_frame();
 
     info!("passing ARP reply back to alice...");
     alice.receive(reply).unwrap();
@@ -110,7 +110,7 @@ fn slow_reply() {
     alice.clock.advance_clock(now);
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
-    let request = alice.rt().pop_frame();
+    let request = alice.rt.pop_frame();
 
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");
@@ -131,7 +131,7 @@ fn slow_reply() {
     assert_eq!(cache.get(&test_helpers::ALICE_IPV4), Some(&test_helpers::ALICE_MAC));
 
     carrie.clock.advance_clock(now);
-    let reply = carrie.rt().pop_frame();
+    let reply = carrie.rt.pop_frame();
 
     alice.receive(reply).unwrap();
     now += Duration::from_micros(1);
@@ -157,7 +157,7 @@ fn no_reply() {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut fut = alice.arp_query(test_helpers::CARRIE_IPV4).boxed_local();
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
-    let bytes = alice.rt().pop_frame();
+    let bytes = alice.rt.pop_frame();
 
     let (_, payload) = Ethernet2Header::parse(bytes).unwrap();
     let arp = ArpHeader::parse(payload).unwrap();
@@ -168,7 +168,7 @@ fn no_reply() {
         alice.clock.advance_clock(now);
         assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
         info!("no_reply(): retry #{}", i + 1);
-        let bytes = alice.rt().pop_frame();
+        let bytes = alice.rt.pop_frame();
         let (_, payload) = Ethernet2Header::parse(bytes).unwrap();
         let arp = ArpHeader::parse(payload).unwrap();
         assert_eq!(arp.get_operation(), ArpOperation::Request);

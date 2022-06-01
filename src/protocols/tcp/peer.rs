@@ -107,7 +107,7 @@ enum Socket {
 // Structures
 //==============================================================================
 
-pub struct Inner<RT: NetworkRuntime + Clone + 'static> {
+pub struct Inner {
     isn_generator: IsnGenerator,
 
     ephemeral_ports: EphemeralPorts,
@@ -115,44 +115,43 @@ pub struct Inner<RT: NetworkRuntime + Clone + 'static> {
     // FD -> local port
     sockets: HashMap<QDesc, Socket>,
 
-    passive: HashMap<SocketAddrV4, PassiveSocket<RT>>,
-    connecting: HashMap<(SocketAddrV4, SocketAddrV4), ActiveOpenSocket<RT>>,
-    established: HashMap<(SocketAddrV4, SocketAddrV4), EstablishedSocket<RT>>,
-
-    rt: RT,
+    passive: HashMap<SocketAddrV4, PassiveSocket>,
+    connecting: HashMap<(SocketAddrV4, SocketAddrV4), ActiveOpenSocket>,
+    established: HashMap<(SocketAddrV4, SocketAddrV4), EstablishedSocket>,
+    network: Rc<dyn NetworkRuntime>,
     clock: TimerRc,
     scheduler: Scheduler,
     local_ipv4_addr: Ipv4Addr,
     local_link_addr: MacAddress,
-    arp: ArpPeer<RT>,
+    arp: ArpPeer,
     rng: Rc<RefCell<SmallRng>>,
     tcp_options: TcpConfig,
 
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
-pub struct TcpPeer<RT: NetworkRuntime + Clone + 'static> {
-    pub(super) inner: Rc<RefCell<Inner<RT>>>,
+pub struct TcpPeer {
+    pub(super) inner: Rc<RefCell<Inner>>,
 }
 
 //==============================================================================
 // Associated FUnctions
 //==============================================================================
 
-impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
+impl TcpPeer {
     pub fn new(
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
-        arp: ArpPeer<RT>,
+        arp: ArpPeer,
         rng_seed: [u8; 32],
         tcp_options: TcpConfig,
     ) -> Self {
         let (tx, rx) = mpsc::unbounded();
         let inner = Rc::new(RefCell::new(Inner::new(
-            rt.clone(),
+            network.clone(),
             clock.clone(),
             scheduler,
             local_link_addr,
@@ -170,7 +169,7 @@ impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
     pub fn do_socket(&self, qd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("tcp::socket");
-        let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
+        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
         match inner.sockets.contains_key(&qd) {
             false => {
                 let socket: Socket = Socket::Inactive { local: None };
@@ -220,7 +219,7 @@ impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
 
     // Marks the target socket as passive.
     pub fn listen(&self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
-        let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
+        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
 
         // Get bound address while checking for several issues.
         let local: SocketAddrV4 = match inner.sockets.get_mut(&qd) {
@@ -250,7 +249,7 @@ impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         let socket = PassiveSocket::new(
             local,
             backlog,
-            inner.rt.clone(),
+            inner.network.clone(),
             inner.clock.clone(),
             inner.scheduler.clone(),
             inner.local_link_addr,
@@ -264,14 +263,14 @@ impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
     }
 
     /// Accepts an incoming connection.
-    pub fn do_accept(&self, qd: QDesc, new_qd: QDesc) -> AcceptFuture<RT> {
+    pub fn do_accept(&self, qd: QDesc, new_qd: QDesc) -> AcceptFuture {
         AcceptFuture::new(qd, new_qd, self.inner.clone())
     }
 
     /// Handles an incoming connection.
     pub fn poll_accept(&self, qd: QDesc, new_qd: QDesc, ctx: &mut Context) -> Poll<Result<QDesc, Fail>> {
-        let mut inner_: RefMut<Inner<RT>> = self.inner.borrow_mut();
-        let inner: &mut Inner<RT> = &mut *inner_;
+        let mut inner_: RefMut<Inner> = self.inner.borrow_mut();
+        let inner: &mut Inner = &mut *inner_;
 
         let local: &SocketAddrV4 = match inner.sockets.get(&qd) {
             Some(Socket::Listening { local }) => local,
@@ -279,13 +278,13 @@ impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
             None => return Poll::Ready(Err(Fail::new(EBADF, "bad file descriptor"))),
         };
 
-        let passive: &mut PassiveSocket<RT> = inner.passive.get_mut(local).expect("sockets/local inconsistency");
-        let cb: ControlBlock<RT> = match passive.poll_accept(ctx) {
+        let passive: &mut PassiveSocket = inner.passive.get_mut(local).expect("sockets/local inconsistency");
+        let cb: ControlBlock = match passive.poll_accept(ctx) {
             Poll::Pending => return Poll::Pending,
             Poll::Ready(Ok(e)) => e,
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
         };
-        let established: EstablishedSocket<RT> = EstablishedSocket::new(cb, new_qd, inner.dead_socket_tx.clone());
+        let established: EstablishedSocket = EstablishedSocket::new(cb, new_qd, inner.dead_socket_tx.clone());
         let key: (SocketAddrV4, SocketAddrV4) = (established.cb.get_local(), established.cb.get_remote());
 
         let socket: Socket = Socket::Established {
@@ -306,7 +305,7 @@ impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         Poll::Ready(Ok(new_qd))
     }
 
-    pub fn connect(&self, fd: QDesc, remote: SocketAddrV4) -> ConnectFuture<RT> {
+    pub fn connect(&self, fd: QDesc, remote: SocketAddrV4) -> ConnectFuture {
         let mut inner = self.inner.borrow_mut();
 
         let r = try {
@@ -328,7 +327,7 @@ impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
                 local_isn,
                 local,
                 remote,
-                inner.rt.clone(),
+                inner.network.clone(),
                 inner.clock.clone(),
                 inner.scheduler.clone(),
                 inner.local_link_addr,
@@ -372,7 +371,7 @@ impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         PushFuture { fd, err }
     }
 
-    pub fn pop(&self, fd: QDesc) -> PopFuture<RT> {
+    pub fn pop(&self, fd: QDesc) -> PopFuture {
         PopFuture {
             fd,
             inner: self.inner.clone(),
@@ -394,7 +393,7 @@ impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
 
     /// Closes a TCP socket.
     pub fn do_close(&self, qd: QDesc) -> Result<(), Fail> {
-        let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
+        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
 
         match inner.sockets.remove(&qd) {
             Some(Socket::Established { local, remote }) => {
@@ -452,14 +451,14 @@ impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
     }
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> Inner<RT> {
+impl Inner {
     fn new(
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
-        arp: ArpPeer<RT>,
+        arp: ArpPeer,
         rng_seed: [u8; 32],
         tcp_options: TcpConfig,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
@@ -475,7 +474,7 @@ impl<RT: NetworkRuntime + Clone + 'static> Inner<RT> {
             passive: HashMap::new(),
             connecting: HashMap::new(),
             established: HashMap::new(),
-            rt,
+            network: network.clone(),
             clock: clock.clone(),
             scheduler,
             local_link_addr,
@@ -537,7 +536,7 @@ impl<RT: NetworkRuntime + Clone + 'static> Inner<RT> {
             data: Box::new(DataBuffer::empty()),
             tx_checksum_offload: self.tcp_options.get_rx_checksum_offload(),
         };
-        self.rt.transmit(segment);
+        self.network.transmit(Box::new(segment));
 
         Ok(())
     }

@@ -68,8 +68,8 @@ impl PacketBuf for TcpSegment {
         );
     }
 
-    fn take_body(self) -> Option<Box<dyn Buffer>> {
-        Some(self.data)
+    fn take_body(&self) -> Option<Box<dyn Buffer>> {
+        Some(self.data.clone())
     }
 }
 

@@ -63,10 +63,10 @@ fn cook_buffer(size: usize, stamp: Option<u8>) -> Box<dyn Buffer> {
 fn send_data(
     ctx: &mut Context,
     now: &mut Instant,
-    receiver: &mut Engine<TestRuntime>,
+    receiver: &mut Engine,
     receiver_link_addr: MacAddress,
     receiver_ipv4_addr: Ipv4Addr,
-    sender: &mut Engine<TestRuntime>,
+    sender: &mut Engine,
     sender_link_addr: MacAddress,
     sender_ipv4_addr: Ipv4Addr,
     sender_fd: QDesc,
@@ -84,7 +84,7 @@ fn send_data(
     // Push data.
     let mut push_future: PushFuture = sender.tcp_push(sender_fd, bytes);
 
-    let bytes: Box<dyn Buffer> = sender.rt().pop_frame();
+    let bytes: Box<dyn Buffer> = sender.rt.pop_frame();
     let bufsize: usize = check_packet_data(
         bytes.clone(),
         sender_link_addr,
@@ -114,7 +114,7 @@ fn send_data(
 
 fn recv_data(
     ctx: &mut Context,
-    receiver: &mut Engine<TestRuntime>,
+    receiver: &mut Engine,
     receiver_ipv4_addr: Ipv4Addr,
     sender_ipv4_addr: Ipv4Addr,
     receiver_fd: QDesc,
@@ -144,10 +144,10 @@ fn recv_data(
 
 fn recv_pure_ack(
     now: &mut Instant,
-    sender: &mut Engine<TestRuntime>,
+    sender: &mut Engine,
     sender_link_addr: MacAddress,
     sender_ipv4_addr: Ipv4Addr,
-    receiver: &mut Engine<TestRuntime>,
+    receiver: &mut Engine,
     receiver_link_addr: MacAddress,
     receiver_ipv4_addr: Ipv4Addr,
     ack_num: SeqNumber,
@@ -159,10 +159,10 @@ fn recv_pure_ack(
     );
 
     advance_clock(Some(sender), Some(receiver), now);
-    sender.rt().poll_scheduler();
+    sender.rt.poll_scheduler();
 
     // Pop pure ACK
-    if let Some(bytes) = sender.rt().pop_frame_unchecked() {
+    if let Some(bytes) = sender.rt.pop_frame_unchecked() {
         check_packet_pure_ack(
             bytes.clone(),
             sender_link_addr,
@@ -181,10 +181,10 @@ fn recv_pure_ack(
 fn send_recv(
     ctx: &mut Context,
     now: &mut Instant,
-    server: &mut Engine<TestRuntime>,
+    server: &mut Engine,
     server_link_addr: MacAddress,
     server_ipv4_addr: Ipv4Addr,
-    client: &mut Engine<TestRuntime>,
+    client: &mut Engine,
     client_link_addr: MacAddress,
     client_ipv4_addr: Ipv4Addr,
     server_fd: QDesc,
@@ -233,10 +233,10 @@ fn send_recv(
 fn send_recv_round(
     ctx: &mut Context,
     now: &mut Instant,
-    server: &mut Engine<TestRuntime>,
+    server: &mut Engine,
     server_link_addr: MacAddress,
     server_ipv4_addr: Ipv4Addr,
-    client: &mut Engine<TestRuntime>,
+    client: &mut Engine,
     client_link_addr: MacAddress,
     client_ipv4_addr: Ipv4Addr,
     server_fd: QDesc,
@@ -306,21 +306,21 @@ fn send_recv_round(
 fn connection_hangup(
     _ctx: &mut Context,
     now: &mut Instant,
-    server: &mut Engine<TestRuntime>,
-    client: &mut Engine<TestRuntime>,
+    server: &mut Engine,
+    client: &mut Engine,
     server_fd: QDesc,
     client_fd: QDesc,
 ) {
     // Send FIN: Client -> Server
     client.tcp_close(client_fd).expect("client tcp_close returned error");
-    client.rt().poll_scheduler();
-    let bytes: Box<dyn Buffer> = client.rt().pop_frame();
+    client.rt.poll_scheduler();
+    let bytes: Box<dyn Buffer> = client.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Server -> Client
     server.receive(bytes).expect("server receive returned error");
-    server.rt().poll_scheduler();
-    let bytes: Box<dyn Buffer> = server.rt().pop_frame();
+    server.rt.poll_scheduler();
+    let bytes: Box<dyn Buffer> = server.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // Receive ACK FIN
@@ -329,14 +329,14 @@ fn connection_hangup(
 
     // Send FIN: Server -> Client
     server.tcp_close(server_fd).expect("server tcp_close returned error");
-    server.rt().poll_scheduler();
-    let bytes: Box<dyn Buffer> = server.rt().pop_frame();
+    server.rt.poll_scheduler();
+    let bytes: Box<dyn Buffer> = server.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Client -> Server
     client.receive(bytes).expect("client receive (of FIN) returned error");
-    client.rt().poll_scheduler();
-    let bytes: Box<dyn Buffer> = client.rt().pop_frame();
+    client.rt.poll_scheduler();
+    let bytes: Box<dyn Buffer> = client.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // Receive ACK FIN
@@ -344,8 +344,8 @@ fn connection_hangup(
 
     advance_clock(Some(server), Some(client), now);
 
-    client.rt().poll_scheduler();
-    server.rt().poll_scheduler();
+    client.rt.poll_scheduler();
+    server.rt.poll_scheduler();
 }
 
 //=============================================================================
@@ -362,8 +362,8 @@ pub fn test_send_recv_loop() {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
-    let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
+    let mut server: Engine = test_helpers::new_bob2(now);
+    let mut client: Engine = test_helpers::new_alice2(now);
     let window_scale: u8 = client.tcp_options.get_window_scale();
     let max_window_size: u32 = (client.tcp_options.get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
@@ -406,8 +406,8 @@ pub fn test_send_recv_round_loop() {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
-    let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
+    let mut server: Engine = test_helpers::new_bob2(now);
+    let mut client: Engine = test_helpers::new_alice2(now);
     let window_scale: u8 = client.tcp_options.get_window_scale();
     let max_window_size: u32 = (client.tcp_options.get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
@@ -453,8 +453,8 @@ pub fn test_send_recv_with_delay() {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
-    let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
+    let mut server: Engine = test_helpers::new_bob2(now);
+    let mut client: Engine = test_helpers::new_alice2(now);
     let window_scale: u8 = client.tcp_options.get_window_scale();
     let max_window_size: u32 = (client.tcp_options.get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
@@ -544,8 +544,8 @@ fn test_connect_disconnect() {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
-    let mut client: Engine<TestRuntime> = test_helpers::new_alice2(now);
+    let mut server: Engine = test_helpers::new_bob2(now);
+    let mut client: Engine = test_helpers::new_alice2(now);
 
     let (server_fd, client_fd): (QDesc, QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);

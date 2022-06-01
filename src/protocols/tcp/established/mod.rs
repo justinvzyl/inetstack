@@ -38,20 +38,17 @@ use ::std::{
     time::Duration,
 };
 
-pub struct EstablishedSocket<RT: NetworkRuntime + Clone + 'static> {
-    pub cb: Rc<ControlBlock<RT>>,
+pub struct EstablishedSocket {
+    pub cb: Rc<ControlBlock>,
     #[allow(unused)]
     background_work: SchedulerHandle,
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> EstablishedSocket<RT> {
-    pub fn new(cb: ControlBlock<RT>, fd: QDesc, dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> Self {
+impl EstablishedSocket {
+    pub fn new(cb: ControlBlock, fd: QDesc, dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> Self {
         let cb = Rc::new(cb);
         let future = background(cb.clone(), fd, dead_socket_tx);
-        let handle = match cb
-            .scheduler
-            .insert(FutureOperation::Background::<RT>(future.boxed_local()))
-        {
+        let handle = match cb.scheduler.insert(FutureOperation::Background(future.boxed_local())) {
             Some(handle) => handle,
             None => panic!("failed to insert task in the scheduler"),
         };

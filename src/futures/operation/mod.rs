@@ -33,15 +33,15 @@ use ::std::{
 ///
 /// [Background](Operation::Background) tasks are heap-allocated as they are expected to live
 /// long so we allocate them on the heap.
-pub enum FutureOperation<RT: NetworkRuntime + Clone + 'static> {
-    Tcp(TcpOperation<RT>),
+pub enum FutureOperation {
+    Tcp(TcpOperation),
     Udp(UdpOperation),
 
     // These are expected to have long lifetimes and be large enough to justify another allocation.
     Background(Pin<Box<dyn Future<Output = ()>>>),
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> SchedulerFuture for FutureOperation<RT> {
+impl SchedulerFuture for FutureOperation {
     fn as_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }
@@ -57,7 +57,7 @@ impl<RT: NetworkRuntime + Clone + 'static> SchedulerFuture for FutureOperation<R
 
 /// Simple wrapper which calls the corresponding [poll](Future::poll) method for each enum variant's
 /// type.
-impl<RT: NetworkRuntime + Clone + 'static> Future for FutureOperation<RT> {
+impl Future for FutureOperation {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
@@ -69,10 +69,9 @@ impl<RT: NetworkRuntime + Clone + 'static> Future for FutureOperation<RT> {
     }
 }
 
-impl<T, RT> From<T> for FutureOperation<RT>
+impl<T> From<T> for FutureOperation
 where
-    RT: NetworkRuntime + Clone + 'static,
-    T: Into<TcpOperation<RT>>,
+    T: Into<TcpOperation>,
 {
     fn from(f: T) -> Self {
         FutureOperation::Tcp(f.into())

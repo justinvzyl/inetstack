@@ -85,12 +85,12 @@ fn udp_push_pop() {
     // Send data to Bob.
     let buf: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
     alice.udp_pushto(alice_fd, buf.clone(), bob_addr).unwrap();
-    alice.rt().poll_scheduler();
+    &mut alice.rt.poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
-    bob.receive(alice.rt().pop_frame()).unwrap();
+    bob.receive(alice.rt.pop_frame()).unwrap();
     let mut pop_future = bob.udp_pop(bob_fd);
     let (remote_addr, received_buf) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
         Poll::Ready(Ok((remote_addr, received_buf))) => Ok((remote_addr, received_buf)),
@@ -131,12 +131,12 @@ fn udp_ping_pong() {
     // Send data to Bob.
     let buf_a: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
     alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr).unwrap();
-    alice.rt().poll_scheduler();
+    &mut alice.rt.poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
-    bob.receive(alice.rt().pop_frame()).unwrap();
+    bob.receive(alice.rt.pop_frame()).unwrap();
     let mut pop_future = bob.udp_pop(bob_fd);
     let (remote_addr, received_buf_a) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
         Poll::Ready(Ok((remote_addr, received_buf_a))) => Ok((remote_addr, received_buf_a)),
@@ -151,12 +151,12 @@ fn udp_ping_pong() {
     // Send data to Alice.
     let buf_b: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
     bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr).unwrap();
-    bob.rt().poll_scheduler();
+    bob.rt.poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Bob.
-    alice.receive(bob.rt().pop_frame()).unwrap();
+    alice.receive(bob.rt.pop_frame()).unwrap();
     let mut pop_future = alice.udp_pop(alice_fd);
     let (remote_addr, received_buf_b) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
         Poll::Ready(Ok((remote_addr, received_buf_b))) => Ok((remote_addr, received_buf_b)),
@@ -250,12 +250,12 @@ fn udp_loop2_push_pop() {
         // Send data to Bob.
         let buf: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![(b % 256) as u8; 32][..]));
         alice.udp_pushto(alice_fd, buf.clone(), bob_addr).unwrap();
-        alice.rt().poll_scheduler();
+        &mut alice.rt.poll_scheduler();
 
         now += Duration::from_micros(1);
 
         // Receive data from Alice.
-        bob.receive(alice.rt().pop_frame()).unwrap();
+        bob.receive(alice.rt.pop_frame()).unwrap();
         let mut pop_future = bob.udp_pop(bob_fd);
         let (remote_addr, received_buf) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
             Poll::Ready(Ok((remote_addr, received_buf))) => Ok((remote_addr, received_buf)),
@@ -307,12 +307,12 @@ fn udp_loop2_ping_pong() {
         // Send data to Bob.
         let buf_a: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
         alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr).unwrap();
-        alice.rt().poll_scheduler();
+        &mut alice.rt.poll_scheduler();
 
         now += Duration::from_micros(1);
 
         // Receive data from Alice.
-        bob.receive(alice.rt().pop_frame()).unwrap();
+        bob.receive(alice.rt.pop_frame()).unwrap();
         let mut pop_future = bob.udp_pop(bob_fd);
         let (remote_addr, received_buf_a) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
             Poll::Ready(Ok((remote_addr, received_buf_a))) => Ok((remote_addr, received_buf_a)),
@@ -327,12 +327,12 @@ fn udp_loop2_ping_pong() {
         // Send data to Alice.
         let buf_b: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
         bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr).unwrap();
-        bob.rt().poll_scheduler();
+        bob.rt.poll_scheduler();
 
         now += Duration::from_micros(1);
 
         // Receive data from Bob.
-        alice.receive(bob.rt().pop_frame()).unwrap();
+        alice.receive(bob.rt.pop_frame()).unwrap();
         let mut pop_future = alice.udp_pop(alice_fd);
         let (remote_addr, received_buf_b) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
             Poll::Ready(Ok((remote_addr, received_buf_b))) => Ok((remote_addr, received_buf_b)),
@@ -447,12 +447,12 @@ fn udp_pop_not_bound() {
     // Send data to Bob.
     let buf: Box<dyn Buffer> = Box::new(DataBuffer::from(&vec![0x5a; 32][..]));
     alice.udp_pushto(alice_fd, buf, bob_addr).unwrap();
-    alice.rt().poll_scheduler();
+    &mut alice.rt.poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
-    match bob.receive(alice.rt().pop_frame()) {
+    match bob.receive(alice.rt.pop_frame()) {
         Err(e) if e.errno == ENOTCONN => Ok(()),
         _ => Err(()),
     }
@@ -493,7 +493,7 @@ fn udp_push_bad_file_descriptor() {
     }
     .unwrap();
 
-    alice.rt().poll_scheduler();
+    &mut alice.rt.poll_scheduler();
     now += Duration::from_micros(1);
 
     // Close peers.

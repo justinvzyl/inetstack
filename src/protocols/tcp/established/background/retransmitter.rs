@@ -31,10 +31,7 @@ pub enum RetransmitCause {
     FastRetransmit,
 }
 
-async fn retransmit<RT: NetworkRuntime + Clone + 'static>(
-    cause: RetransmitCause,
-    cb: &Rc<ControlBlock<RT>>,
-) -> Result<(), Fail> {
+async fn retransmit(cause: RetransmitCause, cb: &Rc<ControlBlock>) -> Result<(), Fail> {
     // ToDo: Handle retransmission of FIN.
 
     // ToDo: Fix this routine.  It is currently trashing our unacknowledged queue state.  It shouldn't remove any
@@ -86,7 +83,7 @@ async fn retransmit<RT: NetworkRuntime + Clone + 'static>(
     Ok(())
 }
 
-pub async fn retransmitter<RT: NetworkRuntime + Clone + 'static>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
+pub async fn retransmitter(cb: Rc<ControlBlock>) -> Result<!, Fail> {
     loop {
         // Pin future for timeout retransmission.
         let (rtx_deadline, rtx_deadline_changed) = cb.watch_retransmit_deadline();

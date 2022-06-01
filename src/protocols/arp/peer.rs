@@ -65,8 +65,8 @@ use runtime::{
 /// Arp Peer
 /// - TODO: Allow multiple waiters for the same address
 #[derive(Clone)]
-pub struct ArpPeer<RT: NetworkRuntime> {
-    rt: RT,
+pub struct ArpPeer {
+    network: Rc<dyn NetworkRuntime>,
     clock: TimerRc,
     scheduler: Scheduler,
     local_link_addr: MacAddress,
@@ -82,16 +82,16 @@ pub struct ArpPeer<RT: NetworkRuntime> {
 // Associate Functions
 //==============================================================================
 
-impl<RT: NetworkRuntime + Clone + 'static> ArpPeer<RT> {
+impl ArpPeer {
     pub fn new(
         now: Instant,
-        rt: RT,
+        network: Rc<dyn NetworkRuntime>,
         clock: TimerRc,
         scheduler: Scheduler,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         options: ArpConfig,
-    ) -> Result<ArpPeer<RT>, Fail> {
+    ) -> Result<ArpPeer, Fail> {
         let cache = Rc::new(RefCell::new(ArpCache::new(
             now,
             Some(options.get_cache_ttl()),
@@ -100,13 +100,13 @@ impl<RT: NetworkRuntime + Clone + 'static> ArpPeer<RT> {
         )));
 
         let future = Self::background(clock.clone(), cache.clone());
-        let handle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
+        let handle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "failed to insert task in the scheduler")),
         };
 
         let peer = ArpPeer {
-            rt,
+            network,
             clock: clock.clone(),
             scheduler,
             local_link_addr,
@@ -217,7 +217,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ArpPeer<RT> {
                     ),
                 );
                 debug!("Responding {:?}", reply);
-                self.rt.transmit(reply);
+                self.network.transmit(Box::new(reply));
                 Ok(())
             },
             ArpOperation::Reply => {
@@ -239,7 +239,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ArpPeer<RT> {
     }
 
     pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output = Result<MacAddress, Fail>> {
-        let rt = self.rt.clone();
+        let network = self.network.clone();
         let mut arp = self.clone();
         let cache = self.cache.clone();
         let arp_options = self.options.clone();
@@ -267,7 +267,7 @@ impl<RT: NetworkRuntime + Clone + 'static> ArpPeer<RT> {
             // > second, the maximum suggested by [RFC1122].
             let result = {
                 for i in 0..arp_options.get_retry_count() + 1 {
-                    rt.transmit(msg.clone());
+                    network.transmit(Box::new(msg.clone()));
                     let timer = clock.wait(clock.clone(), arp_options.get_request_timeout());
 
                     match arp_response.with_timeout(timer).await {

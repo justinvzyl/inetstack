@@ -25,38 +25,38 @@ use ::std::{
     },
 };
 
-pub enum TcpOperation<RT: NetworkRuntime + Clone + 'static> {
-    Accept(FutureResult<AcceptFuture<RT>>),
-    Connect(FutureResult<ConnectFuture<RT>>),
-    Pop(FutureResult<PopFuture<RT>>),
+pub enum TcpOperation {
+    Accept(FutureResult<AcceptFuture>),
+    Connect(FutureResult<ConnectFuture>),
+    Pop(FutureResult<PopFuture>),
     Push(FutureResult<PushFuture>),
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> From<AcceptFuture<RT>> for TcpOperation<RT> {
-    fn from(f: AcceptFuture<RT>) -> Self {
+impl From<AcceptFuture> for TcpOperation {
+    fn from(f: AcceptFuture) -> Self {
         TcpOperation::Accept(FutureResult::new(f, None))
     }
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> From<ConnectFuture<RT>> for TcpOperation<RT> {
-    fn from(f: ConnectFuture<RT>) -> Self {
+impl From<ConnectFuture> for TcpOperation {
+    fn from(f: ConnectFuture) -> Self {
         TcpOperation::Connect(FutureResult::new(f, None))
     }
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> From<PushFuture> for TcpOperation<RT> {
+impl From<PushFuture> for TcpOperation {
     fn from(f: PushFuture) -> Self {
         TcpOperation::Push(FutureResult::new(f, None))
     }
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> From<PopFuture<RT>> for TcpOperation<RT> {
-    fn from(f: PopFuture<RT>) -> Self {
+impl From<PopFuture> for TcpOperation {
+    fn from(f: PopFuture) -> Self {
         TcpOperation::Pop(FutureResult::new(f, None))
     }
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> Future for TcpOperation<RT> {
+impl Future for TcpOperation {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {
@@ -69,7 +69,7 @@ impl<RT: NetworkRuntime + Clone + 'static> Future for TcpOperation<RT> {
     }
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> TcpOperation<RT> {
+impl TcpOperation {
     pub fn expect_result(self) -> (QDesc, Option<QDesc>, OperationResult) {
         match self {
             // Connect operation.
@@ -122,19 +122,19 @@ pub enum ConnectFutureState {
     InProgress,
 }
 
-pub struct ConnectFuture<RT: NetworkRuntime + Clone + 'static> {
+pub struct ConnectFuture {
     pub fd: QDesc,
     pub state: ConnectFutureState,
-    pub inner: Rc<RefCell<Inner<RT>>>,
+    pub inner: Rc<RefCell<Inner>>,
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> fmt::Debug for ConnectFuture<RT> {
+impl fmt::Debug for ConnectFuture {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ConnectFuture({:?})", self.fd)
     }
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> Future for ConnectFuture<RT> {
+impl Future for ConnectFuture {
     type Output = Result<(), Fail>;
 
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
@@ -147,39 +147,39 @@ impl<RT: NetworkRuntime + Clone + 'static> Future for ConnectFuture<RT> {
 }
 
 /// Accept Operation Descriptor
-pub struct AcceptFuture<RT: NetworkRuntime + Clone + 'static> {
+pub struct AcceptFuture {
     /// Queue descriptor of listening socket.
     qd: QDesc,
     // Pre-booked queue descriptor for incoming connection.
     new_qd: QDesc,
     // Reference to associated inner TCP peer.
-    inner: Rc<RefCell<Inner<RT>>>,
+    inner: Rc<RefCell<Inner>>,
 }
 
 /// Associated Functions for Accept Operation Descriptors
-impl<RT: NetworkRuntime + Clone + 'static> AcceptFuture<RT> {
+impl AcceptFuture {
     /// Creates a descriptor for an accept operation.
-    pub fn new(qd: QDesc, new_qd: QDesc, inner: Rc<RefCell<Inner<RT>>>) -> Self {
+    pub fn new(qd: QDesc, new_qd: QDesc, inner: Rc<RefCell<Inner>>) -> Self {
         Self { qd, new_qd, inner }
     }
 }
 
 /// Debug Trait Implementation for Accept Operation Descriptors
-impl<RT: NetworkRuntime + Clone + 'static> fmt::Debug for AcceptFuture<RT> {
+impl fmt::Debug for AcceptFuture {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "AcceptFuture({:?})", self.qd)
     }
 }
 
 /// Future Trait Implementation for Accept Operation Descriptors
-impl<RT: NetworkRuntime + Clone + 'static> Future for AcceptFuture<RT> {
+impl Future for AcceptFuture {
     type Output = Result<QDesc, Fail>;
 
     /// Polls the underlying accept operation.
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
-        let self_: &mut AcceptFuture<RT> = self.get_mut();
+        let self_: &mut AcceptFuture = self.get_mut();
         // TODO: The following design pattern looks ugly. We should move poll_accept to the inner structure.
-        let peer: TcpPeer<RT> = TcpPeer::<RT> {
+        let peer: TcpPeer = TcpPeer {
             inner: self_.inner.clone(),
         };
         peer.poll_accept(self_.qd, self_.new_qd, context)
@@ -208,18 +208,18 @@ impl Future for PushFuture {
     }
 }
 
-pub struct PopFuture<RT: NetworkRuntime + Clone + 'static> {
+pub struct PopFuture {
     pub fd: QDesc,
-    pub inner: Rc<RefCell<Inner<RT>>>,
+    pub inner: Rc<RefCell<Inner>>,
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> fmt::Debug for PopFuture<RT> {
+impl fmt::Debug for PopFuture {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "PopFuture({:?})", self.fd)
     }
 }
 
-impl<RT: NetworkRuntime + Clone + 'static> Future for PopFuture<RT> {
+impl Future for PopFuture {
     type Output = Result<Box<dyn Buffer>, Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
