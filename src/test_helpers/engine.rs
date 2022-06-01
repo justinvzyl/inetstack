@@ -123,7 +123,7 @@ impl<RT: Runtime> Engine<RT> {
         self.ipv4.tcp.do_accept(fd, newfd)
     }
 
-    pub fn tcp_push(&mut self, socket_fd: QDesc, buf: Box<dyn Buffer>) -> PushFuture<RT> {
+    pub fn tcp_push(&mut self, socket_fd: QDesc, buf: Box<dyn Buffer>) -> PushFuture {
         self.ipv4.tcp.push(socket_fd, buf)
     }
 

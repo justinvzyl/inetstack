@@ -29,7 +29,7 @@ pub enum TcpOperation<RT: Runtime> {
     Accept(FutureResult<AcceptFuture<RT>>),
     Connect(FutureResult<ConnectFuture<RT>>),
     Pop(FutureResult<PopFuture<RT>>),
-    Push(FutureResult<PushFuture<RT>>),
+    Push(FutureResult<PushFuture>),
 }
 
 impl<RT: Runtime> From<AcceptFuture<RT>> for TcpOperation<RT> {
@@ -44,8 +44,8 @@ impl<RT: Runtime> From<ConnectFuture<RT>> for TcpOperation<RT> {
     }
 }
 
-impl<RT: Runtime> From<PushFuture<RT>> for TcpOperation<RT> {
-    fn from(f: PushFuture<RT>) -> Self {
+impl<RT: Runtime> From<PushFuture> for TcpOperation<RT> {
+    fn from(f: PushFuture) -> Self {
         TcpOperation::Push(FutureResult::new(f, None))
     }
 }
@@ -186,19 +186,18 @@ impl<RT: Runtime> Future for AcceptFuture<RT> {
     }
 }
 
-pub struct PushFuture<RT: Runtime> {
+pub struct PushFuture {
     pub fd: QDesc,
     pub err: Option<Fail>,
-    pub _marker: std::marker::PhantomData<RT>,
 }
 
-impl<RT: Runtime> fmt::Debug for PushFuture<RT> {
+impl fmt::Debug for PushFuture {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "PushFuture({:?})", self.fd)
     }
 }
 
-impl<RT: Runtime> Future for PushFuture<RT> {
+impl Future for PushFuture {
     type Output = Result<(), Fail>;
 
     fn poll(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Self::Output> {

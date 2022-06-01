@@ -301,16 +301,12 @@ impl<RT: Runtime> TcpPeer<RT> {
         }
     }
 
-    pub fn push(&self, fd: QDesc, buf: Box<dyn Buffer>) -> PushFuture<RT> {
+    pub fn push(&self, fd: QDesc, buf: Box<dyn Buffer>) -> PushFuture {
         let err = match self.send(fd, buf) {
             Ok(()) => None,
             Err(e) => Some(e),
         };
-        PushFuture {
-            fd,
-            err,
-            _marker: std::marker::PhantomData,
-        }
+        PushFuture { fd, err }
     }
 
     pub fn pop(&self, fd: QDesc) -> PopFuture<RT> {

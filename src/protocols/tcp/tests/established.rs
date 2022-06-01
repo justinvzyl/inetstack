@@ -73,7 +73,7 @@ fn send_data(
     );
 
     // Push data.
-    let mut push_future: PushFuture<TestRuntime> = sender.tcp_push(sender_fd, bytes);
+    let mut push_future: PushFuture = sender.tcp_push(sender_fd, bytes);
 
     let bytes: Box<dyn Buffer> = sender.rt().pop_frame();
     let bufsize: usize = check_packet_data(
