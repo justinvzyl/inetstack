@@ -185,9 +185,7 @@ impl<RT: Runtime> TcpPeer<RT> {
         // Get bound address while checking for several issues.
         let local: Ipv4Endpoint = match inner.sockets.get_mut(&qd) {
             Some(Socket::Inactive { local: Some(local) }) => *local,
-            Some(Socket::Listening { local: _ }) => {
-                return Err(Fail::new(libc::EADDRINUSE, "socket is already listening"))
-            },
+            Some(Socket::Listening { local: _ }) => return Err(Fail::new(libc::EINVAL, "socket is already listening")),
             Some(Socket::Inactive { local: None }) => {
                 return Err(Fail::new(libc::EDESTADDRREQ, "socket is not bound to a local address"))
             },
@@ -201,13 +199,11 @@ impl<RT: Runtime> TcpPeer<RT> {
         };
 
         // Check if there isn't a socket listening on this address/port pair.
-        for (addr, _) in &inner.passive {
-            if *addr == local {
-                return Err(Fail::new(
-                    libc::EADDRINUSE,
-                    "another socket is already listening on the same address/port pair",
-                ));
-            }
+        if inner.passive.contains_key(&local) {
+            return Err(Fail::new(
+                libc::EADDRINUSE,
+                "another socket is already listening on the same address/port pair",
+            ));
         }
 
         let socket: PassiveSocket<RT> = PassiveSocket::new(local, backlog, inner.rt.clone(), inner.arp.clone());

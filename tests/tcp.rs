@@ -350,15 +350,17 @@ fn tcp_bad_listen() {
     };
     safe_close_passive(&mut libos, sockqd);
 
-    // Listen multiple times same address/part pair.
+    // Listen on an already listening socket.
     let sockqd: QDesc = safe_socket(&mut libos);
     safe_bind(&mut libos, sockqd, local);
     safe_listen(&mut libos, sockqd);
     match libos.listen(sockqd, 16) {
-        Err(e) if e.errno == libc::EADDRINUSE => (),
-        _ => panic!("listen() multiple times should fail with EADDRINUSE"),
+        Err(e) if e.errno == libc::EINVAL => (),
+        _ => panic!("listen() called on an already listening socket should fail with EINVAL"),
     };
     safe_close_passive(&mut libos, sockqd);
+
+    // TODO: Add unit test for "Listen on an in-use address/port pair." (see issue #178).
 
     // Listen on unbound socket.
     let sockqd: QDesc = safe_socket(&mut libos);
