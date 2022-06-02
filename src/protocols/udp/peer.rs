@@ -284,6 +284,8 @@ impl<RT: Runtime> UdpPeer<RT> {
             None => Err(Fail::new(ENOTCONN, "port not bound"))?,
         };
 
+        // TODO: Drop this packet if local address/port pair is not bound.
+
         // Push data to the receiver-side shared queue. This will cause the
         // associated pool operation to be ready.
         recv_queue.push(SharedQueueSlot { local, remote, data }).unwrap();
