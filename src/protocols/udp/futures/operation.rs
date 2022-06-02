@@ -51,7 +51,7 @@ impl UdpOperation {
             UdpOperation::Pop(FutureResult {
                 future,
                 done: Some(Ok((addr, bytes))),
-            }) => (future.get_qd(), OperationResult::Pop(addr, bytes)),
+            }) => (future.get_qd(), OperationResult::Pop(Some(addr), bytes)),
             UdpOperation::Pop(FutureResult {
                 future,
                 done: Some(Err(e)),

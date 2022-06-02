@@ -19,10 +19,7 @@ use crate::protocols::{
         Ethernet2Header,
     },
     ip::IpProtocol,
-    ipv4::{
-        Ipv4Endpoint,
-        Ipv4Header,
-    },
+    ipv4::Ipv4Header,
     tcp::{
         segment::{
             TcpHeader,
@@ -51,6 +48,7 @@ use ::std::{
     },
     collections::VecDeque,
     convert::TryInto,
+    net::SocketAddrV4,
     rc::Rc,
     task::{
         Context,
@@ -143,8 +141,8 @@ impl Receiver {
 /// Transmission control block for representing our TCP connection.
 // ToDo: Make all public fields in this structure private.
 pub struct ControlBlock<RT: Runtime> {
-    local: Ipv4Endpoint,
-    remote: Ipv4Endpoint,
+    local: SocketAddrV4,
+    remote: SocketAddrV4,
 
     rt: Rc<RT>,
 
@@ -207,8 +205,8 @@ pub struct ControlBlock<RT: Runtime> {
 
 impl<RT: Runtime> ControlBlock<RT> {
     pub fn new(
-        local: Ipv4Endpoint,
-        remote: Ipv4Endpoint,
+        local: SocketAddrV4,
+        remote: SocketAddrV4,
         rt: RT,
         arp: ArpPeer<RT>,
         receiver_seq_no: SeqNumber,
@@ -245,11 +243,11 @@ impl<RT: Runtime> ControlBlock<RT> {
         }
     }
 
-    pub fn get_local(&self) -> Ipv4Endpoint {
+    pub fn get_local(&self) -> SocketAddrV4 {
         self.local
     }
 
-    pub fn get_remote(&self) -> Ipv4Endpoint {
+    pub fn get_remote(&self) -> SocketAddrV4 {
         self.remote
     }
 
@@ -776,7 +774,7 @@ impl<RT: Runtime> ControlBlock<RT> {
     /// Fetch a TCP header filling out various values based on our current state.
     /// ToDo: Fix the "filling out various values based on our current state" part to actually do that correctly.
     pub fn tcp_header(&self) -> TcpHeader {
-        let mut header: TcpHeader = TcpHeader::new(self.local.get_port(), self.remote.get_port());
+        let mut header: TcpHeader = TcpHeader::new(self.local.port(), self.remote.port());
         header.window_size = self.hdr_window_size();
 
         // Note that once we reach a synchronized state we always include a valid acknowledgement number.
@@ -797,7 +795,7 @@ impl<RT: Runtime> ControlBlock<RT> {
 
         // ToDo: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
         // left to the ARP layer and not exposed to TCP).
-        if let Some(remote_link_addr) = self.arp().try_query(self.remote.get_address()) {
+        if let Some(remote_link_addr) = self.arp().try_query(self.remote.ip().clone()) {
             self.emit(header, Box::new(DataBuffer::empty()), remote_link_addr);
         }
     }
@@ -816,7 +814,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         // ToDo: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
         let segment = TcpSegment {
             ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
-            ipv4_hdr: Ipv4Header::new(self.local.get_address(), self.remote.get_address(), IpProtocol::TCP),
+            ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr: header,
             data,
             tx_checksum_offload: self.rt.tcp_options().get_tx_checksum_offload(),

@@ -15,10 +15,7 @@ use crate::{
             Ethernet2Header,
         },
         ip::IpProtocol,
-        ipv4::{
-            Ipv4Endpoint,
-            Ipv4Header,
-        },
+        ipv4::Ipv4Header,
         tcp::{
             established::congestion_control::{
                 self,
@@ -47,6 +44,7 @@ use ::std::{
     cell::RefCell,
     convert::TryInto,
     future::Future,
+    net::SocketAddrV4,
     rc::Rc,
     task::{
         Context,
@@ -63,8 +61,8 @@ struct ConnectResult<RT: Runtime> {
 pub struct ActiveOpenSocket<RT: Runtime> {
     local_isn: SeqNumber,
 
-    local: Ipv4Endpoint,
-    remote: Ipv4Endpoint,
+    local: SocketAddrV4,
+    remote: SocketAddrV4,
 
     rt: RT,
     arp: ArpPeer<RT>,
@@ -75,7 +73,7 @@ pub struct ActiveOpenSocket<RT: Runtime> {
 }
 
 impl<RT: Runtime> ActiveOpenSocket<RT> {
-    pub fn new(local_isn: SeqNumber, local: Ipv4Endpoint, remote: Ipv4Endpoint, rt: RT, arp: ArpPeer<RT>) -> Self {
+    pub fn new(local_isn: SeqNumber, local: SocketAddrV4, remote: SocketAddrV4, rt: RT, arp: ArpPeer<RT>) -> Self {
         let result = ConnectResult {
             waker: None,
             result: None,
@@ -139,7 +137,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         debug!("Received SYN+ACK: {:?}", header);
 
         // Acknowledge the SYN+ACK segment.
-        let remote_link_addr = match self.arp.try_query(self.remote.get_address()) {
+        let remote_link_addr = match self.arp.try_query(self.remote.ip().clone()) {
             Some(r) => r,
             None => panic!("TODO: Clean up ARP query control flow"),
         };
@@ -147,7 +145,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
 
         let tcp_options = self.rt.tcp_options();
 
-        let mut tcp_hdr = TcpHeader::new(self.local.get_port(), self.remote.get_port());
+        let mut tcp_hdr = TcpHeader::new(self.local.port(), self.remote.port());
         tcp_hdr.ack = true;
         tcp_hdr.ack_num = remote_seq_num;
         tcp_hdr.window_size = tcp_options.get_receive_window_size();
@@ -156,7 +154,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
 
         let segment = TcpSegment {
             ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
-            ipv4_hdr: Ipv4Header::new(self.local.get_address(), self.remote.get_address(), IpProtocol::TCP),
+            ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr,
             data: Box::new(DataBuffer::empty()),
             tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
@@ -226,8 +224,8 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
 
     fn background(
         local_isn: SeqNumber,
-        local: Ipv4Endpoint,
-        remote: Ipv4Endpoint,
+        local: SocketAddrV4,
+        remote: SocketAddrV4,
         rt: RT,
         arp: ArpPeer<RT>,
         result: Rc<RefCell<ConnectResult<RT>>>,
@@ -238,7 +236,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
 
         async move {
             for _ in 0..handshake_retries {
-                let remote_link_addr = match arp.query(remote.get_address()).await {
+                let remote_link_addr = match arp.query(remote.ip().clone()).await {
                     Ok(r) => r,
                     Err(e) => {
                         warn!("ARP query failed: {:?}", e);
@@ -246,7 +244,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                     },
                 };
 
-                let mut tcp_hdr = TcpHeader::new(local.get_port(), remote.get_port());
+                let mut tcp_hdr = TcpHeader::new(local.port(), remote.port());
                 tcp_hdr.syn = true;
                 tcp_hdr.seq_num = local_isn;
                 tcp_hdr.window_size = tcp_options.get_receive_window_size();
@@ -261,7 +259,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                 debug!("Sending SYN {:?}", tcp_hdr);
                 let segment = TcpSegment {
                     ethernet2_hdr: Ethernet2Header::new(remote_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
-                    ipv4_hdr: Ipv4Header::new(local.get_address(), remote.get_address(), IpProtocol::TCP),
+                    ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
                     tcp_hdr,
                     data: Box::new(DataBuffer::empty()),
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),

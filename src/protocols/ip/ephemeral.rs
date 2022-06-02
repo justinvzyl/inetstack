@@ -4,12 +4,7 @@
 use ::libc::EAGAIN;
 use ::runtime::{
     fail::Fail,
-    network::types::Port16,
     Runtime,
-};
-use ::std::{
-    convert::TryFrom,
-    num::NonZeroU16,
 };
 
 //==============================================================================
@@ -24,7 +19,7 @@ const LAST_PRIVATE_PORT: u16 = 65535;
 //==============================================================================
 
 pub struct EphemeralPorts {
-    ports: Vec<Port16>,
+    ports: Vec<u16>,
 }
 
 //==============================================================================
@@ -33,29 +28,28 @@ pub struct EphemeralPorts {
 
 impl EphemeralPorts {
     pub fn new<RT: Runtime>(rt: &RT) -> Self {
-        let mut ports: Vec<Port16> = Vec::<Port16>::new();
-        for n in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
-            let p: Port16 = Port16::new(NonZeroU16::new(n).expect("failed to allocate ephemeral port"));
-            ports.push(p);
+        let mut ports: Vec<u16> = Vec::<u16>::new();
+        for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
+            ports.push(port);
         }
 
         rt.rng_shuffle(&mut ports[..]);
         Self { ports }
     }
 
-    pub fn first_private_port() -> Port16 {
-        Port16::try_from(FIRST_PRIVATE_PORT).unwrap()
+    pub fn first_private_port() -> u16 {
+        FIRST_PRIVATE_PORT
     }
 
-    pub fn is_private(port: Port16) -> bool {
-        u16::from(port) >= FIRST_PRIVATE_PORT
+    pub fn is_private(port: u16) -> bool {
+        port >= FIRST_PRIVATE_PORT
     }
 
-    pub fn alloc(&mut self) -> Result<Port16, Fail> {
+    pub fn alloc(&mut self) -> Result<u16, Fail> {
         self.ports.pop().ok_or(Fail::new(EAGAIN, "out of private ports"))
     }
 
-    pub fn free(&mut self, port: Port16) {
+    pub fn free(&mut self, port: u16) {
         self.ports.push(port);
     }
 }

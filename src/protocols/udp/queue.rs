@@ -5,7 +5,6 @@
 // Imports
 //==============================================================================
 
-use crate::protocols::ipv4::Ipv4Endpoint;
 use ::futures::{
     channel::mpsc::{
         self,
@@ -18,6 +17,7 @@ use ::libc::EIO;
 use ::runtime::fail::Fail;
 use ::std::{
     cell::RefCell,
+    net::SocketAddrV4,
     rc::Rc,
 };
 
@@ -28,9 +28,9 @@ use ::std::{
 /// Shared Queue Slot
 pub struct SharedQueueSlot<T> {
     /// Local endpoint.
-    pub local: Option<Ipv4Endpoint>,
+    pub local: SocketAddrV4,
     /// Remote endpoint.
-    pub remote: Option<Ipv4Endpoint>,
+    pub remote: SocketAddrV4,
     /// Associated data.
     pub data: T,
 }

@@ -15,10 +15,7 @@ use crate::{
             Ethernet2Header,
         },
         ip::IpProtocol,
-        ipv4::{
-            Ipv4Endpoint,
-            Ipv4Header,
-        },
+        ipv4::Ipv4Header,
         tcp::{
             established::{
                 congestion_control,
@@ -54,6 +51,7 @@ use ::std::{
     },
     convert::TryInto,
     future::Future,
+    net::SocketAddrV4,
     rc::Rc,
     task::{
         Context,
@@ -76,7 +74,7 @@ struct InflightAccept {
 
 struct ReadySockets<RT: Runtime> {
     ready: VecDeque<Result<ControlBlock<RT>, Fail>>,
-    endpoints: HashSet<Ipv4Endpoint>,
+    endpoints: HashSet<SocketAddrV4>,
     waker: Option<Waker>,
 }
 
@@ -116,19 +114,19 @@ impl<RT: Runtime> ReadySockets<RT> {
 }
 
 pub struct PassiveSocket<RT: Runtime> {
-    inflight: HashMap<Ipv4Endpoint, InflightAccept>,
+    inflight: HashMap<SocketAddrV4, InflightAccept>,
     ready: Rc<RefCell<ReadySockets<RT>>>,
 
     max_backlog: usize,
     isn_generator: IsnGenerator,
 
-    local: Ipv4Endpoint,
+    local: SocketAddrV4,
     rt: RT,
     arp: ArpPeer<RT>,
 }
 
 impl<RT: Runtime> PassiveSocket<RT> {
-    pub fn new(local: Ipv4Endpoint, max_backlog: usize, rt: RT, arp: ArpPeer<RT>) -> Self {
+    pub fn new(local: SocketAddrV4, max_backlog: usize, rt: RT, arp: ArpPeer<RT>) -> Self {
         let ready = ReadySockets {
             ready: VecDeque::new(),
             endpoints: HashSet::new(),
@@ -152,7 +150,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
     }
 
     pub fn receive(&mut self, ip_header: &Ipv4Header, header: &TcpHeader) -> Result<(), Fail> {
-        let remote = Ipv4Endpoint::new(ip_header.get_src_addr(), header.src_port);
+        let remote = SocketAddrV4::new(ip_header.get_src_addr(), header.src_port);
         if self.ready.borrow().endpoints.contains(&remote) {
             // TODO: What should we do if a packet shows up for a connection that hasn't been `accept`ed yet?
             return Ok(());
@@ -272,8 +270,8 @@ impl<RT: Runtime> PassiveSocket<RT> {
     fn background(
         local_isn: SeqNumber,
         remote_isn: SeqNumber,
-        local: Ipv4Endpoint,
-        remote: Ipv4Endpoint,
+        local: SocketAddrV4,
+        remote: SocketAddrV4,
         rt: RT,
         arp: ArpPeer<RT>,
         ready: Rc<RefCell<ReadySockets<RT>>>,
@@ -284,14 +282,14 @@ impl<RT: Runtime> PassiveSocket<RT> {
 
         async move {
             for _ in 0..handshake_retries {
-                let remote_link_addr = match arp.query(remote.get_address()).await {
+                let remote_link_addr = match arp.query(remote.ip().clone()).await {
                     Ok(r) => r,
                     Err(e) => {
                         warn!("ARP query failed: {:?}", e);
                         continue;
                     },
                 };
-                let mut tcp_hdr = TcpHeader::new(local.get_port(), remote.get_port());
+                let mut tcp_hdr = TcpHeader::new(local.port(), remote.port());
                 tcp_hdr.syn = true;
                 tcp_hdr.seq_num = local_isn;
                 tcp_hdr.ack = true;
@@ -308,7 +306,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 debug!("Sending SYN+ACK: {:?}", tcp_hdr);
                 let segment = TcpSegment {
                     ethernet2_hdr: Ethernet2Header::new(remote_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
-                    ipv4_hdr: Ipv4Header::new(local.get_address(), remote.get_address(), IpProtocol::TCP),
+                    ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
                     tcp_hdr,
                     data: Box::new(DataBuffer::empty()),
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),

@@ -2,20 +2,17 @@
 // Licensed under the MIT license.
 
 use crate::{
-    protocols::{
-        ipv4::Ipv4Endpoint,
-        tcp::{
-            operations::PushFuture,
-            tests::{
-                check_packet_data,
-                check_packet_pure_ack,
-                setup::{
-                    advance_clock,
-                    connection_setup,
-                },
+    protocols::tcp::{
+        operations::PushFuture,
+        tests::{
+            check_packet_data,
+            check_packet_pure_ack,
+            setup::{
+                advance_clock,
+                connection_setup,
             },
-            SeqNumber,
         },
+        SeqNumber,
     },
     test_helpers::{
         self,
@@ -30,16 +27,13 @@ use ::runtime::{
         Buffer,
         DataBuffer,
     },
-    network::{
-        types::Port16,
-        NetworkRuntime,
-    },
+    network::NetworkRuntime,
     QDesc,
 };
 use ::std::{
     collections::VecDeque,
-    convert::TryFrom,
     future::Future,
+    net::SocketAddrV4,
     pin::Pin,
     task::{
         Context,
@@ -298,8 +292,8 @@ pub fn test_send_recv_loop() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: Port16 = Port16::try_from(80).unwrap();
-    let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_port: u16 = 80;
+    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
@@ -338,8 +332,8 @@ pub fn test_send_recv_round_loop() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: Port16 = Port16::try_from(80).unwrap();
-    let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_port: u16 = 80;
+    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
@@ -381,8 +375,8 @@ pub fn test_send_recv_with_delay() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: Port16 = Port16::try_from(80).unwrap();
-    let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_port: u16 = 80;
+    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
@@ -450,8 +444,8 @@ fn test_connect_disconnect() {
     let mut now = Instant::now();
 
     // Connection parameters
-    let listen_port: Port16 = Port16::try_from(80).unwrap();
-    let listen_addr: Ipv4Endpoint = Ipv4Endpoint::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_port: u16 = 80;
+    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
