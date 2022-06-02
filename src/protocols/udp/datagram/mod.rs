@@ -159,7 +159,7 @@ mod test {
         let src_port: u16 = 0x32;
         let dest_port: u16 = 0x45;
         let checksum_offload: bool = true;
-        let udp_hdr: UdpHeader = UdpHeader::new(Some(src_port), dest_port);
+        let udp_hdr: UdpHeader = UdpHeader::new(src_port, dest_port);
 
         // Payload.
         let bytes: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];

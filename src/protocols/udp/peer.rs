@@ -279,7 +279,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         debug!("UDP received {:?}", hdr);
 
         let local: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
-        let remote: Option<SocketAddrV4> = hdr.src_port().map(|p| SocketAddrV4::new(ipv4_hdr.get_src_addr(), p));
+        let remote: Option<SocketAddrV4> = Some(SocketAddrV4::new(ipv4_hdr.get_src_addr(), hdr.src_port()));
 
         // Lookup associated receiver-side shared queue.
         let recv_queue: &mut SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> = match self.bound.get_mut(&local) {
@@ -312,7 +312,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         remote: SocketAddrV4,
         offload_checksum: bool,
     ) {
-        let udp_header: UdpHeader = UdpHeader::new(local.map(|l| l.port()), remote.port());
+        let udp_header: UdpHeader = UdpHeader::new(local.map_or(0, |l| l.port()), remote.port());
         debug!("UDP send {:?}", udp_header);
         let datagram = UdpDatagram::new(
             Ethernet2Header::new(remote_link_addr, local_link_addr, EtherType2::Ipv4),
