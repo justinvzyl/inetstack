@@ -118,7 +118,7 @@ impl UdpHeader {
     pub fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8], checksum_offload: bool) {
         let fixed_buf: &mut [u8; UDP_HEADER_SIZE] = (&mut buf[..UDP_HEADER_SIZE]).try_into().unwrap();
 
-        // Write source port. If not present, write zeros.
+        // Write source port.
         NetworkEndian::write_u16(&mut fixed_buf[0..2], self.src_port);
 
         // Write destination port.

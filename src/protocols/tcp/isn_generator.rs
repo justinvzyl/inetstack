@@ -32,12 +32,10 @@ impl IsnGenerator {
     pub fn generate(&mut self, local: &SocketAddrV4, remote: &SocketAddrV4) -> SeqNumber {
         let crc: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_CKSUM);
         let mut digest = crc.digest();
-        let remote_addr: u32 = u32::from_be_bytes(remote.ip().octets());
-        digest.update(&remote_addr.to_be_bytes());
+        digest.update(&remote.ip().octets());
         let remote_port: u16 = remote.port().into();
         digest.update(&remote_port.to_be_bytes());
-        let local_addr: u32 = u32::from_be_bytes(local.ip().octets());
-        digest.update(&local_addr.to_be_bytes());
+        digest.update(&local.ip().octets());
         let local_port: u16 = local.port().into();
         digest.update(&local_port.to_be_bytes());
         digest.update(&self.nonce.to_be_bytes());
