@@ -131,7 +131,7 @@ impl<RT: Runtime> UdpPeer<RT> {
             // Grab next unsent datagram.
             match rx.pop().await {
                 // Resolve remote address.
-                Ok(SharedQueueSlot { local, remote, data }) => match arp.query(remote.unwrap().ip().clone()).await {
+                Ok(SharedQueueSlot { local, remote, data }) => match arp.query(remote.ip().clone()).await {
                     // Send datagram.
                     Ok(link_addr) => {
                         Self::do_send(
@@ -140,8 +140,8 @@ impl<RT: Runtime> UdpPeer<RT> {
                             local_link_addr,
                             link_addr,
                             data,
-                            &local.unwrap(),
-                            &remote.unwrap(),
+                            &local,
+                            &remote,
                             offload_checksum,
                         );
                     },
@@ -244,11 +244,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         }
         // Slow path: Defer send operation to the async path.
         else {
-            self.send_queue.push(SharedQueueSlot {
-                local: Some(local),
-                remote: Some(remote),
-                data,
-            })?
+            self.send_queue.push(SharedQueueSlot { local, remote, data })?
         }
 
         Ok(())
@@ -290,13 +286,7 @@ impl<RT: Runtime> UdpPeer<RT> {
 
         // Push data to the receiver-side shared queue. This will cause the
         // associated pool operation to be ready.
-        recv_queue
-            .push(SharedQueueSlot {
-                local: Some(local),
-                remote: Some(remote),
-                data,
-            })
-            .unwrap();
+        recv_queue.push(SharedQueueSlot { local, remote, data }).unwrap();
 
         Ok(())
     }

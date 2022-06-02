@@ -97,7 +97,7 @@ fn udp_push_pop() {
         _ => Err(()),
     }
     .unwrap();
-    assert_eq!(remote_addr.unwrap(), alice_addr);
+    assert_eq!(remote_addr, alice_addr);
     assert_eq!(received_buf[..], buf[..]);
 
     // Close peers.
@@ -143,7 +143,7 @@ fn udp_ping_pong() {
         _ => Err(()),
     }
     .unwrap();
-    assert_eq!(remote_addr.unwrap(), alice_addr);
+    assert_eq!(remote_addr, alice_addr);
     assert_eq!(received_buf_a[..], buf_a[..]);
 
     now += Duration::from_micros(1);
@@ -163,7 +163,7 @@ fn udp_ping_pong() {
         _ => Err(()),
     }
     .unwrap();
-    assert_eq!(remote_addr.unwrap(), bob_addr);
+    assert_eq!(remote_addr, bob_addr);
     assert_eq!(received_buf_b[..], buf_b[..]);
 
     // Close peers.
@@ -262,7 +262,7 @@ fn udp_loop2_push_pop() {
             _ => Err(()),
         }
         .unwrap();
-        assert_eq!(remote_addr.unwrap(), alice_addr);
+        assert_eq!(remote_addr, alice_addr);
         assert_eq!(received_buf[..], buf[..]);
     }
 
@@ -319,7 +319,7 @@ fn udp_loop2_ping_pong() {
             _ => Err(()),
         }
         .unwrap();
-        assert_eq!(remote_addr.unwrap(), alice_addr);
+        assert_eq!(remote_addr, alice_addr);
         assert_eq!(received_buf_a[..], buf_a[..]);
 
         now += Duration::from_micros(1);
@@ -339,7 +339,7 @@ fn udp_loop2_ping_pong() {
             _ => Err(()),
         }
         .unwrap();
-        assert_eq!(remote_addr.unwrap(), bob_addr);
+        assert_eq!(remote_addr, bob_addr);
         assert_eq!(received_buf_b[..], buf_b[..]);
     }
 

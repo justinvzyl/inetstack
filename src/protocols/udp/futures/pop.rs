@@ -60,7 +60,7 @@ impl UdpPopFuture {
 
 /// Future Trait implementation for Pop Operation Descriptor
 impl Future for UdpPopFuture {
-    type Output = Result<(Option<SocketAddrV4>, Box<dyn Buffer>), Fail>;
+    type Output = Result<(SocketAddrV4, Box<dyn Buffer>), Fail>;
 
     /// Polls the target pop operation descriptor.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {

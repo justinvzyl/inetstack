@@ -28,9 +28,9 @@ use ::std::{
 /// Shared Queue Slot
 pub struct SharedQueueSlot<T> {
     /// Local endpoint.
-    pub local: Option<SocketAddrV4>,
+    pub local: SocketAddrV4,
     /// Remote endpoint.
-    pub remote: Option<SocketAddrV4>,
+    pub remote: SocketAddrV4,
     /// Associated data.
     pub data: T,
 }
