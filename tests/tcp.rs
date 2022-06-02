@@ -297,7 +297,7 @@ fn tcp_bad_bind() {
     // Invalid queue descriptor.
     match libos.bind(QDesc::from(0), local) {
         Err(e) if e.errno == libc::EBADF => (),
-        _ => panic!("invalid call to bind() should failed with EBADF"),
+        _ => panic!("invalid call to bind() should fail with EBADF"),
     };
 
     // Bind socket multiple times.
@@ -333,13 +333,12 @@ fn tcp_bad_listen() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port: Port16 = safe_try_port16(PORT_BASE);
-    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, port);
+    let local: Ipv4Endpoint = Ipv4Endpoint::new(ALICE_IPV4, safe_try_port16(PORT_BASE));
 
     // Invalid queue descriptor.
     match libos.listen(QDesc::from(0), 8) {
         Err(e) if e.errno == libc::EBADF => (),
-        _ => panic!("invalid call to listen() should failed with EBADF"),
+        _ => panic!("invalid call to listen() should fail with EBADF"),
     };
 
     // Invalid backlog length
@@ -347,10 +346,29 @@ fn tcp_bad_listen() {
     safe_bind(&mut libos, sockqd, local);
     match libos.listen(sockqd, 0) {
         Err(e) if e.errno == libc::EINVAL => (),
-        _ => panic!("invalid call to listen() should failed with EINVAL"),
+        _ => panic!("invalid call to listen() should fail with EINVAL"),
     };
+    safe_close_passive(&mut libos, sockqd);
 
-    // Close socket.
+    // Listen on an already listening socket.
+    let sockqd: QDesc = safe_socket(&mut libos);
+    safe_bind(&mut libos, sockqd, local);
+    safe_listen(&mut libos, sockqd);
+    match libos.listen(sockqd, 16) {
+        Err(e) if e.errno == libc::EINVAL => (),
+        _ => panic!("listen() called on an already listening socket should fail with EINVAL"),
+    };
+    safe_close_passive(&mut libos, sockqd);
+
+    // TODO: Add unit test for "Listen on an in-use address/port pair." (see issue #178).
+
+    // Listen on unbound socket.
+    let sockqd: QDesc = safe_socket(&mut libos);
+    match libos.listen(sockqd, 16) {
+        Err(e) if e.errno == libc::EDESTADDRREQ => (),
+        Err(e) => panic!("listen() to unbound address should fail with EDESTADDRREQ {:?}", e),
+        _ => panic!("should fail"),
+    };
     safe_close_passive(&mut libos, sockqd);
 }
 
@@ -367,7 +385,7 @@ fn tcp_bad_accept() {
     // Invalid queue descriptor.
     match libos.accept(QDesc::from(0)) {
         Err(e) if e.errno == libc::EBADF => (),
-        _ => panic!("invalid call to accept() should failed with EBADF"),
+        _ => panic!("invalid call to accept() should fail with EBADF"),
     };
 }
 
@@ -411,7 +429,7 @@ fn tcp_bad_connect() {
         // Bad queue descriptor.
         match libos.connect(QDesc::from(0), remote) {
             Err(e) if e.errno == libc::EBADF => (),
-            _ => panic!("invalid call to connect() should failed with EBADF"),
+            _ => panic!("invalid call to connect() should fail with EBADF"),
         };
 
         // Bad endpoint.

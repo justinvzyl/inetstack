@@ -42,7 +42,6 @@ use crate::protocols::{
 };
 use ::futures::channel::mpsc;
 use ::libc::{
-    EADDRNOTAVAIL,
     EAGAIN,
     EBADF,
     EBADMSG,
@@ -179,20 +178,37 @@ impl<RT: Runtime> TcpPeer<RT> {
         self.inner.borrow_mut().receive(ip_header, buf)
     }
 
-    pub fn listen(&self, fd: QDesc, backlog: usize) -> Result<(), Fail> {
-        let mut inner = self.inner.borrow_mut();
-        let local = match inner.sockets.get_mut(&fd) {
+    // Marks the target socket as passive.
+    pub fn listen(&self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
+        let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
+
+        // Get bound address while checking for several issues.
+        let local: Ipv4Endpoint = match inner.sockets.get_mut(&qd) {
             Some(Socket::Inactive { local: Some(local) }) => *local,
-            _ => return Err(Fail::new(EBADF, "invalid queue descriptor")),
+            Some(Socket::Listening { local: _ }) => return Err(Fail::new(libc::EINVAL, "socket is already listening")),
+            Some(Socket::Inactive { local: None }) => {
+                return Err(Fail::new(libc::EDESTADDRREQ, "socket is not bound to a local address"))
+            },
+            Some(Socket::Connecting { local: _, remote: _ }) => {
+                return Err(Fail::new(libc::EINVAL, "socket is connecting"))
+            },
+            Some(Socket::Established { local: _, remote: _ }) => {
+                return Err(Fail::new(libc::EINVAL, "socket is connected"))
+            },
+            _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         };
-        // TODO: Should this move to bind?
+
+        // Check if there isn't a socket listening on this address/port pair.
         if inner.passive.contains_key(&local) {
-            return Err(Fail::new(EADDRNOTAVAIL, "port already in use"));
+            return Err(Fail::new(
+                libc::EADDRINUSE,
+                "another socket is already listening on the same address/port pair",
+            ));
         }
 
-        let socket = PassiveSocket::new(local, backlog, inner.rt.clone(), inner.arp.clone());
+        let socket: PassiveSocket<RT> = PassiveSocket::new(local, backlog, inner.rt.clone(), inner.arp.clone());
         assert!(inner.passive.insert(local, socket).is_none());
-        inner.sockets.insert(fd, Socket::Listening { local });
+        inner.sockets.insert(qd, Socket::Listening { local });
         Ok(())
     }
 
