@@ -93,11 +93,11 @@ fn udp_push_pop() {
     bob.receive(alice.rt().pop_frame()).unwrap();
     let mut pop_future = bob.udp_pop(bob_fd);
     let (remote_addr, received_buf) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
-        Poll::Ready(Ok((Some(remote_addr), received_buf))) => Ok((remote_addr, received_buf)),
+        Poll::Ready(Ok((remote_addr, received_buf))) => Ok((remote_addr, received_buf)),
         _ => Err(()),
     }
     .unwrap();
-    assert_eq!(remote_addr, alice_addr);
+    assert_eq!(remote_addr.unwrap(), alice_addr);
     assert_eq!(received_buf[..], buf[..]);
 
     // Close peers.
@@ -139,11 +139,11 @@ fn udp_ping_pong() {
     bob.receive(alice.rt().pop_frame()).unwrap();
     let mut pop_future = bob.udp_pop(bob_fd);
     let (remote_addr, received_buf_a) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
-        Poll::Ready(Ok((Some(remote_addr), received_buf_a))) => Ok((remote_addr, received_buf_a)),
+        Poll::Ready(Ok((remote_addr, received_buf_a))) => Ok((remote_addr, received_buf_a)),
         _ => Err(()),
     }
     .unwrap();
-    assert_eq!(remote_addr, alice_addr);
+    assert_eq!(remote_addr.unwrap(), alice_addr);
     assert_eq!(received_buf_a[..], buf_a[..]);
 
     now += Duration::from_micros(1);
@@ -159,11 +159,11 @@ fn udp_ping_pong() {
     alice.receive(bob.rt().pop_frame()).unwrap();
     let mut pop_future = alice.udp_pop(alice_fd);
     let (remote_addr, received_buf_b) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
-        Poll::Ready(Ok((Some(remote_addr), received_buf_b))) => Ok((remote_addr, received_buf_b)),
+        Poll::Ready(Ok((remote_addr, received_buf_b))) => Ok((remote_addr, received_buf_b)),
         _ => Err(()),
     }
     .unwrap();
-    assert_eq!(remote_addr, bob_addr);
+    assert_eq!(remote_addr.unwrap(), bob_addr);
     assert_eq!(received_buf_b[..], buf_b[..]);
 
     // Close peers.
@@ -258,11 +258,11 @@ fn udp_loop2_push_pop() {
         bob.receive(alice.rt().pop_frame()).unwrap();
         let mut pop_future = bob.udp_pop(bob_fd);
         let (remote_addr, received_buf) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
-            Poll::Ready(Ok((Some(remote_addr), received_buf))) => Ok((remote_addr, received_buf)),
+            Poll::Ready(Ok((remote_addr, received_buf))) => Ok((remote_addr, received_buf)),
             _ => Err(()),
         }
         .unwrap();
-        assert_eq!(remote_addr, alice_addr);
+        assert_eq!(remote_addr.unwrap(), alice_addr);
         assert_eq!(received_buf[..], buf[..]);
     }
 
@@ -315,11 +315,11 @@ fn udp_loop2_ping_pong() {
         bob.receive(alice.rt().pop_frame()).unwrap();
         let mut pop_future = bob.udp_pop(bob_fd);
         let (remote_addr, received_buf_a) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
-            Poll::Ready(Ok((Some(remote_addr), received_buf_a))) => Ok((remote_addr, received_buf_a)),
+            Poll::Ready(Ok((remote_addr, received_buf_a))) => Ok((remote_addr, received_buf_a)),
             _ => Err(()),
         }
         .unwrap();
-        assert_eq!(remote_addr, alice_addr);
+        assert_eq!(remote_addr.unwrap(), alice_addr);
         assert_eq!(received_buf_a[..], buf_a[..]);
 
         now += Duration::from_micros(1);
@@ -335,11 +335,11 @@ fn udp_loop2_ping_pong() {
         alice.receive(bob.rt().pop_frame()).unwrap();
         let mut pop_future = alice.udp_pop(alice_fd);
         let (remote_addr, received_buf_b) = match Future::poll(Pin::new(&mut pop_future), &mut ctx) {
-            Poll::Ready(Ok((Some(remote_addr), received_buf_b))) => Ok((remote_addr, received_buf_b)),
+            Poll::Ready(Ok((remote_addr, received_buf_b))) => Ok((remote_addr, received_buf_b)),
             _ => Err(()),
         }
         .unwrap();
-        assert_eq!(remote_addr, bob_addr);
+        assert_eq!(remote_addr.unwrap(), bob_addr);
         assert_eq!(received_buf_b[..], buf_b[..]);
     }
 

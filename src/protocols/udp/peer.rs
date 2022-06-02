@@ -140,8 +140,8 @@ impl<RT: Runtime> UdpPeer<RT> {
                             local_link_addr,
                             link_addr,
                             data,
-                            local,
-                            remote.unwrap(),
+                            &local.unwrap(),
+                            &remote.unwrap(),
                             offload_checksum,
                         );
                     },
@@ -224,8 +224,8 @@ impl<RT: Runtime> UdpPeer<RT> {
         timer!("udp::pushto");
 
         // Lookup associated endpoint.
-        let local: Option<SocketAddrV4> = match self.sockets.get(&qd) {
-            Some(s) if s.is_some() => *s,
+        let local: SocketAddrV4 = match self.sockets.get(&qd) {
+            Some(s) if s.is_some() => s.unwrap(),
             _ => return Err(Fail::new(EBADF, "invalid queue descriptor")),
         };
 
@@ -237,15 +237,15 @@ impl<RT: Runtime> UdpPeer<RT> {
                 self.local_link_addr,
                 link_addr,
                 data,
-                local,
-                remote,
+                &local,
+                &remote,
                 self.checksum_offload,
             );
         }
         // Slow path: Defer send operation to the async path.
         else {
             self.send_queue.push(SharedQueueSlot {
-                local,
+                local: Some(local),
                 remote: Some(remote),
                 data,
             })?
@@ -279,7 +279,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         debug!("UDP received {:?}", hdr);
 
         let local: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
-        let remote: Option<SocketAddrV4> = Some(SocketAddrV4::new(ipv4_hdr.get_src_addr(), hdr.src_port()));
+        let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), hdr.src_port());
 
         // Lookup associated receiver-side shared queue.
         let recv_queue: &mut SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> = match self.bound.get_mut(&local) {
@@ -293,7 +293,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         recv_queue
             .push(SharedQueueSlot {
                 local: Some(local),
-                remote,
+                remote: Some(remote),
                 data,
             })
             .unwrap();
@@ -308,11 +308,11 @@ impl<RT: Runtime> UdpPeer<RT> {
         local_link_addr: MacAddress,
         remote_link_addr: MacAddress,
         buf: Box<dyn Buffer>,
-        local: Option<SocketAddrV4>,
-        remote: SocketAddrV4,
+        local: &SocketAddrV4,
+        remote: &SocketAddrV4,
         offload_checksum: bool,
     ) {
-        let udp_header: UdpHeader = UdpHeader::new(local.map_or(0, |l| l.port()), remote.port());
+        let udp_header: UdpHeader = UdpHeader::new(local.port(), remote.port());
         debug!("UDP send {:?}", udp_header);
         let datagram = UdpDatagram::new(
             Ethernet2Header::new(remote_link_addr, local_link_addr, EtherType2::Ipv4),
