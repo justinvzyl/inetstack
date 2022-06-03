@@ -6,7 +6,7 @@
 #![feature(never_type)]
 #![feature(try_blocks)]
 #![feature(test)]
-#![feature(min_type_alias_impl_trait)]
+#![feature(type_alias_impl_trait)]
 #![recursion_limit = "512"]
 
 #[macro_use]
