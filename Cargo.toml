@@ -11,7 +11,7 @@ edition = "2018"
 
 [dependencies]
 arrayvec = "0.7.2"
-async-trait = "0.1.53"
+async-trait = "0.1.56"
 byteorder = "1.4.3"
 crc = "3.0.0"
 crossbeam-channel = "0.5.4"
