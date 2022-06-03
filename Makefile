@@ -7,6 +7,10 @@
 export BUILD ?= --release
 export CARGO ?= $(HOME)/.cargo/bin/cargo
 
+# Switch for Perftools
+ifeq ($(PROFILER),yes)
+export BUILD += --features=profiler
+endif
 
 #=======================================================================================================================
 
