@@ -11,7 +11,7 @@ edition = "2018"
 
 [dependencies]
 arrayvec = "0.7.2"
-async-trait = "0.1.53"
+async-trait = "0.1.56"
 byteorder = "1.4.3"
 crc = "3.0.0"
 crossbeam-channel = "0.5.4"
@@ -24,7 +24,7 @@ num-traits = "0.2.15"
 rand = { version = "0.8.5", features = ["small_rng"] }
 
 perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a" }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "76692aa98f56b369b4e0783f5d5a4edf94c3ee86" }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "53c1c19fa18a22c38a4dc01c354a0e5baf07fff7" }
 
 [features]
 profiler = []
