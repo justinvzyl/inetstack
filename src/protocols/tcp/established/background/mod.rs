@@ -26,7 +26,7 @@ use ::std::{
     rc::Rc,
 };
 
-pub type BackgroundFuture<RT> = impl Future<Output = ()>;
+pub type BackgroundFuture<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> = impl Future<Output = ()>;
 
 pub fn background<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
     cb: Rc<ControlBlock<RT>>,
