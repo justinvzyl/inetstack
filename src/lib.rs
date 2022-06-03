@@ -65,7 +65,7 @@ use ::std::{
 };
 
 #[cfg(feature = "profiler")]
-use perftools::timer;
+use ::runtime::perftools::timer;
 
 //==============================================================================
 // Exports

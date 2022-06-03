@@ -23,11 +23,10 @@ num-derive = "0.3.3"
 num-traits = "0.2.15"
 rand = { version = "0.8.5", features = ["small_rng"] }
 
-perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a" }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "53c1c19fa18a22c38a4dc01c354a0e5baf07fff7" }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "e11b81477edc6e5abe23224711b498f9464e89b9" }
 
 [features]
-profiler = []
+profiler = [ "runtime/perftools" ]
 
 [profile.release]
 lto = "fat"
