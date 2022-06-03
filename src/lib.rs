@@ -44,15 +44,17 @@ use ::runtime::{
         Buffer,
         DataBuffer,
     },
+    network::NetworkRuntime,
     queue::IoQueueTable,
     scheduler::{
         FutureResult,
         SchedulerHandle,
     },
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
     QDesc,
     QToken,
     QType,
-    Runtime,
 };
 use ::std::{
     any::Any,
@@ -84,7 +86,7 @@ pub mod protocols;
 const TIMER_RESOLUTION: usize = 64;
 const MAX_RECV_ITERS: usize = 2;
 
-pub struct InetStack<RT: Runtime> {
+pub struct InetStack<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     arp: ArpPeer<RT>,
     ipv4: Peer<RT>,
     file_table: IoQueueTable,
@@ -92,12 +94,12 @@ pub struct InetStack<RT: Runtime> {
     ts_iters: usize,
 }
 
-impl<RT: Runtime> InetStack<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
     pub fn new(rt: RT) -> Result<Self, Fail> {
-        let now = rt.now();
-        let file_table = IoQueueTable::new();
-        let arp = ArpPeer::new(now, rt.clone(), rt.arp_options())?;
-        let ipv4 = Peer::new(rt.clone(), arp.clone());
+        let now: Instant = rt.now();
+        let file_table: IoQueueTable = IoQueueTable::new();
+        let arp: ArpPeer<RT> = ArpPeer::new(now, rt.clone(), rt.arp_options())?;
+        let ipv4: Peer<RT> = Peer::new(rt.clone(), arp.clone());
         Ok(Self {
             arp,
             ipv4,

@@ -18,11 +18,11 @@ use super::{
 };
 use crate::protocols::tcp::SeqNumber;
 use ::runtime::{
+    network::NetworkRuntime,
     watched::{
         WatchFuture,
         WatchedValue,
     },
-    Runtime,
 };
 use ::std::{
     cell::Cell,
@@ -63,7 +63,7 @@ pub struct Cubic {
     pub limited_transmit_cwnd_increase: WatchedValue<u32>, // The amount by which cwnd should be increased due to the limited transit algorithm.
 }
 
-impl<RT: Runtime> CongestionControl<RT> for Cubic {
+impl<RT: NetworkRuntime> CongestionControl<RT> for Cubic {
     fn new(mss: usize, seq_no: SeqNumber, options: Option<Options>) -> Box<dyn CongestionControl<RT>> {
         let mss: u32 = mss.try_into().unwrap();
         // The initial value of cwnd is set according to RFC5681, section 3.1, page 7.
@@ -275,7 +275,7 @@ impl Cubic {
     }
 }
 
-impl<RT: Runtime> SlowStartCongestionAvoidance<RT> for Cubic {
+impl<RT: NetworkRuntime> SlowStartCongestionAvoidance<RT> for Cubic {
     fn get_cwnd(&self) -> u32 {
         self.cwnd.get()
     }
@@ -331,7 +331,7 @@ impl<RT: Runtime> SlowStartCongestionAvoidance<RT> for Cubic {
     }
 }
 
-impl<RT: Runtime> FastRetransmitRecovery<RT> for Cubic {
+impl<RT: NetworkRuntime> FastRetransmitRecovery<RT> for Cubic {
     fn get_duplicate_ack_count(&self) -> u32 {
         self.duplicate_ack_count.get()
     }
@@ -352,7 +352,7 @@ impl<RT: Runtime> FastRetransmitRecovery<RT> for Cubic {
     }
 }
 
-impl<RT: Runtime> LimitedTransmit<RT> for Cubic {
+impl<RT: NetworkRuntime> LimitedTransmit<RT> for Cubic {
     fn get_limited_transmit_cwnd_increase(&self) -> u32 {
         self.limited_transmit_cwnd_increase.get()
     }

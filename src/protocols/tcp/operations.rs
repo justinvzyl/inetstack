@@ -9,9 +9,11 @@ use crate::operations::OperationResult;
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
+    network::NetworkRuntime,
     scheduler::FutureResult,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
     QDesc,
-    Runtime,
 };
 use ::std::{
     cell::RefCell,
@@ -25,38 +27,42 @@ use ::std::{
     },
 };
 
-pub enum TcpOperation<RT: Runtime> {
+pub enum TcpOperation<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     Accept(FutureResult<AcceptFuture<RT>>),
     Connect(FutureResult<ConnectFuture<RT>>),
     Pop(FutureResult<PopFuture<RT>>),
-    Push(FutureResult<PushFuture<RT>>),
+    Push(FutureResult<PushFuture>),
 }
 
-impl<RT: Runtime> From<AcceptFuture<RT>> for TcpOperation<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> From<AcceptFuture<RT>>
+    for TcpOperation<RT>
+{
     fn from(f: AcceptFuture<RT>) -> Self {
         TcpOperation::Accept(FutureResult::new(f, None))
     }
 }
 
-impl<RT: Runtime> From<ConnectFuture<RT>> for TcpOperation<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> From<ConnectFuture<RT>>
+    for TcpOperation<RT>
+{
     fn from(f: ConnectFuture<RT>) -> Self {
         TcpOperation::Connect(FutureResult::new(f, None))
     }
 }
 
-impl<RT: Runtime> From<PushFuture<RT>> for TcpOperation<RT> {
-    fn from(f: PushFuture<RT>) -> Self {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> From<PushFuture> for TcpOperation<RT> {
+    fn from(f: PushFuture) -> Self {
         TcpOperation::Push(FutureResult::new(f, None))
     }
 }
 
-impl<RT: Runtime> From<PopFuture<RT>> for TcpOperation<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> From<PopFuture<RT>> for TcpOperation<RT> {
     fn from(f: PopFuture<RT>) -> Self {
         TcpOperation::Pop(FutureResult::new(f, None))
     }
 }
 
-impl<RT: Runtime> Future for TcpOperation<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Future for TcpOperation<RT> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {
@@ -69,7 +75,7 @@ impl<RT: Runtime> Future for TcpOperation<RT> {
     }
 }
 
-impl<RT: Runtime> TcpOperation<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> TcpOperation<RT> {
     pub fn expect_result(self) -> (QDesc, Option<QDesc>, OperationResult) {
         match self {
             // Connect operation.
@@ -122,19 +128,19 @@ pub enum ConnectFutureState {
     InProgress,
 }
 
-pub struct ConnectFuture<RT: Runtime> {
+pub struct ConnectFuture<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     pub fd: QDesc,
     pub state: ConnectFutureState,
     pub inner: Rc<RefCell<Inner<RT>>>,
 }
 
-impl<RT: Runtime> fmt::Debug for ConnectFuture<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> fmt::Debug for ConnectFuture<RT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ConnectFuture({:?})", self.fd)
     }
 }
 
-impl<RT: Runtime> Future for ConnectFuture<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Future for ConnectFuture<RT> {
     type Output = Result<(), Fail>;
 
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
@@ -147,7 +153,7 @@ impl<RT: Runtime> Future for ConnectFuture<RT> {
 }
 
 /// Accept Operation Descriptor
-pub struct AcceptFuture<RT: Runtime> {
+pub struct AcceptFuture<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     /// Queue descriptor of listening socket.
     qd: QDesc,
     // Pre-booked queue descriptor for incoming connection.
@@ -157,7 +163,7 @@ pub struct AcceptFuture<RT: Runtime> {
 }
 
 /// Associated Functions for Accept Operation Descriptors
-impl<RT: Runtime> AcceptFuture<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> AcceptFuture<RT> {
     /// Creates a descriptor for an accept operation.
     pub fn new(qd: QDesc, new_qd: QDesc, inner: Rc<RefCell<Inner<RT>>>) -> Self {
         Self { qd, new_qd, inner }
@@ -165,14 +171,14 @@ impl<RT: Runtime> AcceptFuture<RT> {
 }
 
 /// Debug Trait Implementation for Accept Operation Descriptors
-impl<RT: Runtime> fmt::Debug for AcceptFuture<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> fmt::Debug for AcceptFuture<RT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "AcceptFuture({:?})", self.qd)
     }
 }
 
 /// Future Trait Implementation for Accept Operation Descriptors
-impl<RT: Runtime> Future for AcceptFuture<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Future for AcceptFuture<RT> {
     type Output = Result<QDesc, Fail>;
 
     /// Polls the underlying accept operation.
@@ -186,19 +192,18 @@ impl<RT: Runtime> Future for AcceptFuture<RT> {
     }
 }
 
-pub struct PushFuture<RT: Runtime> {
+pub struct PushFuture {
     pub fd: QDesc,
     pub err: Option<Fail>,
-    pub _marker: std::marker::PhantomData<RT>,
 }
 
-impl<RT: Runtime> fmt::Debug for PushFuture<RT> {
+impl fmt::Debug for PushFuture {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "PushFuture({:?})", self.fd)
     }
 }
 
-impl<RT: Runtime> Future for PushFuture<RT> {
+impl Future for PushFuture {
     type Output = Result<(), Fail>;
 
     fn poll(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Self::Output> {
@@ -209,18 +214,18 @@ impl<RT: Runtime> Future for PushFuture<RT> {
     }
 }
 
-pub struct PopFuture<RT: Runtime> {
+pub struct PopFuture<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     pub fd: QDesc,
     pub inner: Rc<RefCell<Inner<RT>>>,
 }
 
-impl<RT: Runtime> fmt::Debug for PopFuture<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> fmt::Debug for PopFuture<RT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "PopFuture({:?})", self.fd)
     }
 }
 
-impl<RT: Runtime> Future for PopFuture<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Future for PopFuture<RT> {
     type Output = Result<Box<dyn Buffer>, Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {

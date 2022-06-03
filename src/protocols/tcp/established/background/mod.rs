@@ -16,8 +16,10 @@ use ::futures::{
     FutureExt,
 };
 use ::runtime::{
+    network::NetworkRuntime,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
     QDesc,
-    Runtime,
 };
 use ::std::{
     future::Future,
@@ -26,7 +28,7 @@ use ::std::{
 
 pub type BackgroundFuture<RT> = impl Future<Output = ()>;
 
-pub fn background<RT: Runtime>(
+pub fn background<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
     cb: Rc<ControlBlock<RT>>,
     fd: QDesc,
     _dead_socket_tx: mpsc::UnboundedSender<QDesc>,

@@ -13,7 +13,9 @@ use ::futures::FutureExt;
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
-    Runtime,
+    network::NetworkRuntime,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
 };
 use ::std::{
     cmp,
@@ -21,7 +23,9 @@ use ::std::{
     time::Duration,
 };
 
-pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
+pub async fn sender<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+    cb: Rc<ControlBlock<RT>>,
+) -> Result<!, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
         // ToDo: Change this to just look at the unsent queue to see if it is empty or not.

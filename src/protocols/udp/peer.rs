@@ -38,13 +38,17 @@ use ::libc::{
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
-    network::types::{
-        Ipv4Addr,
-        MacAddress,
+    network::{
+        types::{
+            Ipv4Addr,
+            MacAddress,
+        },
+        NetworkRuntime,
     },
     scheduler::SchedulerHandle,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
     QDesc,
-    Runtime,
 };
 use ::std::{
     collections::HashMap,
@@ -59,7 +63,7 @@ use ::perftools::timer;
 //==============================================================================
 
 /// UDP Peer
-pub struct UdpPeer<RT: Runtime> {
+pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     /// Underlying runtime.
     rt: RT,
     /// Underlying ARP peer.
@@ -85,7 +89,7 @@ pub struct UdpPeer<RT: Runtime> {
 //==============================================================================
 
 /// Associate functions for [UdpPeer].
-impl<RT: Runtime> UdpPeer<RT> {
+impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     /// Creates a Udp peer.
     pub fn new(
         rt: RT,

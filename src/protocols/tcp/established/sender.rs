@@ -13,11 +13,13 @@ use ::libc::{
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
+    network::NetworkRuntime,
+    task::SchedulerRuntime,
+    utils::UtilsRuntime,
     watched::{
         WatchFuture,
         WatchedValue,
     },
-    Runtime,
 };
 use ::std::{
     cell::{
@@ -157,7 +159,11 @@ impl Sender {
 
     // This is the main TCP send routine.
     //
-    pub fn send<RT: Runtime>(&self, buf: Box<dyn Buffer>, cb: &ControlBlock<RT>) -> Result<(), Fail> {
+    pub fn send<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+        &self,
+        buf: Box<dyn Buffer>,
+        cb: &ControlBlock<RT>,
+    ) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
         //
         if cb.user_is_done_sending.get() {
@@ -274,7 +280,12 @@ impl Sender {
 
     // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
     //
-    pub fn remove_acknowledged_data<RT: Runtime>(&self, cb: &ControlBlock<RT>, bytes_acknowledged: u32, now: Instant) {
+    pub fn remove_acknowledged_data<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+        &self,
+        cb: &ControlBlock<RT>,
+        bytes_acknowledged: u32,
+        now: Instant,
+    ) {
         let mut bytes_remaining: usize = bytes_acknowledged as usize;
 
         while bytes_remaining != 0 {
