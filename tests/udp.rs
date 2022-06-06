@@ -48,20 +48,39 @@ use ::std::{
 // Connect
 //==============================================================================
 
-/// Tests if a connection can be successfully established and closed to a remote
-/// endpoint.
-#[test]
-fn udp_connect_remote() {
-    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
-
-    let port: u16 = PORT_BASE;
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
-
-    // Open and close a connection.
+/// Opens and closes a socket using a non-ephemeral port.
+fn do_udp_setup(libos: &mut InetStack<DummyRuntime>) {
+    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
     let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     libos.close(sockfd).unwrap();
+}
+
+/// Opens and closes a socket using an ephemeral port.
+fn do_udp_setup_ephemeral(libos: &mut InetStack<DummyRuntime>) {
+    const PORT_EPHEMERAL_BASE: u16 = 49152;
+    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_EPHEMERAL_BASE);
+    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+    libos.bind(sockfd, local).unwrap();
+    libos.close(sockfd).unwrap();
+}
+
+/// Opens and closes a socket using wildcard ephemeral port.
+fn do_udp_setup_wildcard_ephemeral(libos: &mut InetStack<DummyRuntime>) {
+    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, 0);
+    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+    libos.bind(sockfd, local).unwrap();
+    libos.close(sockfd).unwrap();
+}
+
+/// Tests if a socket can be successfully setup.
+#[test]
+fn udp_setup() {
+    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    do_udp_setup(&mut libos);
+    do_udp_setup_ephemeral(&mut libos);
+    do_udp_setup_wildcard_ephemeral(&mut libos);
 }
 
 /// Tests if a connection can be successfully established in loopback mode.
