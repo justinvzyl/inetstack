@@ -41,7 +41,6 @@ use ::futures::channel::mpsc;
 use ::libc::{
     EAGAIN,
     EBADF,
-    EBADMSG,
     EBUSY,
     EINPROGRESS,
     EINVAL,
@@ -142,10 +141,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
     }
 
     pub fn bind(&self, fd: QDesc, addr: SocketAddrV4) -> Result<(), Fail> {
-        let mut inner = self.inner.borrow_mut();
-        if addr.port() >= EphemeralPorts::first_private_port() {
-            return Err(Fail::new(EBADMSG, "Port number in private port range"));
-        }
+        let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
 
         // Check if address is already bound.
         for (_, socket) in &inner.sockets {
