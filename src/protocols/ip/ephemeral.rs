@@ -53,6 +53,19 @@ impl EphemeralPorts {
         ))
     }
 
+    /// Allocates the specified port from the pool.
+    pub fn alloc_port(&mut self, port: u16) -> Result<(), Fail> {
+        // Check if port is not in the pool.
+        if !self.ports.contains(&port) {
+            return Err(Fail::new(libc::ENOENT, "port number not found"));
+        }
+
+        // Remove port from the pool.
+        self.ports.retain(|&p| p != port);
+
+        Ok(())
+    }
+
     pub fn free(&mut self, port: u16) {
         self.ports.push(port);
     }

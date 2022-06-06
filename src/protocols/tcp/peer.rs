@@ -158,6 +158,12 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
             }
         }
 
+        // Check if this is an ephemeral port.
+        if EphemeralPorts::is_private(addr.port()) {
+            // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
+            inner.ephemeral_ports.alloc_port(addr.port())?
+        }
+
         match inner.sockets.get_mut(&fd) {
             Some(Socket::Inactive { ref mut local }) => match *local {
                 Some(_) => return Err(Fail::new(libc::EINVAL, "socket is already bound to an address")),
