@@ -140,7 +140,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
         }
     }
 
-    pub fn bind(&self, fd: QDesc, addr: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&self, qd: QDesc, addr: SocketAddrV4) -> Result<(), Fail> {
         let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
 
         // Check if address is already bound.
@@ -164,15 +164,28 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
             inner.ephemeral_ports.alloc_port(addr.port())?
         }
 
-        match inner.sockets.get_mut(&fd) {
+        // Issue operation.
+        let ret: Result<(), Fail> = match inner.sockets.get_mut(&qd) {
             Some(Socket::Inactive { ref mut local }) => match *local {
-                Some(_) => return Err(Fail::new(libc::EINVAL, "socket is already bound to an address")),
+                Some(_) => Err(Fail::new(libc::EINVAL, "socket is already bound to an address")),
                 None => {
                     *local = Some(addr);
                     Ok(())
                 },
             },
             _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+        };
+
+        // Handle return value.
+        match ret {
+            Ok(x) => Ok(x),
+            Err(e) => {
+                // Rollback ephemeral port allocation.
+                if EphemeralPorts::is_private(addr.port()) {
+                    inner.ephemeral_ports.free(addr.port());
+                }
+                Err(e)
+            },
         }
     }
 
