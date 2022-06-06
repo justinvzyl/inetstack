@@ -23,7 +23,7 @@ num-derive = "0.3.3"
 num-traits = "0.2.15"
 rand = { version = "0.8.5", features = ["small_rng"] }
 
-runtime = { git = "https://github.com/demikernel/runtime", branch = "enhancement-utils-runtime" }
+runtime = { git = "https://github.com/demikernel/runtime", branch = "enhancement-memory-runtime" }
 
 [features]
 profiler = [ "runtime/perftools" ]
