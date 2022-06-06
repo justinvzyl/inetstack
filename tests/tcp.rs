@@ -51,20 +51,22 @@ use ::std::{
 // Open/Close Passive Socket
 //======================================================================================================================
 
+/// Opens and closes a passive socket using a non-ephemeral port.
+fn do_passive_connection_setup(mut libos: &mut InetStack<DummyRuntime>) {
+    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
+    let sockqd: QDesc = safe_socket(&mut libos);
+    safe_bind(&mut libos, sockqd, local);
+    safe_listen(&mut libos, sockqd);
+    safe_close_passive(&mut libos, sockqd);
+}
+
 /// Tests if a passive socket may be successfully opened and closed.
 #[test]
 fn tcp_connection_setup() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let port: u16 = PORT_BASE;
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
-
-    // Open and close a connection.
-    let sockqd: QDesc = safe_socket(&mut libos);
-    safe_bind(&mut libos, sockqd, local);
-    safe_listen(&mut libos, sockqd);
-    safe_close_passive(&mut libos, sockqd);
+    do_passive_connection_setup(&mut libos);
 }
 
 //======================================================================================================================
