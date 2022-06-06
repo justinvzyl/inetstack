@@ -140,7 +140,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
         }
     }
 
-    pub fn bind(&self, qd: QDesc, addr: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&self, qd: QDesc, mut addr: SocketAddrV4) -> Result<(), Fail> {
         let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
 
         // Check if address is already bound.
@@ -162,6 +162,14 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
         if EphemeralPorts::is_private(addr.port()) {
             // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
             inner.ephemeral_ports.alloc_port(addr.port())?
+        }
+
+        // Check if we have to handle wildcard port binding.
+        if addr.port() == 0 {
+            // Allocate ephemeral port.
+            // TODO: we should free this when closing.
+            let new_port: u16 = inner.ephemeral_ports.alloc_any()?;
+            addr.set_port(new_port);
         }
 
         // Issue operation.
