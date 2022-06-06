@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use ::libc::EAGAIN;
 use ::runtime::{
     fail::Fail,
     network::NetworkRuntime,
@@ -48,7 +47,10 @@ impl EphemeralPorts {
     }
 
     pub fn alloc(&mut self) -> Result<u16, Fail> {
-        self.ports.pop().ok_or(Fail::new(EAGAIN, "out of private ports"))
+        self.ports.pop().ok_or(Fail::new(
+            libc::EADDRINUSE,
+            "all port numbers in the ephemeral port range are currently in use",
+        ))
     }
 
     pub fn free(&mut self, port: u16) {
