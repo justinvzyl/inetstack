@@ -25,6 +25,9 @@ rand = { version = "0.8.5", features = ["small_rng"] }
 
 runtime = { git = "https://github.com/demikernel/runtime", branch = "enhancement-network-runtime" }
 
+[patch."https://github.com/demikernel/runtime"]
+runtime = { path = "/home/ppenna/projects/demikernel/runtime"}
+
 [features]
 profiler = [ "runtime/perftools" ]
 
