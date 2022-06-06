@@ -261,7 +261,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
             }
 
             // TODO: We need to free these!
-            let local_port = inner.ephemeral_ports.alloc()?;
+            let local_port = inner.ephemeral_ports.alloc_any()?;
             let local = SocketAddrV4::new(inner.rt.local_ipv4_addr(), local_port);
 
             let socket = Socket::Connecting { local, remote };

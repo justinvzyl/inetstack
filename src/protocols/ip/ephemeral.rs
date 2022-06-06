@@ -46,7 +46,7 @@ impl EphemeralPorts {
         port >= FIRST_PRIVATE_PORT
     }
 
-    pub fn alloc(&mut self) -> Result<u16, Fail> {
+    pub fn alloc_any(&mut self) -> Result<u16, Fail> {
         self.ports.pop().ok_or(Fail::new(
             libc::EADDRINUSE,
             "all port numbers in the ephemeral port range are currently in use",
