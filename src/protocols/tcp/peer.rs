@@ -27,7 +27,6 @@ use crate::protocols::{
         operations::{
             AcceptFuture,
             ConnectFuture,
-            ConnectFutureState,
             PopFuture,
             PushFuture,
         },
@@ -35,6 +34,7 @@ use crate::protocols::{
             TcpHeader,
             TcpSegment,
         },
+        SeqNumber,
     },
 };
 use ::futures::channel::mpsc;
@@ -270,37 +270,29 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
         Poll::Ready(Ok(new_qd))
     }
 
-    pub fn connect(&self, fd: QDesc, remote: SocketAddrV4) -> ConnectFuture<RT> {
-        let mut inner = self.inner.borrow_mut();
+    pub fn connect(&self, fd: QDesc, remote: SocketAddrV4) -> Result<ConnectFuture<RT>, Fail> {
+        let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
 
-        let r = try {
-            match inner.sockets.get_mut(&fd) {
-                Some(Socket::Inactive { .. }) => (),
-                _ => Err(Fail::new(EBADF, "invalid file descriptor"))?,
-            }
-
-            // TODO: We need to free these!
-            let local_port = inner.ephemeral_ports.alloc_any()?;
-            let local = SocketAddrV4::new(inner.rt.local_ipv4_addr(), local_port);
-
-            let socket = Socket::Connecting { local, remote };
-            inner.sockets.insert(fd, socket);
-
-            let local_isn = inner.isn_generator.generate(&local, &remote);
-            let key = (local, remote);
-            let socket = ActiveOpenSocket::new(local_isn, local, remote, inner.rt.clone(), inner.arp.clone());
-            assert!(inner.connecting.insert(key, socket).is_none());
-            fd
-        };
-        let state = match r {
-            Ok(..) => ConnectFutureState::InProgress,
-            Err(e) => ConnectFutureState::Failed(e),
-        };
-        ConnectFuture {
-            fd,
-            state,
-            inner: self.inner.clone(),
+            _ => return Err(Fail::new(EBADF, "invalid queue descriptor"))?,
         }
+
+        // TODO: We need to free these!
+        let local_port: u16 = inner.ephemeral_ports.alloc_any()?;
+        let local: SocketAddrV4 = SocketAddrV4::new(inner.rt.local_ipv4_addr(), local_port);
+
+        let socket: Socket = Socket::Connecting { local, remote };
+        inner.sockets.insert(fd, socket);
+
+        let local_isn: SeqNumber = inner.isn_generator.generate(&local, &remote);
+        let key: (SocketAddrV4, SocketAddrV4) = (local, remote);
+        let socket: ActiveOpenSocket<RT> =
+            ActiveOpenSocket::new(local_isn, local, remote, inner.rt.clone(), inner.arp.clone());
+        assert!(inner.connecting.insert(key, socket).is_none());
+
+        Ok(ConnectFuture {
+            fd,
+            inner: self.inner.clone(),
+        })
     }
 
     pub fn poll_recv(&self, fd: QDesc, ctx: &mut Context) -> Poll<Result<Box<dyn Buffer>, Fail>> {
