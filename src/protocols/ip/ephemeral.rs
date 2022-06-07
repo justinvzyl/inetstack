@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use ::libc::EAGAIN;
 use ::runtime::{
     fail::Fail,
     network::NetworkRuntime,
@@ -47,8 +46,24 @@ impl EphemeralPorts {
         port >= FIRST_PRIVATE_PORT
     }
 
-    pub fn alloc(&mut self) -> Result<u16, Fail> {
-        self.ports.pop().ok_or(Fail::new(EAGAIN, "out of private ports"))
+    pub fn alloc_any(&mut self) -> Result<u16, Fail> {
+        self.ports.pop().ok_or(Fail::new(
+            libc::EADDRINUSE,
+            "all port numbers in the ephemeral port range are currently in use",
+        ))
+    }
+
+    /// Allocates the specified port from the pool.
+    pub fn alloc_port(&mut self, port: u16) -> Result<(), Fail> {
+        // Check if port is not in the pool.
+        if !self.ports.contains(&port) {
+            return Err(Fail::new(libc::ENOENT, "port number not found"));
+        }
+
+        // Remove port from the pool.
+        self.ports.retain(|&p| p != port);
+
+        Ok(())
     }
 
     pub fn free(&mut self, port: u16) {

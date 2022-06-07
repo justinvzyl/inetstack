@@ -41,7 +41,6 @@ use ::futures::channel::mpsc;
 use ::libc::{
     EAGAIN,
     EBADF,
-    EBADMSG,
     EBUSY,
     EINPROGRESS,
     EINVAL,
@@ -141,11 +140,8 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
         }
     }
 
-    pub fn bind(&self, fd: QDesc, addr: SocketAddrV4) -> Result<(), Fail> {
-        let mut inner = self.inner.borrow_mut();
-        if addr.port() >= EphemeralPorts::first_private_port() {
-            return Err(Fail::new(EBADMSG, "Port number in private port range"));
-        }
+    pub fn bind(&self, qd: QDesc, addr: SocketAddrV4) -> Result<(), Fail> {
+        let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
 
         // Check if address is already bound.
         for (_, socket) in &inner.sockets {
@@ -162,15 +158,34 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
             }
         }
 
-        match inner.sockets.get_mut(&fd) {
+        // Check if this is an ephemeral port.
+        if EphemeralPorts::is_private(addr.port()) {
+            // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
+            inner.ephemeral_ports.alloc_port(addr.port())?
+        }
+
+        // Issue operation.
+        let ret: Result<(), Fail> = match inner.sockets.get_mut(&qd) {
             Some(Socket::Inactive { ref mut local }) => match *local {
-                Some(_) => return Err(Fail::new(libc::EINVAL, "socket is already bound to an address")),
+                Some(_) => Err(Fail::new(libc::EINVAL, "socket is already bound to an address")),
                 None => {
                     *local = Some(addr);
                     Ok(())
                 },
             },
             _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+        };
+
+        // Handle return value.
+        match ret {
+            Ok(x) => Ok(x),
+            Err(e) => {
+                // Rollback ephemeral port allocation.
+                if EphemeralPorts::is_private(addr.port()) {
+                    inner.ephemeral_ports.free(addr.port());
+                }
+                Err(e)
+            },
         }
     }
 
@@ -265,7 +280,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
             }
 
             // TODO: We need to free these!
-            let local_port = inner.ephemeral_ports.alloc()?;
+            let local_port = inner.ephemeral_ports.alloc_any()?;
             let local = SocketAddrV4::new(inner.rt.local_ipv4_addr(), local_port);
 
             let socket = Socket::Connecting { local, remote };
