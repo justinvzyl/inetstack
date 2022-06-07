@@ -27,7 +27,6 @@ use crate::protocols::{
         operations::{
             AcceptFuture,
             ConnectFuture,
-            ConnectFutureState,
             PopFuture,
             PushFuture,
         },
@@ -35,6 +34,7 @@ use crate::protocols::{
             TcpHeader,
             TcpSegment,
         },
+        SeqNumber,
     },
 };
 use ::futures::channel::mpsc;
@@ -270,37 +270,52 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
         Poll::Ready(Ok(new_qd))
     }
 
-    pub fn connect(&self, fd: QDesc, remote: SocketAddrV4) -> ConnectFuture<RT> {
-        let mut inner = self.inner.borrow_mut();
+    pub fn connect(&self, qd: QDesc, remote: SocketAddrV4) -> Result<ConnectFuture<RT>, Fail> {
+        let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
 
-        let r = try {
-            match inner.sockets.get_mut(&fd) {
-                Some(Socket::Inactive { .. }) => (),
-                _ => Err(Fail::new(EBADF, "invalid file descriptor"))?,
-            }
-
-            // TODO: We need to free these!
-            let local_port = inner.ephemeral_ports.alloc_any()?;
-            let local = SocketAddrV4::new(inner.rt.local_ipv4_addr(), local_port);
-
-            let socket = Socket::Connecting { local, remote };
-            inner.sockets.insert(fd, socket);
-
-            let local_isn = inner.isn_generator.generate(&local, &remote);
-            let key = (local, remote);
-            let socket = ActiveOpenSocket::new(local_isn, local, remote, inner.rt.clone(), inner.arp.clone());
-            assert!(inner.connecting.insert(key, socket).is_none());
-            fd
+        // Get local address bound to socket.
+        let local: SocketAddrV4 = match inner.sockets.get_mut(&qd) {
+            // Handle unbound socket.
+            Some(Socket::Inactive { local: None }) => {
+                // TODO: we should free this when closing.
+                let local_port: u16 = inner.ephemeral_ports.alloc_any()?;
+                SocketAddrV4::new(inner.rt.local_ipv4_addr(), local_port)
+            },
+            // Handle bound socket.
+            Some(Socket::Inactive { local: Some(local) }) => *local,
+            Some(Socket::Connecting { local: _, remote: _ }) => Err(Fail::new(libc::EALREADY, "socket is connecting"))?,
+            Some(Socket::Established { local: _, remote: _ }) => Err(Fail::new(libc::EISCONN, "socket is connected"))?,
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor"))?,
         };
-        let state = match r {
-            Ok(..) => ConnectFutureState::InProgress,
-            Err(e) => ConnectFutureState::Failed(e),
+
+        // Update socket state.
+        match inner.sockets.get_mut(&qd) {
+            Some(socket) => {
+                *socket = Socket::Connecting { local, remote };
+            },
+            None => {
+                // This should not happen, because we've queried the sockets table above.
+                error!("socket is no longer in the sockets table?");
+                return Err(Fail::new(libc::EAGAIN, "failed to retrieve socket from sockets table"));
+            },
         };
-        ConnectFuture {
-            fd,
-            state,
-            inner: self.inner.clone(),
+
+        // Create active socket.
+        let local_isn: SeqNumber = inner.isn_generator.generate(&local, &remote);
+        let socket: ActiveOpenSocket<RT> =
+            ActiveOpenSocket::new(local_isn, local, remote, inner.rt.clone(), inner.arp.clone());
+
+        // Insert socket in connecting table.
+        if inner.connecting.insert((local, remote), socket).is_some() {
+            // This should not happen, unless we are leaking entries when transitioning to established state.
+            error!("socket is already connecting?");
+            Err(Fail::new(libc::EALREADY, "socket is connecting"))?;
         }
+
+        Ok(ConnectFuture {
+            fd: qd,
+            inner: self.inner.clone(),
+        })
     }
 
     pub fn poll_recv(&self, fd: QDesc, ctx: &mut Context) -> Poll<Result<Box<dyn Buffer>, Fail>> {

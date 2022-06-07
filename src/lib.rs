@@ -28,6 +28,7 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
+        tcp::operations::ConnectFuture,
         udp::UdpOperation,
         Peer,
     },
@@ -278,7 +279,10 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Ine
         trace!("connect(): qd={:?} remote={:?}", qd, remote);
         let future = match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
-                Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.connect(qd, remote))),
+                Ok(QType::TcpSocket) => {
+                    let fut: ConnectFuture<RT> = self.ipv4.tcp.connect(qd, remote)?;
+                    Ok(FutureOperation::from(fut))
+                },
                 _ => Err(Fail::new(EINVAL, "invalid queue type")),
             },
             _ => Err(Fail::new(EBADF, "bad queue descriptor")),

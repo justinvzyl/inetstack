@@ -123,14 +123,8 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
     }
 }
 
-pub enum ConnectFutureState {
-    Failed(Fail),
-    InProgress,
-}
-
 pub struct ConnectFuture<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
     pub fd: QDesc,
-    pub state: ConnectFutureState,
     pub inner: Rc<RefCell<Inner<RT>>>,
 }
 
@@ -145,10 +139,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Fut
 
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
-        match self_.state {
-            ConnectFutureState::Failed(ref e) => Poll::Ready(Err(e.clone())),
-            ConnectFutureState::InProgress => self_.inner.borrow_mut().poll_connect_finished(self_.fd, context),
-        }
+        self_.inner.borrow_mut().poll_connect_finished(self_.fd, context)
     }
 }
 

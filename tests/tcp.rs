@@ -84,17 +84,16 @@ fn tcp_connection_setup() {
 // Establish Connection
 //======================================================================================================================
 
-/// Tests if data can be successfully established.
+/// Tests if connection may be successfully established by an unbound active socket.
 #[test]
-fn tcp_establish_connection() {
+fn tcp_establish_connection_unbound() {
     let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let port: u16 = PORT_BASE;
-        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -116,11 +115,62 @@ fn tcp_establish_connection() {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let port: u16 = PORT_BASE;
-        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
+        let qt: QToken = safe_connect(&mut libos, sockqd, remote);
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        match qr {
+            OperationResult::Connect => (),
+            _ => panic!("connect() has failed"),
+        }
+
+        // Close connection.
+        safe_close_active(&mut libos, sockqd);
+    });
+
+    alice.join().unwrap();
+    bob.join().unwrap();
+}
+
+/// Tests if connection may be successfully established by a bound active socket.
+#[test]
+fn tcp_establish_connection_bound() {
+    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+
+    let alice: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+
+        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
+
+        // Open connection.
+        let sockqd: QDesc = safe_socket(&mut libos);
+        safe_bind(&mut libos, sockqd, local);
+        safe_listen(&mut libos, sockqd);
+        let qt: QToken = safe_accept(&mut libos, sockqd);
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+
+        let qd: QDesc = match qr {
+            OperationResult::Accept(qd) => qd,
+            _ => panic!("accept() has failed"),
+        };
+
+        // Close connection.
+        safe_close_active(&mut libos, qd);
+        safe_close_passive(&mut libos, sockqd);
+    });
+
+    let bob: JoinHandle<()> = thread::spawn(move || {
+        let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+
+        let local: SocketAddrV4 = SocketAddrV4::new(BOB_IPV4, PORT_BASE);
+        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
+
+        // Open connection.
+        let sockqd: QDesc = safe_socket(&mut libos);
+        safe_bind(&mut libos, sockqd, local);
         let qt: QToken = safe_connect(&mut libos, sockqd, remote);
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         match qr {

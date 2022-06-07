@@ -115,7 +115,7 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Eng
     }
 
     pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddrV4) -> ConnectFuture<RT> {
-        self.ipv4.tcp.connect(socket_fd, remote_endpoint)
+        self.ipv4.tcp.connect(socket_fd, remote_endpoint).unwrap()
     }
 
     pub fn tcp_bind(&mut self, socket_fd: QDesc, endpoint: SocketAddrV4) -> Result<(), Fail> {
