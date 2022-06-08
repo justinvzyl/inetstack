@@ -24,13 +24,15 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        ip::IpProtocol,
+        ip::{
+            EphemeralPorts,
+            IpProtocol,
+        },
         ipv4::Ipv4Header,
     },
 };
 use ::futures::FutureExt;
 use ::libc::{
-    EADDRINUSE,
     EBADF,
     EEXIST,
     ENOTCONN,
@@ -68,6 +70,8 @@ pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     rt: RT,
     /// Underlying ARP peer.
     arp: ArpPeer<RT>,
+    /// Ephemeral ports.
+    ephemeral_ports: EphemeralPorts,
     /// Opened sockets.
     sockets: HashMap<QDesc, Option<SocketAddrV4>>,
     /// Bound sockets.
@@ -110,8 +114,9 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Udp
         );
         let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
         Self {
-            rt,
+            rt: rt.clone(),
             arp,
+            ephemeral_ports: EphemeralPorts::new(&rt),
             sockets: HashMap::new(),
             bound: HashMap::new(),
             send_queue,
@@ -177,31 +182,55 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Udp
     }
 
     /// Binds a UDP socket to a local endpoint address.
-    pub fn do_bind(&mut self, qd: QDesc, addr: SocketAddrV4) -> Result<(), Fail> {
+    pub fn do_bind(&mut self, qd: QDesc, mut addr: SocketAddrV4) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::bind");
 
         // Local endpoint address in use.
         if self.bound.contains_key(&addr) {
-            return Err(Fail::new(EADDRINUSE, "address in use"));
+            return Err(Fail::new(libc::EADDRINUSE, "address in use"));
+        }
+
+        // Check if this is an ephemeral port or a wildcard one.
+        if EphemeralPorts::is_private(addr.port()) {
+            // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
+            self.ephemeral_ports.alloc_port(addr.port())?
+        } else if addr.port() == 0 {
+            // Allocate ephemeral port.
+            // TODO: we should free this when closing.
+            let new_port: u16 = self.ephemeral_ports.alloc_any()?;
+            addr.set_port(new_port);
         }
 
         // Register local endpoint address.
-        match self.sockets.get_mut(&qd) {
+        let ret: Result<(), Fail> = match self.sockets.get_mut(&qd) {
             Some(s) if s.is_none() => {
                 *s = Some(addr);
+
+                // Bind endpoint and create a receiver-side shared queue.
+                let queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> =
+                    SharedQueue::<SharedQueueSlot<Box<dyn Buffer>>>::new();
+
+                if self.bound.insert(addr, queue).is_some() {
+                    Err(Fail::new(libc::EADDRINUSE, "address in use"))
+                } else {
+                    Ok(())
+                }
             },
-            _ => return Err(Fail::new(EBADF, "invalid queue descriptor")),
-        }
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+        };
 
-        // Bind endpoint and create a receiver-side shared queue.
-        let queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> =
-            SharedQueue::<SharedQueueSlot<Box<dyn Buffer>>>::new();
-        if self.bound.insert(addr, queue).is_some() {
-            return Err(Fail::new(EADDRINUSE, "address in use"));
+        // Handle return value.
+        match ret {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // Rollback ephemeral port allocation.
+                if EphemeralPorts::is_private(addr.port()) {
+                    self.ephemeral_ports.free(addr.port());
+                }
+                Err(e)
+            },
         }
-
-        Ok(())
     }
 
     /// Closes a UDP socket.

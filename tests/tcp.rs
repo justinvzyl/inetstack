@@ -70,6 +70,15 @@ fn do_passive_connection_setup_ephemeral(mut libos: &mut InetStack<DummyRuntime>
     safe_close_passive(&mut libos, sockqd);
 }
 
+/// Opens and closes a passive socket using wildcard ephemeral port.
+fn do_passive_connection_setup_wildcard_ephemeral(mut libos: &mut InetStack<DummyRuntime>) {
+    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, 0);
+    let sockqd: QDesc = safe_socket(&mut libos);
+    safe_bind(&mut libos, sockqd, local);
+    safe_listen(&mut libos, sockqd);
+    safe_close_passive(&mut libos, sockqd);
+}
+
 /// Tests if a passive socket may be successfully opened and closed.
 #[test]
 fn tcp_connection_setup() {
@@ -78,6 +87,7 @@ fn tcp_connection_setup() {
 
     do_passive_connection_setup(&mut libos);
     do_passive_connection_setup_ephemeral(&mut libos);
+    do_passive_connection_setup_wildcard_ephemeral(&mut libos);
 }
 
 //======================================================================================================================
