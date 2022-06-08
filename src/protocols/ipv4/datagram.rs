@@ -74,9 +74,9 @@ pub struct Ipv4Header {
     ecn: u8,
     /// Total length of the packet including header and data (16 bits).
     total_length: u16,
-    /// Identifies the to which datagram a fragment belongs to (16 bits).
+    /// Used to identify the datagram to which a fragment belongs (16 bits).
     identification: u16,
-    /// Version control flags (3 bits).
+    /// Control flags (3 bits).
     flags: u8,
     /// Fragment offset indicates where in the datagram this fragment belongs to (13 bits).
     fragment_offset: u16,
@@ -261,19 +261,19 @@ impl Ipv4Header {
         // DSCP + ECN.
         buf[1] = (self.dscp << 2) | (self.ecn & 3);
 
-        // Total length.
+        // Total Length.
         NetworkEndian::write_u16(&mut buf[2..4], IPV4_HEADER_MIN_SIZE + (payload_len as u16));
 
-        // Fragment identification.
+        // Identification.
         NetworkEndian::write_u16(&mut buf[4..6], self.identification);
 
-        // Fragment flags and offset.
+        // Flags and Fragment Offset.
         NetworkEndian::write_u16(
             &mut buf[6..8],
             (self.flags as u16) << 13 | self.fragment_offset & 0x1fff,
         );
 
-        // Time to live.
+        // Time to Live.
         buf[8] = self.ttl;
 
         // Protocol.
@@ -281,13 +281,13 @@ impl Ipv4Header {
 
         // Skip the checksum (bytes 10..12) until we finish writing the header.
 
-        // Source address.
+        // Source Address.
         buf[12..16].copy_from_slice(&self.src_addr.octets());
 
-        // Destination address.
+        // Destination Address.
         buf[16..20].copy_from_slice(&self.dst_addr.octets());
 
-        // Header checksum.
+        // Header Checksum.
         let checksum: u16 = Self::compute_checksum(buf);
         NetworkEndian::write_u16(&mut buf[10..12], checksum);
     }
