@@ -37,8 +37,8 @@ fn build_ipv4_header(
     dscp: u8,
     ecn: u8,
     total_length: u16,
-    fragment_id: u16,
-    fragment_flags: u8,
+    id: u16,
+    flags: u8,
     fragment_offset: u16,
     ttl: u8,
     protocol: u8,
@@ -55,13 +55,13 @@ fn build_ipv4_header(
     // Total Length.
     NetworkEndian::write_u16(&mut buf[2..4], total_length);
 
-    // Fragment ID.
-    NetworkEndian::write_u16(&mut buf[4..6], fragment_id);
+    // ID.
+    NetworkEndian::write_u16(&mut buf[4..6], id);
 
-    // Fragment Flags + Offset.
+    // Flags + Offset.
     NetworkEndian::write_u16(
         &mut buf[6..8],
-        ((fragment_flags as u16 & 7) << 13) | (fragment_offset & 0x1fff),
+        ((flags as u16 & 7) << 13) | (fragment_offset & 0x1fff),
     );
 
     // Time to live.
@@ -243,16 +243,16 @@ fn test_ipv4_header_parse_invalid_total_length() {
     }
 }
 
-/// Parses a malformed IPv4 header with invalid fragmentation fields.
+/// Parses a malformed IPv4 header with invalid flags field.
 #[test]
-fn test_ipv4_header_parse_invalid_fragmentation() {
+fn test_ipv4_header_parse_invalid_flags() {
     const HEADER_SIZE: usize = 20;
     const PAYLOAD_SIZE: usize = 0;
     const DATAGRAM_SIZE: usize = HEADER_SIZE + PAYLOAD_SIZE;
     let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
 
-    // Fragment offset must have bit 3 zeroed.
-    let fragment_flags: u8 = 0x4;
+    // Flags field must have bit 3 zeroed as it is marked Reserved.
+    let flags: u8 = 0x4;
     build_ipv4_header(
         &mut buf,
         4,
@@ -260,8 +260,8 @@ fn test_ipv4_header_parse_invalid_fragmentation() {
         0,
         0,
         DATAGRAM_SIZE as u16,
-        0,
-        fragment_flags,
+        0x1d,
+        flags,
         0,
         1,
         IpProtocol::UDP as u8,
@@ -275,8 +275,8 @@ fn test_ipv4_header_parse_invalid_fragmentation() {
     match Ipv4Header::parse(buf_bytes) {
         Ok(_) => assert!(
             false,
-            "parsed ipv4 header with invalid fragment_flags={:?}",
-            fragment_flags
+            "parsed ipv4 header with invalid flags={:?}",
+            flags
         ),
         Err(_) => {},
     };
@@ -517,7 +517,8 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
     let mut buf: [u8; DATAGRAM_SIZE] = [0; DATAGRAM_SIZE];
 
     // Fragmented packets are unsupported.
-    let fragment_id: u16 = 1;
+    // Fragments are detected by having either the MF bit set in Flags or a non-zero Fragment Offset field.
+    let flags:u8 = 0x1;  // Set MF bit.
     build_ipv4_header(
         &mut buf,
         4,
@@ -525,8 +526,8 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
         0,
         0,
         DATAGRAM_SIZE as u16,
-        fragment_id,
-        0x2,
+        0x1d,
+        flags,
         0,
         1,
         IpProtocol::UDP as u8,
@@ -540,13 +541,14 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
     match Ipv4Header::parse(buf_bytes) {
         Ok(_) => assert!(
             false,
-            "parsed ipv4 header with fragment_id={:?}. Do we support it now?",
-            fragment_id,
+            "parsed ipv4 header with Flags={:?}. Do we support it now?",
+            flags,
         ),
         Err(_) => {},
     };
 
     // Fragmented packets are unsupported.
+    // Fragments are detected by having either the MF bit set in Flags or a non-zero Fragment Offset field.
     let fragment_offset: u16 = 1;
     build_ipv4_header(
         &mut buf,
@@ -555,7 +557,7 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
         0,
         0,
         DATAGRAM_SIZE as u16,
-        0,
+        0x1d,
         0x2,
         fragment_offset,
         1,
@@ -575,37 +577,6 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
         ),
         Err(_) => {},
     };
-
-    // Iterate over unsupported values for fragment flags.
-    for fragment_flags in [1, 3, 5, 6, 7, 8] {
-        build_ipv4_header(
-            &mut buf,
-            4,
-            5,
-            0,
-            0,
-            DATAGRAM_SIZE as u16,
-            0,
-            fragment_flags,
-            0,
-            1,
-            IpProtocol::UDP as u8,
-            &ALICE_IPV4.octets(),
-            &BOB_IPV4.octets(),
-            None,
-        );
-
-        // Do it.
-        let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
-        match Ipv4Header::parse(buf_bytes) {
-            Ok(_) => assert!(
-                false,
-                "parsed ipv4 header with fragment_flags={:?}. Do we support it now?",
-                fragment_flags
-            ),
-            Err(_) => {},
-        };
-    }
 }
 
 /// Parses a malformed IPv4 header with unsupported protocol field.

@@ -48,11 +48,14 @@ const DEFAULT_IPV4_TTL: u8 = 255;
 /// Version number for IPv4.
 const IPV4_VERSION: u8 = 4;
 
+/// IPv4 Control Flag: Datagram has evil intent (see RFC 3514).
+const IPV4_CTRL_FLAG_EVIL: u8 = 0x4;
+
 /// IPv4 Control Flag: Don't Fragment.
 const IPV4_CTRL_FLAG_DF: u8 = 0x2;
 
 /// IPv4 Control Flag: More Fragments.
-const _IPV4_CTRL_FLAG_MF: u8 = 0x1;
+const IPV4_CTRL_FLAG_MF: u8 = 0x1;
 
 //==============================================================================
 // Structures
@@ -166,18 +169,28 @@ impl Ipv4Header {
             return Err(Fail::new(EBADMSG, "ipv4 datagram size mismatch"));
         }
 
-        // Fragment identification.
+        // Identification (Id).
+        //
+        // Note: We had a (now removed) bug here in that we were _requiring_ all incoming datagrams to have an Id field
+        // of zero.  This was horribly misguided.  With the exception of datagramss where the DF (don't fragment) flag
+        // is set, all IPv4 datagrams are _required_ to have a (temporally) unique identification field for datagrams
+        // with the same source, destination, and protocol.  Thus we should expect most datagrams to have a non-zero Id.
         let identification: u16 = NetworkEndian::read_u16(&hdr_buf[4..6]);
-        // TODO: drop this check once we support fragmentation.
-        if identification != 0 {
-            warn!("fragmentation is not supported identification={:?}", identification);
-            return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
-        }
 
         // Control flags.
-        let flags: u8 = (NetworkEndian::read_u16(&hdr_buf[6..8]) >> 13) as u8;
+        //
+        // Note: We had a (now removed) bug here in that we were _requiring_ all incoming datagrams to have the DF
+        // (don't fragment) bit set.  This appears to be because we don't support fragmentation (yet anyway).  But the
+        // lack of a set DF bit doesn't make a datagram a fragment.  So we should accept datagrams regardless of the
+        // setting of this bit.
+        let flags: u8 = hdr_buf[6] >> 5;
+        // Don't accept evil datagrams (see RFC 3514).
+        if flags & IPV4_CTRL_FLAG_EVIL != 0 {
+            return Err(Fail::new(EBADMSG, "ipv4 datagram is marked as evil"));
+        }
+
         // TODO: drop this check once we support fragmentation.
-        if flags != IPV4_CTRL_FLAG_DF {
+        if flags & IPV4_CTRL_FLAG_MF != 0 {
             warn!("fragmentation is not supported flags={:?}", flags);
             return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
         }
