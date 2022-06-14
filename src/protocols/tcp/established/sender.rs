@@ -15,7 +15,6 @@ use ::runtime::{
     memory::Buffer,
     network::NetworkRuntime,
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
     watched::{
         WatchFuture,
         WatchedValue,
@@ -159,7 +158,7 @@ impl Sender {
 
     // This is the main TCP send routine.
     //
-    pub fn send<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+    pub fn send<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
         &self,
         buf: Box<dyn Buffer>,
         cb: &ControlBlock<RT>,
@@ -280,7 +279,7 @@ impl Sender {
 
     // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
     //
-    pub fn remove_acknowledged_data<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+    pub fn remove_acknowledged_data<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
         &self,
         cb: &ControlBlock<RT>,
         bytes_acknowledged: u32,

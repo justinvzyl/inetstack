@@ -41,7 +41,6 @@ use ::runtime::{
     },
     scheduler::SchedulerHandle,
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
 };
 use ::std::{
     cell::RefCell,
@@ -66,16 +65,20 @@ use ::std::{
 pub struct ArpPeer<RT: NetworkRuntime> {
     rt: RT,
     cache: Rc<RefCell<ArpCache>>,
-    background: Rc<SchedulerHandle>,
     waiters: Rc<RefCell<HashMap<Ipv4Addr, Sender<MacAddress>>>>,
     options: ArpConfig,
+
+    /// The background co-routine cleans up the ARP cache from time to time.
+    /// We annotate it as unused because the compiler believes that it is never called which is not the case.
+    #[allow(unused)]
+    background: Rc<SchedulerHandle>,
 }
 
 //==============================================================================
 // Associate Functions
 //==============================================================================
 
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
     pub fn new(now: Instant, rt: RT, options: ArpConfig) -> Result<ArpPeer<RT>, Fail> {
         let cache = Rc::new(RefCell::new(ArpCache::new(
             now,
@@ -89,9 +92,9 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Arp
         let peer = ArpPeer {
             rt,
             cache,
-            background: Rc::new(handle),
             waiters: Rc::new(RefCell::new(HashMap::default())),
             options,
+            background: Rc::new(handle),
         };
 
         Ok(peer)

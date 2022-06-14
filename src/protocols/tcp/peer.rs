@@ -48,6 +48,11 @@ use ::libc::{
     ENOTSUP,
     EOPNOTSUPP,
 };
+use ::rand::{
+    prelude::SmallRng,
+    Rng,
+    SeedableRng,
+};
 use ::runtime::{
     fail::Fail,
     memory::{
@@ -56,7 +61,6 @@ use ::runtime::{
     },
     network::NetworkRuntime,
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
     QDesc,
 };
 use ::std::{
@@ -75,7 +79,7 @@ use ::std::{
 };
 
 #[cfg(feature = "profiler")]
-use perftools::timer;
+use ::runtime::perftools::timer;
 
 //==============================================================================
 // Enumerations
@@ -92,7 +96,7 @@ enum Socket {
 // Structures
 //==============================================================================
 
-pub struct Inner<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
+pub struct Inner<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     isn_generator: IsnGenerator,
 
     ephemeral_ports: EphemeralPorts,
@@ -106,11 +110,12 @@ pub struct Inner<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 
 
     rt: RT,
     arp: ArpPeer<RT>,
+    rng: Rc<RefCell<SmallRng>>,
 
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
-pub struct TcpPeer<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> {
+pub struct TcpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     pub(super) inner: Rc<RefCell<Inner<RT>>>,
 }
 
@@ -118,10 +123,10 @@ pub struct TcpPeer<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone 
 // Associated FUnctions
 //==============================================================================
 
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
-    pub fn new(rt: RT, arp: ArpPeer<RT>) -> Self {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
+    pub fn new(rt: RT, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Self {
         let (tx, rx) = mpsc::unbounded();
-        let inner = Rc::new(RefCell::new(Inner::new(rt.clone(), arp, tx, rx)));
+        let inner = Rc::new(RefCell::new(Inner::new(rt.clone(), arp, rng_seed, tx, rx)));
         Self { inner }
     }
 
@@ -229,7 +234,8 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
             ));
         }
 
-        let socket: PassiveSocket<RT> = PassiveSocket::new(local, backlog, inner.rt.clone(), inner.arp.clone());
+        let nonce: u32 = inner.rng.borrow_mut().gen();
+        let socket = PassiveSocket::new(local, backlog, inner.rt.clone(), inner.arp.clone(), nonce);
         assert!(inner.passive.insert(local, socket).is_none());
         inner.sockets.insert(qd, Socket::Listening { local });
         Ok(())
@@ -429,22 +435,27 @@ impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Tcp
     }
 }
 
-impl<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
+impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
     fn new(
         rt: RT,
         arp: ArpPeer<RT>,
+        rng_seed: [u8; 32],
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         _dead_socket_rx: mpsc::UnboundedReceiver<QDesc>,
     ) -> Self {
+        let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
+        let ephemeral_ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
+        let nonce: u32 = rng.gen();
         Self {
-            isn_generator: IsnGenerator::new(rt.rng_gen()),
-            ephemeral_ports: EphemeralPorts::new(&rt),
+            isn_generator: IsnGenerator::new(nonce),
+            ephemeral_ports,
             sockets: HashMap::new(),
             passive: HashMap::new(),
             connecting: HashMap::new(),
             established: HashMap::new(),
             rt,
             arp,
+            rng: Rc::new(RefCell::new(rng)),
             dead_socket_tx,
         }
     }

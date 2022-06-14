@@ -56,15 +56,7 @@ pub fn new_alice(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
-    let rt = TestRuntime::new(
-        "alice",
-        now,
-        arp_options,
-        udp_options,
-        tcp_options,
-        ALICE_MAC,
-        ALICE_IPV4,
-    );
+    let rt = TestRuntime::new(now, arp_options, udp_options, tcp_options, ALICE_MAC, ALICE_IPV4);
     Engine::new(rt).unwrap()
 }
 
@@ -78,7 +70,7 @@ pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
-    let rt = TestRuntime::new("bob", now, arp_options, udp_options, tcp_options, BOB_MAC, BOB_IPV4);
+    let rt = TestRuntime::new(now, arp_options, udp_options, tcp_options, BOB_MAC, BOB_IPV4);
     Engine::new(rt).unwrap()
 }
 
@@ -95,15 +87,7 @@ pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
-    let rt = TestRuntime::new(
-        "alice",
-        now,
-        arp_options,
-        udp_options,
-        tcp_options,
-        ALICE_MAC,
-        ALICE_IPV4,
-    );
+    let rt = TestRuntime::new(now, arp_options, udp_options, tcp_options, ALICE_MAC, ALICE_IPV4);
     Engine::new(rt).unwrap()
 }
 
@@ -120,7 +104,7 @@ pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
     );
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
-    let rt = TestRuntime::new("bob", now, arp_options, udp_options, tcp_options, BOB_MAC, BOB_IPV4);
+    let rt = TestRuntime::new(now, arp_options, udp_options, tcp_options, BOB_MAC, BOB_IPV4);
     Engine::new(rt).unwrap()
 }
 
@@ -135,14 +119,6 @@ pub fn new_carrie(now: Instant) -> Engine<TestRuntime> {
     let udp_options = UdpConfig::default();
     let tcp_options = TcpConfig::default();
 
-    let rt = TestRuntime::new(
-        "carrie",
-        now,
-        arp_options,
-        udp_options,
-        tcp_options,
-        CARRIE_MAC,
-        CARRIE_IPV4,
-    );
+    let rt = TestRuntime::new(now, arp_options, udp_options, tcp_options, CARRIE_MAC, CARRIE_IPV4);
     Engine::new(rt).unwrap()
 }

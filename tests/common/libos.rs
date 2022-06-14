@@ -46,8 +46,9 @@ impl DummyLibOS {
     ) -> InetStack<DummyRuntime> {
         let now: Instant = Instant::now();
         let rt: DummyRuntime = DummyRuntime::new(now, link_addr, ipv4_addr, rx, tx, arp);
+        let rng_seed: [u8; 32] = [0; 32];
         logging::initialize();
-        InetStack::new(rt).unwrap()
+        InetStack::new(rt, rng_seed).unwrap()
     }
 
     /// Cooks a buffer.

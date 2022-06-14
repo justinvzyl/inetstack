@@ -7,16 +7,6 @@
 
 use ::arrayvec::ArrayVec;
 use ::crossbeam_channel::{self,};
-use ::rand::{
-    distributions::{
-        Distribution,
-        Standard,
-    },
-    rngs::SmallRng,
-    seq::SliceRandom,
-    Rng,
-    SeedableRng,
-};
 use ::runtime::{
     fail::Fail,
     memory::{
@@ -50,8 +40,6 @@ use ::runtime::{
         WaitFuture,
     },
     types::demi_sgarray_t,
-    utils::UtilsRuntime,
-    Runtime,
 };
 use ::std::{
     cell::RefCell,
@@ -72,7 +60,6 @@ struct SharedDummyRuntime {
     /// Clock
     timer: TimerRc,
     /// Random Number Generator
-    rng: SmallRng,
     /// Incoming Queue of Packets
     incoming: crossbeam_channel::Receiver<DataBuffer>,
     /// Outgoing Queue of Packets
@@ -116,7 +103,6 @@ impl DummyRuntime {
 
         let inner = SharedDummyRuntime {
             timer: TimerRc(Rc::new(Timer::new(now))),
-            rng: SmallRng::from_seed([0; 32]),
             incoming,
             outgoing,
         };
@@ -202,22 +188,6 @@ impl NetworkRuntime for DummyRuntime {
     }
 }
 
-/// Utils Runtime Trait Implementation for Dummy Runtime
-impl UtilsRuntime for DummyRuntime {
-    fn rng_gen<T>(&self) -> T
-    where
-        Standard: Distribution<T>,
-    {
-        let mut inner = self.inner.borrow_mut();
-        inner.rng.gen()
-    }
-
-    fn rng_shuffle<T>(&self, slice: &mut [T]) {
-        let mut inner = self.inner.borrow_mut();
-        slice.shuffle(&mut inner.rng);
-    }
-}
-
 /// Scheduler Runtime Trait Implementation for Dummy Runtime
 impl SchedulerRuntime for DummyRuntime {
     type WaitFuture = WaitFuture<TimerRc>;
@@ -267,6 +237,3 @@ impl SchedulerRuntime for DummyRuntime {
         self.scheduler.poll()
     }
 }
-
-/// Runtime Trait Implementation for Dummy Runtime
-impl Runtime for DummyRuntime {}

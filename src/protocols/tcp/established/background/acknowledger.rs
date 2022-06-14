@@ -13,11 +13,10 @@ use ::runtime::{
     fail::Fail,
     network::NetworkRuntime,
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
 };
 use std::rc::Rc;
 
-pub async fn acknowledger<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+pub async fn acknowledger<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
     cb: Rc<ControlBlock<RT>>,
 ) -> Result<!, Fail> {
     loop {

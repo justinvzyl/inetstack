@@ -17,7 +17,6 @@ use ::runtime::{
         NetworkRuntime,
     },
     task::SchedulerRuntime,
-    utils::UtilsRuntime,
 };
 use ::std::{
     rc::Rc,
@@ -33,7 +32,7 @@ pub enum RetransmitCause {
     FastRetransmit,
 }
 
-async fn retransmit<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+async fn retransmit<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
     cause: RetransmitCause,
     cb: &Rc<ControlBlock<RT>>,
 ) -> Result<(), Fail> {
@@ -88,7 +87,7 @@ async fn retransmit<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone
     Ok(())
 }
 
-pub async fn retransmitter<RT: SchedulerRuntime + UtilsRuntime + NetworkRuntime + Clone + 'static>(
+pub async fn retransmitter<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
     cb: Rc<ControlBlock<RT>>,
 ) -> Result<!, Fail> {
     loop {
