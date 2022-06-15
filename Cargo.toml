@@ -33,7 +33,7 @@ runtime = { git = "https://github.com/demikernel/runtime", rev = "8f7c48f568d983
 catwalk = { git = "https://github.com/demikernel/catwalk", rev = "063cf220c3e81beb6562f798ebadab3d9c24f336" }
 
 [patch."https://github.com/demikernel/runtime"]
-runtime = { path = "/home/gatowololo/Research/TcpMigration/runtime/" }
+runtime = { git = "https://github.com//demikernel/runtime", branch = "tcp-migration"}
 
 
 [dev-dependencies]
