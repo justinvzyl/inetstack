@@ -51,7 +51,7 @@ pub async fn sender<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
         if win_sz == 0 {
             // Send a window probe (this is a one-byte packet designed to elicit a window update from our peer).
             let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone()).await?;
-            let buf: Box<dyn Buffer> = cb
+            let buf: Buffer = cb
                 .pop_one_unsent_byte()
                 .unwrap_or_else(|| panic!("No unsent data? {}, {}", send_next, unsent_seq));
 
@@ -129,7 +129,7 @@ pub async fn sender<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
             cmp::min((win_sz - sent_data) as usize, cb.get_mss()),
             (effective_cwnd - sent_data) as usize,
         );
-        let segment_data: Box<dyn Buffer> = cb
+        let segment_data: Buffer = cb
             .pop_unsent_segment(max_size)
             .expect("No unsent data with sequence number gap?");
         let mut segment_data_len: u32 = segment_data.len() as u32;

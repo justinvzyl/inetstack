@@ -115,7 +115,7 @@ fn test_ipv4_header_parse_good() {
     buf[20..28].copy_from_slice(&data);
 
     // Do it.
-    let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+    let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
     match Ipv4Header::parse(buf_bytes) {
         Ok((ipv4_hdr, datagram)) => {
             assert_eq!(ipv4_hdr.get_src_addr(), ALICE_IPV4);
@@ -160,7 +160,7 @@ fn test_ipv4_header_parse_invalid_version() {
         );
 
         // Do it.
-        let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+        let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
         match Ipv4Header::parse(buf_bytes) {
             Ok(_) => assert!(false, "parsed ipv4_header with invalid version={:?}", version),
             Err(_) => {},
@@ -196,7 +196,7 @@ fn test_ipv4_header_parse_invalid_ihl() {
         );
 
         // Do it.
-        let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+        let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
         match Ipv4Header::parse(buf_bytes) {
             Ok(_) => assert!(false, "parsed ipv4 header with invalid ihl={:?}", ihl),
             Err(_) => {},
@@ -232,7 +232,7 @@ fn test_ipv4_header_parse_invalid_total_length() {
         );
 
         // Do it.
-        let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+        let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
         match Ipv4Header::parse(buf_bytes) {
             Ok(_) => assert!(false, "parsed ipv4 header with invalid total_length={:?}", total_length),
             Err(_) => {},
@@ -268,7 +268,7 @@ fn test_ipv4_header_parse_invalid_flags() {
     );
 
     // Do it.
-    let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+    let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
     match Ipv4Header::parse(buf_bytes) {
         Ok(_) => assert!(false, "parsed ipv4 header with invalid flags={:?}", flags),
         Err(_) => {},
@@ -303,7 +303,7 @@ fn test_ipv4_header_parse_invalid_ttl() {
     );
 
     // Do it.
-    let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+    let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
     match Ipv4Header::parse(buf_bytes) {
         Ok(_) => assert!(false, "parsed ipv4 header with invalid ttl={:?}", ttl),
         Err(_) => {},
@@ -338,7 +338,7 @@ fn test_ipv4_header_parse_invalid_protocol() {
         );
 
         // Do it.
-        let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+        let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
         match Ipv4Header::parse(buf_bytes) {
             Ok(_) => assert!(false, "parsed ipv4 header with invalid protocol={:?}", protocol),
             Err(_) => {},
@@ -374,7 +374,7 @@ fn test_ipv4_header_parse_invalid_header_checksum() {
     );
 
     // Do it.
-    let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+    let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
     match Ipv4Header::parse(buf_bytes) {
         Ok(_) => assert!(
             false,
@@ -419,7 +419,7 @@ fn test_ipv4_header_parse_unsupported_ihl() {
         );
 
         // Do it.
-        let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+        let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
         match Ipv4Header::parse(buf_bytes) {
             Ok(_) => assert!(false, "parsed ipv4 header with ihl={:?}. Do we support it now?", ihl),
             Err(_) => {},
@@ -455,7 +455,7 @@ fn test_ipv4_header_parse_unsupported_dscp() {
         );
 
         // Do it.
-        let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+        let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
         match Ipv4Header::parse(buf_bytes) {
             Ok(_) => {},
             Err(_) => panic!("dscp field should be ignored (dscp={:?})", dscp),
@@ -491,7 +491,7 @@ fn test_ipv4_header_parse_unsupported_ecn() {
         );
 
         // Do it.
-        let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+        let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
         match Ipv4Header::parse(buf_bytes) {
             Ok(_) => {},
             Err(_) => panic!("ecn field should be ignored (ecn={:?})", ecn),
@@ -530,7 +530,7 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
     );
 
     // Do it.
-    let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+    let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
     match Ipv4Header::parse(buf_bytes) {
         Ok(_) => assert!(
             false,
@@ -561,7 +561,7 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
     );
 
     // Do it.
-    let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+    let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
     match Ipv4Header::parse(buf_bytes) {
         Ok(_) => assert!(
             false,
@@ -606,7 +606,7 @@ fn test_ipv4_header_parse_unsupported_protocol() {
                 );
 
                 // Do it.
-                let buf_bytes: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&buf));
+                let buf_bytes: Buffer = Buffer::Heap(DataBuffer::from_slice(&buf));
                 match Ipv4Header::parse(buf_bytes) {
                     Ok(_) => assert!(
                         false,

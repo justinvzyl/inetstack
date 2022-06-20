@@ -323,7 +323,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
 
     /// Pushes a buffer to a TCP socket.
     /// TODO: Rename this function to push() once we have a common representation across all libOSes.
-    pub fn do_push(&mut self, qd: QDesc, buf: Box<dyn Buffer>) -> Result<FutureOperation<RT>, Fail> {
+    pub fn do_push(&mut self, qd: QDesc, buf: Buffer) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.push(qd, buf))),
@@ -341,7 +341,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
         trace!("push2(): qd={:?}", qd);
 
         // Convert raw data to a buffer representation.
-        let buf: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(data));
+        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
         if buf.is_empty() {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
@@ -355,12 +355,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
 
     /// Pushes a buffer to a UDP socket.
     /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
-    pub fn do_pushto(
-        &mut self,
-        qd: QDesc,
-        buf: Box<dyn Buffer>,
-        to: SocketAddrV4,
-    ) -> Result<FutureOperation<RT>, Fail> {
+    pub fn do_pushto(&mut self, qd: QDesc, buf: Buffer, to: SocketAddrV4) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::UdpSocket) => {
@@ -381,7 +376,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
         trace!("pushto2(): qd={:?}", qd);
 
         // Convert raw data to a buffer representation.
-        let buf: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(data));
+        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
         if buf.is_empty() {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
@@ -511,7 +506,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
     /// New incoming data has arrived. Route it to the correct parse out the Ethernet header and
     /// allow the correct protocol to handle it. The underlying protocol will futher parse the data
     /// and inform the correct task that its data has arrived.
-    fn do_receive(&mut self, bytes: Box<dyn Buffer>) -> Result<(), Fail> {
+    fn do_receive(&mut self, bytes: Buffer) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::engine::receive");
         let (header, payload) = Ethernet2Header::parse(bytes)?;

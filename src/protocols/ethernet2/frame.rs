@@ -44,7 +44,7 @@ impl Ethernet2Header {
         ETHERNET2_HEADER_SIZE
     }
 
-    pub fn parse(mut buf: Box<dyn Buffer>) -> Result<(Self, Box<dyn Buffer>), Fail> {
+    pub fn parse(mut buf: Buffer) -> Result<(Self, Buffer), Fail> {
         if buf.len() < ETHERNET2_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "frame too small"));
         }

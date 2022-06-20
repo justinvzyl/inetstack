@@ -122,7 +122,7 @@ fn udp_push_remote() {
         libos.bind(sockfd, alice_addr).unwrap();
 
         // Cook some data.
-        let bytes: Box<dyn Buffer> = DummyLibOS::cook_data(32);
+        let bytes: Buffer = DummyLibOS::cook_data(32);
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
@@ -163,7 +163,7 @@ fn udp_push_remote() {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
-        let bytes: Box<dyn Buffer> = match qr {
+        let bytes: Buffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => panic!("pop() failed"),
         };
@@ -206,7 +206,7 @@ fn udp_loopback() {
         libos.bind(sockfd, alice_addr).unwrap();
 
         // Cook some data.
-        let bytes: Box<dyn Buffer> = DummyLibOS::cook_data(32);
+        let bytes: Buffer = DummyLibOS::cook_data(32);
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
@@ -247,7 +247,7 @@ fn udp_loopback() {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
-        let bytes: Box<dyn Buffer> = match qr {
+        let bytes: Buffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => panic!("pop() failed"),
         };

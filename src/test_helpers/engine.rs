@@ -65,7 +65,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
         &mut self.rt
     }
 
-    pub fn receive(&mut self, bytes: Box<dyn Buffer>) -> Result<(), Fail> {
+    pub fn receive(&mut self, bytes: Buffer) -> Result<(), Fail> {
         let (header, payload) = Ethernet2Header::parse(bytes)?;
         debug!("Engine received {:?}", header);
         if self.rt.local_link_addr() != header.dst_addr() && !header.dst_addr().is_broadcast() {
@@ -86,7 +86,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
-    pub fn udp_pushto(&self, fd: QDesc, buf: Box<dyn Buffer>, to: SocketAddrV4) -> Result<(), Fail> {
+    pub fn udp_pushto(&self, fd: QDesc, buf: Buffer, to: SocketAddrV4) -> Result<(), Fail> {
         self.ipv4.udp.do_pushto(fd, buf, to)
     }
 
@@ -127,7 +127,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
         self.ipv4.tcp.do_accept(fd, newfd)
     }
 
-    pub fn tcp_push(&mut self, socket_fd: QDesc, buf: Box<dyn Buffer>) -> PushFuture {
+    pub fn tcp_push(&mut self, socket_fd: QDesc, buf: Buffer) -> PushFuture {
         self.ipv4.tcp.push(socket_fd, buf)
     }
 

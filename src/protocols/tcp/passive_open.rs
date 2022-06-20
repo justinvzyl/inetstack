@@ -38,7 +38,10 @@ use ::libc::{
 };
 use ::runtime::{
     fail::Fail,
-    memory::DataBuffer,
+    memory::{
+        Buffer,
+        DataBuffer,
+    },
     network::NetworkRuntime,
     scheduler::SchedulerHandle,
     task::SchedulerRuntime,
@@ -308,7 +311,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
                     ethernet2_hdr: Ethernet2Header::new(remote_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
                     ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
                     tcp_hdr,
-                    data: Box::new(DataBuffer::empty()),
+                    data: Buffer::Heap(DataBuffer::empty()),
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
                 };
                 rt.transmit(segment);

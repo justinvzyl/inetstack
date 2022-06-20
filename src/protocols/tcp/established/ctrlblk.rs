@@ -113,7 +113,7 @@ struct Receiver {
     pub receive_next: Cell<SeqNumber>,
 
     // Receive queue.  Contains in-order received (and acknowledged) data ready for the application to read.
-    recv_queue: RefCell<VecDeque<Box<dyn Buffer>>>,
+    recv_queue: RefCell<VecDeque<Buffer>>,
 }
 
 impl Receiver {
@@ -125,15 +125,15 @@ impl Receiver {
         }
     }
 
-    pub fn pop(&self) -> Option<Box<dyn Buffer>> {
-        let buf: Box<dyn Buffer> = self.recv_queue.borrow_mut().pop_front()?;
+    pub fn pop(&self) -> Option<Buffer> {
+        let buf: Buffer = self.recv_queue.borrow_mut().pop_front()?;
         self.reader_next
             .set(self.reader_next.get() + SeqNumber::from(buf.len() as u32));
 
         Some(buf)
     }
 
-    pub fn push(&self, buf: Box<dyn Buffer>) {
+    pub fn push(&self, buf: Buffer) {
         let buf_len: u32 = buf.len() as u32;
         self.recv_queue.borrow_mut().push_back(buf);
         self.receive_next
@@ -180,7 +180,7 @@ pub struct ControlBlock<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>
     // receive window) but can't yet present to the user because we're missing some other data that comes between this
     // and what we've already presented to the user.
     //
-    out_of_order: RefCell<VecDeque<(SeqNumber, Box<dyn Buffer>)>>,
+    out_of_order: RefCell<VecDeque<(SeqNumber, Buffer)>>,
 
     // The sequence number of the FIN, if we received it out-of-order.
     // Note: This could just be a boolean to remember if we got a FIN; the sequence number is for checking correctness.
@@ -263,7 +263,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         self.arp.clone()
     }
 
-    pub fn send(&self, buf: Box<dyn Buffer>) -> Result<(), Fail> {
+    pub fn send(&self, buf: Buffer) -> Result<(), Fail> {
         self.sender.send(buf, self)
     }
 
@@ -363,17 +363,17 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         self.sender.top_size_unsent()
     }
 
-    pub fn pop_unsent_segment(&self, max_bytes: usize) -> Option<Box<dyn Buffer>> {
+    pub fn pop_unsent_segment(&self, max_bytes: usize) -> Option<Buffer> {
         self.sender.pop_unsent(max_bytes)
     }
 
-    pub fn pop_one_unsent_byte(&self) -> Option<Box<dyn Buffer>> {
+    pub fn pop_one_unsent_byte(&self) -> Option<Buffer> {
         self.sender.pop_one_unsent_byte()
     }
 
     // This is the main TCP receive routine.
     //
-    pub fn receive(&self, mut header: &mut TcpHeader, mut data: Box<dyn Buffer>) {
+    pub fn receive(&self, mut header: &mut TcpHeader, mut data: Buffer) {
         debug!(
             "{:?} Connection Receiving {} bytes + {:?}",
             self.state.get(),
@@ -765,7 +765,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         debug_assert!((self.state.get() == State::Established) || (self.state.get() == State::CloseWait));
 
         // Send a FIN.
-        let fin_buf: Box<dyn Buffer> = Box::new(DataBuffer::empty());
+        let fin_buf: Buffer = Buffer::Heap(DataBuffer::empty());
         self.send(fin_buf).expect("send failed");
 
         // Remember that the user has called close.
@@ -799,13 +799,13 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         // ToDo: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
         // left to the ARP layer and not exposed to TCP).
         if let Some(remote_link_addr) = self.arp().try_query(self.remote.ip().clone()) {
-            self.emit(header, Box::new(DataBuffer::empty()), remote_link_addr);
+            self.emit(header, Buffer::Heap(DataBuffer::empty()), remote_link_addr);
         }
     }
 
     /// Transmit this message to our connected peer.
     ///
-    pub fn emit(&self, header: TcpHeader, data: Box<dyn Buffer>, remote_link_addr: MacAddress) {
+    pub fn emit(&self, header: TcpHeader, data: Buffer, remote_link_addr: MacAddress) {
         debug!("Sending {} bytes + {:?}", data.len(), header);
 
         // This routine should only ever be called to send TCP segments that contain a valid ACK value.
@@ -878,7 +878,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         hdr_window_size
     }
 
-    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Box<dyn Buffer>, Fail>> {
+    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Buffer, Fail>> {
         // ToDo: Need to add a way to indicate that the other side closed (i.e. that we've received a FIN).
         // Should we do this via a zero-sized buffer?  Same as with the unsent and unacked queues on the send side?
         //
@@ -891,7 +891,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
             return Poll::Pending;
         }
 
-        let segment: Box<dyn Buffer> = self
+        let segment: Buffer = self
             .receiver
             .pop()
             .expect("poll_recv failed to pop data from receive queue");
@@ -909,12 +909,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
     // If the new segment had a FIN it has been removed prior to this routine being called.
     // Note: Since this is not the "fast path", this is written for clarity over efficiency.
     //
-    pub fn store_out_of_order_segment(
-        &self,
-        mut new_start: SeqNumber,
-        mut new_end: SeqNumber,
-        mut buf: Box<dyn Buffer>,
-    ) {
+    pub fn store_out_of_order_segment(&self, mut new_start: SeqNumber, mut new_end: SeqNumber, mut buf: Buffer) {
         let mut out_of_order = self.out_of_order.borrow_mut();
         let mut action_index: usize = out_of_order.len();
         let mut another_pass_neeeded: bool = true;
@@ -926,7 +921,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
             // The out-of-order store is sorted by starting sequence number, and contains no duplicate data.
             action_index = out_of_order.len();
             for index in 0..out_of_order.len() {
-                let stored_segment: &(SeqNumber, Box<dyn Buffer>) = &out_of_order[index];
+                let stored_segment: &(SeqNumber, Buffer) = &out_of_order[index];
 
                 // Properties of the segment stored at this index.
                 let stored_start: SeqNumber = stored_segment.0;
@@ -1016,7 +1011,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
     //
     // Returns true if a previously out-of-order segment containing a FIN has now been received.
     //
-    pub fn receive_data(&self, seg_start: SeqNumber, buf: Box<dyn Buffer>) -> bool {
+    pub fn receive_data(&self, seg_start: SeqNumber, buf: Buffer) -> bool {
         let recv_next: SeqNumber = self.receiver.receive_next.get();
 
         // This routine should only be called with in-order segment data.

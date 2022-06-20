@@ -37,7 +37,7 @@ pub struct UdpDatagram {
     /// UDP header.
     udp_hdr: UdpHeader,
     /// Payload
-    data: Box<dyn Buffer>,
+    data: Buffer,
     /// Offload checksum to hardware?
     checksum_offload: bool,
 }
@@ -53,7 +53,7 @@ impl UdpDatagram {
         ethernet2_hdr: Ethernet2Header,
         ipv4_hdr: Ipv4Header,
         udp_hdr: UdpHeader,
-        data: Box<dyn Buffer>,
+        data: Buffer,
         checksum_offload: bool,
     ) -> Self {
         Self {
@@ -110,7 +110,7 @@ impl PacketBuf for UdpDatagram {
     }
 
     /// Returns the payload of the target UDP datagram.
-    fn take_body(self) -> Option<Box<dyn Buffer>> {
+    fn take_body(self) -> Option<Buffer> {
         Some(self.data)
     }
 }
@@ -163,7 +163,7 @@ mod test {
 
         // Payload.
         let bytes: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
-        let data: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(&bytes));
+        let data: Buffer = Buffer::Heap(DataBuffer::from_slice(&bytes));
 
         // Build expected header.
         let mut hdr: [u8; HEADER_SIZE] = [0; HEADER_SIZE];

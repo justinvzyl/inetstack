@@ -34,7 +34,7 @@ pub struct UdpPopFuture {
     /// Associated queue descriptor.
     qd: QDesc,
     /// Shared receiving queue.
-    recv_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>,
+    recv_queue: SharedQueue<SharedQueueSlot<Buffer>>,
 }
 
 //==============================================================================
@@ -44,7 +44,7 @@ pub struct UdpPopFuture {
 /// Associate Functions for Pop Operation Descriptor
 impl UdpPopFuture {
     /// Creates a pop operation descritor.
-    pub fn new(qd: QDesc, recv_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>) -> Self {
+    pub fn new(qd: QDesc, recv_queue: SharedQueue<SharedQueueSlot<Buffer>>) -> Self {
         Self { qd, recv_queue }
     }
 
@@ -60,7 +60,7 @@ impl UdpPopFuture {
 
 /// Future Trait implementation for Pop Operation Descriptor
 impl Future for UdpPopFuture {
-    type Output = Result<(SocketAddrV4, Box<dyn Buffer>), Fail>;
+    type Output = Result<(SocketAddrV4, Buffer), Fail>;
 
     /// Polls the target pop operation descriptor.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {

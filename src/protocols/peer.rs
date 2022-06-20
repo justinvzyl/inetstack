@@ -54,7 +54,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
         Peer { rt, icmpv4, tcp, udp }
     }
 
-    pub fn receive(&mut self, buf: Box<dyn Buffer>) -> Result<(), Fail> {
+    pub fn receive(&mut self, buf: Buffer) -> Result<(), Fail> {
         let (header, payload) = Ipv4Header::parse(buf)?;
         debug!("Ipv4 received {:?}", header);
         if header.get_dest_addr() != self.rt.local_ipv4_addr() && !header.get_dest_addr().is_broadcast() {
