@@ -39,7 +39,7 @@ use ::std::{
 // buffer structure that held everything we need directly, thus avoiding this extra wrapper.
 //
 pub struct UnackedSegment {
-    pub bytes: Box<dyn Buffer>,
+    pub bytes: Buffer,
     // Set to `None` on retransmission to implement Karn's algorithm.
     pub initial_tx: Option<Instant>,
 }
@@ -75,7 +75,7 @@ pub struct Sender {
     send_next: WatchedValue<SeqNumber>,
 
     // This is the send buffer (user data we do not yet have window to send).
-    unsent_queue: RefCell<VecDeque<Box<dyn Buffer>>>,
+    unsent_queue: RefCell<VecDeque<Buffer>>,
 
     // ToDo: Remove this as soon as sender.rs is fixed to not use it to tell if there is unsent data.
     unsent_seq_no: WatchedValue<SeqNumber>,
@@ -160,7 +160,7 @@ impl Sender {
     //
     pub fn send<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
         &self,
-        buf: Box<dyn Buffer>,
+        buf: Buffer,
         cb: &ControlBlock<RT>,
     ) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
@@ -323,7 +323,7 @@ impl Sender {
         }
     }
 
-    pub fn pop_one_unsent_byte(&self) -> Option<Box<dyn Buffer>> {
+    pub fn pop_one_unsent_byte(&self) -> Option<Buffer> {
         let mut queue = self.unsent_queue.borrow_mut();
 
         let buf = queue.front_mut()?;
@@ -337,10 +337,10 @@ impl Sender {
         Some(cloned_buf)
     }
 
-    pub fn pop_unsent(&self, max_bytes: usize) -> Option<Box<dyn Buffer>> {
+    pub fn pop_unsent(&self, max_bytes: usize) -> Option<Buffer> {
         // TODO: Use a scatter/gather array to coalesce multiple buffers into a single segment.
         let mut unsent_queue = self.unsent_queue.borrow_mut();
-        let mut buf: Box<dyn Buffer> = unsent_queue.pop_front()?;
+        let mut buf: Buffer = unsent_queue.pop_front()?;
         let buf_len: usize = buf.len();
 
         if buf_len > max_bytes {

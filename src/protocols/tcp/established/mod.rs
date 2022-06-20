@@ -58,15 +58,15 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> EstablishedSocket<
         }
     }
 
-    pub fn receive(&self, header: &mut TcpHeader, data: Box<dyn Buffer>) {
+    pub fn receive(&self, header: &mut TcpHeader, data: Buffer) {
         self.cb.receive(header, data)
     }
 
-    pub fn send(&self, buf: Box<dyn Buffer>) -> Result<(), Fail> {
+    pub fn send(&self, buf: Buffer) -> Result<(), Fail> {
         self.cb.send(buf)
     }
 
-    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Box<dyn Buffer>, Fail>> {
+    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Buffer, Fail>> {
         self.cb.poll_recv(ctx)
     }
 

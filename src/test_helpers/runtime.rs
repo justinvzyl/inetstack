@@ -8,12 +8,10 @@ use crate::{
 use ::arrayvec::ArrayVec;
 use ::futures::FutureExt;
 use ::runtime::{
-    fail::Fail,
     logging,
     memory::{
         Buffer,
         DataBuffer,
-        MemoryRuntime,
     },
     network::{
         config::{
@@ -37,7 +35,6 @@ use ::runtime::{
         TimerRc,
         WaitFuture,
     },
-    types::demi_sgarray_t,
 };
 use ::std::{
     cell::RefCell,
@@ -65,8 +62,8 @@ pub type TestEngine = Engine<TestRuntime>;
 pub struct Inner {
     #[allow(unused)]
     timer: TimerRc,
-    incoming: VecDeque<Box<dyn Buffer>>,
-    outgoing: VecDeque<Box<dyn Buffer>>,
+    incoming: VecDeque<Buffer>,
+    outgoing: VecDeque<Buffer>,
 }
 
 #[derive(Clone)]
@@ -111,7 +108,7 @@ impl TestRuntime {
         }
     }
 
-    pub fn pop_frame(&self) -> Box<dyn Buffer> {
+    pub fn pop_frame(&self) -> Buffer {
         self.inner
             .borrow_mut()
             .outgoing
@@ -119,11 +116,11 @@ impl TestRuntime {
             .expect("pop_front didn't return an outgoing frame")
     }
 
-    pub fn pop_frame_unchecked(&self) -> Option<Box<dyn Buffer>> {
+    pub fn pop_frame_unchecked(&self) -> Option<Buffer> {
         self.inner.borrow_mut().outgoing.pop_front()
     }
 
-    pub fn push_frame(&self, buf: Box<dyn Buffer>) {
+    pub fn push_frame(&self, buf: Buffer) {
         self.inner.borrow_mut().incoming.push_back(buf);
     }
 
@@ -137,30 +134,12 @@ impl TestRuntime {
 // Trait Implementations
 //==============================================================================
 
-impl MemoryRuntime for TestRuntime {
-    fn into_sgarray(&self, _buf: Box<dyn Buffer>) -> Result<demi_sgarray_t, Fail> {
-        unreachable!()
-    }
-
-    fn alloc_sgarray(&self, _size: usize) -> Result<demi_sgarray_t, Fail> {
-        unreachable!()
-    }
-
-    fn free_sgarray(&self, _sga: demi_sgarray_t) -> Result<(), Fail> {
-        unreachable!()
-    }
-
-    fn clone_sgarray(&self, _sga: &demi_sgarray_t) -> Result<Box<dyn Buffer>, Fail> {
-        unreachable!()
-    }
-}
-
 impl NetworkRuntime for TestRuntime {
     fn transmit(&self, pkt: impl PacketBuf) {
         let header_size = pkt.header_size();
         let body_size = pkt.body_size();
 
-        let mut buf: Box<dyn Buffer> = Box::new(DataBuffer::new(header_size + body_size).unwrap());
+        let mut buf: Buffer = Buffer::Heap(DataBuffer::new(header_size + body_size).unwrap());
         pkt.write_header(&mut buf[..header_size]);
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
@@ -168,7 +147,7 @@ impl NetworkRuntime for TestRuntime {
         self.inner.borrow_mut().outgoing.push_back(buf);
     }
 
-    fn receive(&self) -> ArrayVec<Box<dyn Buffer>, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<Buffer, RECEIVE_BATCH_SIZE> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.inner.borrow_mut().incoming.pop_front() {
             out.push(buf);

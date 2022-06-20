@@ -24,7 +24,7 @@ pub enum OperationResult {
     Accept(QDesc),
     Push,
     // TODO: Drop wrapping Option.
-    Pop(Option<SocketAddrV4>, Box<dyn Buffer>),
+    Pop(Option<SocketAddrV4>, Buffer),
     Failed(Fail),
 }
 

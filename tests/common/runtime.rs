@@ -6,13 +6,11 @@
 //==============================================================================
 
 use ::arrayvec::ArrayVec;
-use ::crossbeam_channel::{self,};
+use ::crossbeam_channel;
 use ::runtime::{
-    fail::Fail,
     memory::{
         Buffer,
         DataBuffer,
-        MemoryRuntime,
     },
     network::{
         config::{
@@ -39,7 +37,6 @@ use ::runtime::{
         TimerRc,
         WaitFuture,
     },
-    types::demi_sgarray_t,
 };
 use ::std::{
     cell::RefCell,
@@ -121,29 +118,6 @@ impl DummyRuntime {
 // Trait Implementations
 //==============================================================================
 
-/// Memory Runtime Trait Implementation for Dummy Runtime
-impl MemoryRuntime for DummyRuntime {
-    // TODO: Drop this when we have cleaned up the runtime interface.
-    fn into_sgarray(&self, _buf: Box<dyn Buffer>) -> Result<demi_sgarray_t, Fail> {
-        unreachable!();
-    }
-
-    // TODO: Drop this when we have cleaned up the runtime interface.
-    fn alloc_sgarray(&self, _size: usize) -> Result<demi_sgarray_t, Fail> {
-        unreachable!();
-    }
-
-    // TODO: Drop this when we have cleaned up the runtime interface.
-    fn free_sgarray(&self, _sga: demi_sgarray_t) -> Result<(), Fail> {
-        unreachable!();
-    }
-
-    // TODO: Drop this when we have cleaned up the runtime interface.
-    fn clone_sgarray(&self, _sga: &demi_sgarray_t) -> Result<Box<dyn Buffer>, Fail> {
-        unreachable!();
-    }
-}
-
 /// Network Runtime Trait Implementation for Dummy Runtime
 impl NetworkRuntime for DummyRuntime {
     fn transmit(&self, pkt: impl PacketBuf) {
@@ -158,10 +132,10 @@ impl NetworkRuntime for DummyRuntime {
         self.inner.borrow_mut().outgoing.try_send(buf).unwrap();
     }
 
-    fn receive(&self) -> ArrayVec<Box<dyn Buffer>, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<Buffer, RECEIVE_BATCH_SIZE> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.inner.borrow_mut().incoming.try_recv().ok() {
-            let dbuf: Box<dyn Buffer> = Box::new(buf);
+            let dbuf: Buffer = Buffer::Heap(buf);
             out.push(dbuf);
         }
         out

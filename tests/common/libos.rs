@@ -52,10 +52,10 @@ impl DummyLibOS {
     }
 
     /// Cooks a buffer.
-    pub fn cook_data(size: usize) -> Box<dyn Buffer> {
+    pub fn cook_data(size: usize) -> Buffer {
         let fill_char: u8 = b'a';
 
-        let mut buf: Box<dyn Buffer> = Box::new(DataBuffer::new(size).unwrap());
+        let mut buf: Buffer = Buffer::Heap(DataBuffer::new(size).unwrap());
         for a in &mut buf[..] {
             *a = fill_char;
         }

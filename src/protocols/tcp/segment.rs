@@ -31,7 +31,7 @@ pub struct TcpSegment {
     pub ethernet2_hdr: Ethernet2Header,
     pub ipv4_hdr: Ipv4Header,
     pub tcp_hdr: TcpHeader,
-    pub data: Box<dyn Buffer>,
+    pub data: Buffer,
 
     pub tx_checksum_offload: bool,
 }
@@ -68,7 +68,7 @@ impl PacketBuf for TcpSegment {
         );
     }
 
-    fn take_body(self) -> Option<Box<dyn Buffer>> {
+    fn take_body(self) -> Option<Buffer> {
         Some(self.data)
     }
 }
@@ -212,11 +212,7 @@ impl TcpHeader {
         }
     }
 
-    pub fn parse(
-        ipv4_header: &Ipv4Header,
-        mut buf: Box<dyn Buffer>,
-        rx_checksum_offload: bool,
-    ) -> Result<(Self, Box<dyn Buffer>), Fail> {
+    pub fn parse(ipv4_header: &Ipv4Header, mut buf: Buffer, rx_checksum_offload: bool) -> Result<(Self, Buffer), Fail> {
         if buf.len() < MIN_TCP_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "TCP segment too small"));
         }

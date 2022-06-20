@@ -25,7 +25,7 @@ use ::std::net::Ipv4Addr;
 
 /// Checks for a data packet.
 pub fn check_packet_data(
-    bytes: Box<dyn Buffer>,
+    bytes: Buffer,
     eth2_src_addr: MacAddress,
     eth2_dst_addr: MacAddress,
     ipv4_src_addr: Ipv4Addr,
@@ -62,7 +62,7 @@ pub fn check_packet_data(
 /// sequence number should always reflect the current SND.NXT (send next).  The original version of this function also
 /// checked the window size (which can't be predicted accurately in some test scenarios), this version no longer does.
 pub fn check_packet_pure_ack(
-    bytes: Box<dyn Buffer>,
+    bytes: Buffer,
     eth2_src_addr: MacAddress,
     eth2_dst_addr: MacAddress,
     ipv4_src_addr: Ipv4Addr,

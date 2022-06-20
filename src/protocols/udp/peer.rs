@@ -78,9 +78,9 @@ pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     /// Opened sockets.
     sockets: HashMap<QDesc, Option<SocketAddrV4>>,
     /// Bound sockets.
-    bound: HashMap<SocketAddrV4, SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>>,
+    bound: HashMap<SocketAddrV4, SharedQueue<SharedQueueSlot<Buffer>>>,
     /// Queue of unset datagrams. This is shared across fast/slow paths.
-    send_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>,
+    send_queue: SharedQueue<SharedQueueSlot<Buffer>>,
     /// Local link address.
     local_link_addr: MacAddress,
     /// Local IPv4 address.
@@ -109,8 +109,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         offload_checksum: bool,
         arp: ArpPeer<RT>,
     ) -> Self {
-        let send_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> =
-            SharedQueue::<SharedQueueSlot<Box<dyn Buffer>>>::new();
+        let send_queue: SharedQueue<SharedQueueSlot<Buffer>> = SharedQueue::<SharedQueueSlot<Buffer>>::new();
         let future = Self::background_sender(
             rt.clone(),
             local_ipv4_addr,
@@ -143,7 +142,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         local_link_addr: MacAddress,
         offload_checksum: bool,
         arp: ArpPeer<RT>,
-        mut rx: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>>,
+        mut rx: SharedQueue<SharedQueueSlot<Buffer>>,
     ) {
         loop {
             // Grab next unsent datagram.
@@ -217,8 +216,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
                 *s = Some(addr);
 
                 // Bind endpoint and create a receiver-side shared queue.
-                let queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> =
-                    SharedQueue::<SharedQueueSlot<Box<dyn Buffer>>>::new();
+                let queue: SharedQueue<SharedQueueSlot<Buffer>> = SharedQueue::<SharedQueueSlot<Buffer>>::new();
 
                 if self.bound.insert(addr, queue).is_some() {
                     Err(Fail::new(libc::EADDRINUSE, "address in use"))
@@ -261,7 +259,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     }
 
     /// Pushes data to a remote UDP peer.
-    pub fn do_pushto(&self, qd: QDesc, data: Box<dyn Buffer>, remote: SocketAddrV4) -> Result<(), Fail> {
+    pub fn do_pushto(&self, qd: QDesc, data: Buffer, remote: SocketAddrV4) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::pushto");
 
@@ -298,7 +296,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         timer!("udp::pop");
 
         // Lookup associated receiver-side shared queue.
-        let recv_queue: SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> = match self.sockets.get(&qd) {
+        let recv_queue: SharedQueue<SharedQueueSlot<Buffer>> = match self.sockets.get(&qd) {
             Some(s) if s.is_some() => self.bound.get(&s.unwrap()).unwrap().clone(),
             _ => panic!("invalid queue descriptor"),
         };
@@ -308,19 +306,19 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     }
 
     /// Consumes the payload from a buffer.
-    pub fn do_receive(&mut self, ipv4_hdr: &Ipv4Header, buf: Box<dyn Buffer>) -> Result<(), Fail> {
+    pub fn do_receive(&mut self, ipv4_hdr: &Ipv4Header, buf: Buffer) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::receive");
 
         // Parse datagram.
-        let (hdr, data): (UdpHeader, Box<dyn Buffer>) = UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
+        let (hdr, data): (UdpHeader, Buffer) = UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
         debug!("UDP received {:?}", hdr);
 
         let local: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
         let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), hdr.src_port());
 
         // Lookup associated receiver-side shared queue.
-        let recv_queue: &mut SharedQueue<SharedQueueSlot<Box<dyn Buffer>>> = match self.bound.get_mut(&local) {
+        let recv_queue: &mut SharedQueue<SharedQueueSlot<Buffer>> = match self.bound.get_mut(&local) {
             Some(q) => q,
             // TODO: Send ICMPv4 error in this condition.
             None => Err(Fail::new(ENOTCONN, "port not bound"))?,
@@ -341,7 +339,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
         remote_link_addr: MacAddress,
-        buf: Box<dyn Buffer>,
+        buf: Buffer,
         local: &SocketAddrV4,
         remote: &SocketAddrV4,
         offload_checksum: bool,

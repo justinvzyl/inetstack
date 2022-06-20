@@ -252,7 +252,7 @@ fn tcp_push_remote() {
         }
 
         // Cook some data.
-        let bytes: Box<dyn Buffer> = DummyLibOS::cook_data(32);
+        let bytes: Buffer = DummyLibOS::cook_data(32);
 
         // Push data.
         let qt: QToken = safe_push2(&mut libos, sockqd, &bytes);
@@ -669,7 +669,7 @@ fn tcp_bad_push() {
         }
 
         // Cook some data.
-        let bytes: Box<dyn Buffer> = DummyLibOS::cook_data(32);
+        let bytes: Buffer = DummyLibOS::cook_data(32);
 
         // Push to bad socket.
         match libos.push2(QDesc::from(2), &bytes) {
@@ -762,7 +762,7 @@ fn tcp_bad_pop() {
         }
 
         // Cook some data.
-        let bytes: Box<dyn Buffer> = DummyLibOS::cook_data(32);
+        let bytes: Buffer = DummyLibOS::cook_data(32);
 
         // Push data.
         let qt: QToken = safe_push2(&mut libos, sockqd, &bytes);

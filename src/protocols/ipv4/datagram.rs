@@ -125,7 +125,7 @@ impl Ipv4Header {
     }
 
     /// Parses a buffer into an IPv4 header and payload.
-    pub fn parse(mut buf: Box<dyn Buffer>) -> Result<(Self, Box<dyn Buffer>), Fail> {
+    pub fn parse(mut buf: Buffer) -> Result<(Self, Buffer), Fail> {
         // The datagram should be as big as the header.
         if buf.len() < (IPV4_DATAGRAM_MIN_SIZE as usize) {
             return Err(Fail::new(EBADMSG, "ipv4 datagram too small"));

@@ -212,7 +212,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> fmt::Debug for Pop
 }
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Future for PopFuture<RT> {
-    type Output = Result<Box<dyn Buffer>, Fail>;
+    type Output = Result<Buffer, Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
