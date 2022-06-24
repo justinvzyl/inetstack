@@ -2,12 +2,12 @@
 name = "inetstack"
 version = "1.0.7"
 authors = [ "Microsoft Corporation" ]
+edition = "2021"
 description = "Demikernel's TCP/UDP Stack"
+readme = "README.md"
 homepage = "https://aka.ms/demikernel"
 repository = "https://github.com/demikernel/inetstack"
-readme = "README.md"
 license-file = "LICENSE.txt"
-edition = "2021"
 
 [dependencies]
 arrayvec = "0.7.2"
