@@ -63,9 +63,19 @@ use ::std::{
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
 
-//==============================================================================
+//======================================================================================================================
+// Constants
+//======================================================================================================================
+
+// Maximum size for receive queues (in messages).
+const RECV_QUEUE_MAX_SIZE: usize = 1024;
+
+// Maximum size for send queues (in messages).
+const SEND_QUEUE_MAX_SIZE: usize = 1024;
+
+//======================================================================================================================
 // Structures
-//==============================================================================
+//======================================================================================================================
 
 /// UDP Peer
 pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
@@ -94,9 +104,9 @@ pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     background: SchedulerHandle,
 }
 
-//==============================================================================
+//======================================================================================================================
 // Associate Functions
-//==============================================================================
+//======================================================================================================================
 
 /// Associate functions for [UdpPeer].
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
@@ -109,7 +119,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         offload_checksum: bool,
         arp: ArpPeer<RT>,
     ) -> Self {
-        let send_queue: SharedQueue<SharedQueueSlot<Buffer>> = SharedQueue::<SharedQueueSlot<Buffer>>::new();
+        let send_queue: SharedQueue<SharedQueueSlot<Buffer>> =
+            SharedQueue::<SharedQueueSlot<Buffer>>::new(SEND_QUEUE_MAX_SIZE);
         let future = Self::background_sender(
             rt.clone(),
             local_ipv4_addr,
@@ -216,7 +227,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
                 *s = Some(addr);
 
                 // Bind endpoint and create a receiver-side shared queue.
-                let queue: SharedQueue<SharedQueueSlot<Buffer>> = SharedQueue::<SharedQueueSlot<Buffer>>::new();
+                let queue: SharedQueue<SharedQueueSlot<Buffer>> =
+                    SharedQueue::<SharedQueueSlot<Buffer>>::new(RECV_QUEUE_MAX_SIZE);
 
                 if self.bound.insert(addr, queue).is_some() {
                     Err(Fail::new(libc::EADDRINUSE, "address in use"))
