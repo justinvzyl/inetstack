@@ -1,12 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    futures::operation::FutureOperation,
-    test_helpers::Engine,
-};
+use crate::test_helpers::Engine;
 use ::arrayvec::ArrayVec;
-use ::futures::FutureExt;
 use ::runtime::{
     logging,
     memory::{
@@ -24,28 +20,18 @@ use ::runtime::{
         NetworkRuntime,
         PacketBuf,
     },
-    scheduler::{
-        Scheduler,
-        SchedulerFuture,
-        SchedulerHandle,
-    },
-    task::SchedulerRuntime,
+    scheduler::Scheduler,
     timer::{
         Timer,
         TimerRc,
-        WaitFuture,
     },
 };
 use ::std::{
     cell::RefCell,
     collections::VecDeque,
-    future::Future,
     net::Ipv4Addr,
     rc::Rc,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::Instant,
 };
 
 //==============================================================================
@@ -74,7 +60,8 @@ pub struct TestRuntime {
     udp_options: UdpConfig,
     tcp_options: TcpConfig,
     inner: Rc<RefCell<Inner>>,
-    scheduler: Scheduler,
+    pub scheduler: Scheduler,
+    pub clock: TimerRc,
 }
 
 //==============================================================================
@@ -102,6 +89,7 @@ impl TestRuntime {
             ipv4_addr,
             inner: Rc::new(RefCell::new(inner)),
             scheduler: Scheduler::default(),
+            clock: TimerRc(Rc::new(Timer::new(now))),
             arp_options,
             udp_options,
             tcp_options,
@@ -173,57 +161,5 @@ impl NetworkRuntime for TestRuntime {
 
     fn arp_options(&self) -> ArpConfig {
         self.arp_options.clone()
-    }
-}
-
-impl SchedulerRuntime for TestRuntime {
-    type WaitFuture = WaitFuture<TimerRc>;
-
-    fn advance_clock(&self, now: Instant) {
-        self.inner.borrow_mut().timer.0.advance_clock(now);
-    }
-
-    fn wait(&self, duration: Duration) -> Self::WaitFuture {
-        let inner = self.inner.borrow_mut();
-        let now = inner.timer.0.now();
-        inner.timer.0.wait_until(inner.timer.clone(), now + duration)
-    }
-
-    fn wait_until(&self, when: Instant) -> Self::WaitFuture {
-        let inner = self.inner.borrow_mut();
-        inner.timer.0.wait_until(inner.timer.clone(), when)
-    }
-
-    fn now(&self) -> Instant {
-        self.inner.borrow().timer.0.now()
-    }
-
-    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
-        match self
-            .scheduler
-            .insert(FutureOperation::Background::<TestRuntime>(future.boxed_local()))
-        {
-            Some(handle) => handle,
-            None => panic!("could not insert future in scheduling queue"),
-        }
-    }
-
-    fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        match self.scheduler.insert(future) {
-            Some(handle) => handle,
-            None => panic!("could not insert future in scheduling queue"),
-        }
-    }
-
-    fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {
-        self.scheduler.from_raw_handle(key)
-    }
-
-    fn take(&self, handle: SchedulerHandle) -> Box<dyn SchedulerFuture> {
-        self.scheduler.take(handle)
-    }
-
-    fn poll(&self) {
-        self.scheduler.poll()
     }
 }

@@ -12,13 +12,10 @@ use ::futures::{
 use ::runtime::{
     fail::Fail,
     network::NetworkRuntime,
-    task::SchedulerRuntime,
 };
 use std::rc::Rc;
 
-pub async fn acknowledger<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
-    cb: Rc<ControlBlock<RT>>,
-) -> Result<!, Fail> {
+pub async fn acknowledger<RT: NetworkRuntime + Clone + 'static>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         // TODO: Implement TCP delayed ACKs, subject to restrictions from RFC 1122
         // - TCP should implement a delayed ACK
@@ -30,7 +27,7 @@ pub async fn acknowledger<RT: SchedulerRuntime + NetworkRuntime + Clone + 'stati
         futures::pin_mut!(ack_deadline_changed);
 
         let ack_future = match ack_deadline {
-            Some(t) => Either::Left(cb.rt().wait_until(t).fuse()),
+            Some(t) => Either::Left(cb.clock.wait_until(cb.clock.clone(), t).fuse()),
             None => Either::Right(future::pending()),
         };
         futures::pin_mut!(ack_future);

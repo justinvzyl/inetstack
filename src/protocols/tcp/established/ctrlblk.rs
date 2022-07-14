@@ -38,7 +38,8 @@ use ::runtime::{
         types::MacAddress,
         NetworkRuntime,
     },
-    task::SchedulerRuntime,
+    scheduler::Scheduler,
+    timer::TimerRc,
     watched::{
         WatchFuture,
         WatchedValue,
@@ -143,11 +144,13 @@ impl Receiver {
 
 /// Transmission control block for representing our TCP connection.
 // ToDo: Make all public fields in this structure private.
-pub struct ControlBlock<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct ControlBlock<RT: NetworkRuntime + Clone + 'static> {
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
     rt: Rc<RT>,
+    pub scheduler: Scheduler,
+    pub clock: TimerRc,
 
     // ToDo: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
     // this along with other remote IP information (such as routing, path MTU, etc).
@@ -206,11 +209,13 @@ pub struct ControlBlock<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>
 
 //==============================================================================
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> ControlBlock<RT> {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        scheduler: Scheduler,
+        clock: TimerRc,
         arp: ArpPeer<RT>,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
@@ -228,6 +233,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
             local,
             remote,
             rt: Rc::new(rt),
+            scheduler,
+            clock,
             arp: Rc::new(arp),
             sender: sender,
             state: Cell::new(State::Established),
@@ -252,10 +259,6 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
 
     pub fn get_remote(&self) -> SocketAddrV4 {
         self.remote
-    }
-
-    pub fn rt(&self) -> Rc<RT> {
-        self.rt.clone()
     }
 
     // ToDo: Remove this.  ARP doesn't belong at this layer.
@@ -385,7 +388,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
 
         // ToDo: We're probably getting "now" here in order to get a timestamp as close as possible to when we received
         // the packet.  However, this is wasteful if we don't take a path below that actually uses it.  Review this.
-        let now: Instant = self.rt.now();
+        let now: Instant = self.clock.now();
 
         // Check to see if the segment is acceptable sequence-wise (i.e. contains some data that fits within the receive
         // window, or is a non-data segment with a sequence number that falls within the window).  Unacceptable segments

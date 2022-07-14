@@ -44,7 +44,6 @@ use ::runtime::{
         NetworkRuntime,
         PacketBuf,
     },
-    task::SchedulerRuntime,
     QDesc,
 };
 use ::std::{
@@ -488,10 +487,10 @@ pub fn advance_clock(
 ) {
     *now += Duration::from_secs(1);
     if let Some(server) = server {
-        server.rt().advance_clock(*now);
+        server.clock.advance_clock(*now);
     }
     if let Some(client) = client {
-        client.rt().advance_clock(*now);
+        client.clock.advance_clock(*now);
     }
 }
 

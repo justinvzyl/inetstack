@@ -26,16 +26,10 @@ use ::runtime::{
         NetworkRuntime,
         PacketBuf,
     },
-    scheduler::{
-        Scheduler,
-        SchedulerFuture,
-        SchedulerHandle,
-    },
-    task::SchedulerRuntime,
+    scheduler::Scheduler,
     timer::{
         Timer,
         TimerRc,
-        WaitFuture,
     },
 };
 use ::std::{
@@ -54,8 +48,6 @@ use ::std::{
 
 /// Shared Dummy Runtime
 struct SharedDummyRuntime {
-    /// Clock
-    timer: TimerRc,
     /// Random Number Generator
     /// Incoming Queue of Packets
     incoming: crossbeam_channel::Receiver<DataBuffer>,
@@ -68,7 +60,8 @@ struct SharedDummyRuntime {
 pub struct DummyRuntime {
     /// Shared Member Fields
     inner: Rc<RefCell<SharedDummyRuntime>>,
-    scheduler: Scheduler,
+    pub scheduler: Scheduler,
+    pub clock: TimerRc,
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     tcp_options: TcpConfig,
@@ -98,14 +91,11 @@ impl DummyRuntime {
             Some(false),
         );
 
-        let inner = SharedDummyRuntime {
-            timer: TimerRc(Rc::new(Timer::new(now))),
-            incoming,
-            outgoing,
-        };
+        let inner = SharedDummyRuntime { incoming, outgoing };
         Self {
             inner: Rc::new(RefCell::new(inner)),
             scheduler: Scheduler::default(),
+            clock: TimerRc(Rc::new(Timer::new(now))),
             link_addr,
             ipv4_addr,
             tcp_options: TcpConfig::default(),
@@ -159,55 +149,5 @@ impl NetworkRuntime for DummyRuntime {
 
     fn arp_options(&self) -> ArpConfig {
         self.arp_options.clone()
-    }
-}
-
-/// Scheduler Runtime Trait Implementation for Dummy Runtime
-impl SchedulerRuntime for DummyRuntime {
-    type WaitFuture = WaitFuture<TimerRc>;
-
-    fn advance_clock(&self, now: Instant) {
-        self.inner.borrow_mut().timer.0.advance_clock(now);
-    }
-
-    fn wait(&self, duration: Duration) -> Self::WaitFuture {
-        let inner = self.inner.borrow_mut();
-        let now = inner.timer.0.now();
-        inner.timer.0.wait_until(inner.timer.clone(), now + duration)
-    }
-
-    fn wait_until(&self, when: Instant) -> Self::WaitFuture {
-        let inner = self.inner.borrow_mut();
-        inner.timer.0.wait_until(inner.timer.clone(), when)
-    }
-
-    fn now(&self) -> Instant {
-        self.inner.borrow().timer.0.now()
-    }
-
-    fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        match self.scheduler.insert(future) {
-            Some(handle) => handle,
-            None => panic!("could not insert future in scheduling queue"),
-        }
-    }
-
-    fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        match self.scheduler.insert(future) {
-            Some(handle) => handle,
-            None => panic!("could not insert future in scheduling queue"),
-        }
-    }
-
-    fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {
-        self.scheduler.from_raw_handle(key)
-    }
-
-    fn take(&self, handle: SchedulerHandle) -> Box<dyn SchedulerFuture> {
-        self.scheduler.take(handle)
-    }
-
-    fn poll(&self) {
-        self.scheduler.poll()
     }
 }

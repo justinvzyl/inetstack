@@ -34,16 +34,6 @@ use ::libc::{
     ECONNREFUSED,
     ETIMEDOUT,
 };
-use ::runtime::{
-    fail::Fail,
-    memory::{
-        Buffer,
-        DataBuffer,
-    },
-    network::NetworkRuntime,
-    scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
-};
 use ::std::{
     cell::RefCell,
     convert::TryInto,
@@ -56,19 +46,34 @@ use ::std::{
         Waker,
     },
 };
+use runtime::{
+    fail::Fail,
+    memory::{
+        Buffer,
+        DataBuffer,
+    },
+    network::NetworkRuntime,
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
+    },
+    timer::TimerRc,
+};
 
-struct ConnectResult<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+struct ConnectResult<RT: NetworkRuntime + Clone + 'static> {
     waker: Option<Waker>,
     result: Option<Result<ControlBlock<RT>, Fail>>,
 }
 
-pub struct ActiveOpenSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct ActiveOpenSocket<RT: NetworkRuntime + Clone + 'static> {
     local_isn: SeqNumber,
 
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
     rt: RT,
+    scheduler: Scheduler,
+    clock: TimerRc,
     arp: ArpPeer<RT>,
 
     #[allow(unused)]
@@ -76,16 +81,35 @@ pub struct ActiveOpenSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'sta
     result: Rc<RefCell<ConnectResult<RT>>>,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
-    pub fn new(local_isn: SeqNumber, local: SocketAddrV4, remote: SocketAddrV4, rt: RT, arp: ArpPeer<RT>) -> Self {
+impl<RT: NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
+    pub fn new(
+        scheduler: Scheduler,
+        local_isn: SeqNumber,
+        local: SocketAddrV4,
+        remote: SocketAddrV4,
+        rt: RT,
+        clock: TimerRc,
+        arp: ArpPeer<RT>,
+    ) -> Self {
         let result = ConnectResult {
             waker: None,
             result: None,
         };
         let result = Rc::new(RefCell::new(result));
 
-        let future = Self::background(local_isn, local, remote, rt.clone(), arp.clone(), result.clone());
-        let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let future = Self::background(
+            local_isn,
+            local,
+            remote,
+            rt.clone(),
+            clock.clone(),
+            arp.clone(),
+            result.clone(),
+        );
+        let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
+            Some(handle) => handle,
+            None => panic!("failed to insert task in the scheduler"),
+        };
 
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
         Self {
@@ -93,8 +117,9 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             local,
             remote,
             rt,
+            scheduler: scheduler.clone(),
+            clock,
             arp,
-
             handle,
             result,
         }
@@ -211,6 +236,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
             self.local,
             self.remote,
             self.rt.clone(),
+            self.scheduler.clone(),
+            self.clock.clone(),
             self.arp.clone(),
             remote_seq_num,
             self.rt.tcp_options().get_ack_delay_timeout(),
@@ -231,6 +258,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        clock: TimerRc,
         arp: ArpPeer<RT>,
         result: Rc<RefCell<ConnectResult<RT>>>,
     ) -> impl Future<Output = ()> {
@@ -269,7 +297,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
                 };
                 rt.transmit(segment);
-                rt.wait(handshake_timeout).await;
+                clock.wait(clock.clone(), handshake_timeout).await;
             }
             let mut r = result.borrow_mut();
             if let Some(w) = r.waker.take() {

@@ -5,7 +5,10 @@
 mod tests;
 
 use crate::collections::HashTtlCache;
-use ::runtime::network::types::MacAddress;
+use ::runtime::{
+    network::types::MacAddress,
+    timer::TimerRc,
+};
 use ::std::{
     collections::HashMap,
     net::Ipv4Addr,
@@ -51,13 +54,13 @@ pub struct ArpCache {
 impl ArpCache {
     /// Creates an ARP Cache.
     pub fn new(
-        now: Instant,
+        clock: TimerRc,
         default_ttl: Option<Duration>,
         values: Option<&HashMap<Ipv4Addr, MacAddress>>,
         disable: bool,
     ) -> ArpCache {
         let mut peer = ArpCache {
-            cache: HashTtlCache::new(now, default_ttl),
+            cache: HashTtlCache::new(clock.now(), default_ttl),
             disable,
         };
 

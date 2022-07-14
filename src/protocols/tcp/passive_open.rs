@@ -43,8 +43,11 @@ use ::runtime::{
         DataBuffer,
     },
     network::NetworkRuntime,
-    scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
+    },
+    timer::TimerRc,
 };
 use ::std::{
     cell::RefCell,
@@ -76,13 +79,13 @@ struct InflightAccept {
     handle: SchedulerHandle,
 }
 
-struct ReadySockets<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+struct ReadySockets<RT: NetworkRuntime + Clone + 'static> {
     ready: VecDeque<Result<ControlBlock<RT>, Fail>>,
     endpoints: HashSet<SocketAddrV4>,
     waker: Option<Waker>,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ReadySockets<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> ReadySockets<RT> {
     fn push_ok(&mut self, cb: ControlBlock<RT>) {
         assert!(self.endpoints.insert(cb.get_remote()));
         self.ready.push_back(Ok(cb));
@@ -117,7 +120,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ReadySockets<RT> {
     }
 }
 
-pub struct PassiveSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct PassiveSocket<RT: NetworkRuntime + Clone + 'static> {
     inflight: HashMap<SocketAddrV4, InflightAccept>,
     ready: Rc<RefCell<ReadySockets<RT>>>,
 
@@ -126,11 +129,21 @@ pub struct PassiveSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static
 
     local: SocketAddrV4,
     rt: RT,
+    scheduler: Scheduler,
+    clock: TimerRc,
     arp: ArpPeer<RT>,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
-    pub fn new(local: SocketAddrV4, max_backlog: usize, rt: RT, arp: ArpPeer<RT>, nonce: u32) -> Self {
+impl<RT: NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
+    pub fn new(
+        local: SocketAddrV4,
+        max_backlog: usize,
+        rt: RT,
+        scheduler: Scheduler,
+        clock: TimerRc,
+        arp: ArpPeer<RT>,
+        nonce: u32,
+    ) -> Self {
         let ready = ReadySockets {
             ready: VecDeque::new(),
             endpoints: HashSet::new(),
@@ -144,6 +157,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
             isn_generator: IsnGenerator::new(nonce),
             local,
             rt,
+            scheduler,
+            clock,
             arp,
         }
     }
@@ -205,6 +220,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
                 self.local,
                 remote,
                 self.rt.clone(),
+                self.scheduler.clone(),
+                self.clock.clone(),
                 self.arp.clone(),
                 remote_isn + SeqNumber::from(1),
                 self.rt.tcp_options().get_ack_delay_timeout(),
@@ -238,10 +255,17 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
             self.local,
             remote,
             self.rt.clone(),
+            self.clock.clone(),
             self.arp.clone(),
             self.ready.clone(),
         );
-        let handle: SchedulerHandle = self.rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle: SchedulerHandle = match self
+            .scheduler
+            .insert(FutureOperation::Background::<RT>(future.boxed_local()))
+        {
+            Some(handle) => handle,
+            None => panic!("failed to insert task in the scheduler"),
+        };
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
@@ -276,6 +300,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: RT,
+        clock: TimerRc,
         arp: ArpPeer<RT>,
         ready: Rc<RefCell<ReadySockets<RT>>>,
     ) -> impl Future<Output = ()> {
@@ -315,7 +340,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
                 };
                 rt.transmit(segment);
-                rt.wait(handshake_timeout).await;
+                clock.wait(clock.clone(), handshake_timeout).await;
             }
             ready.borrow_mut().push_err(Fail::new(ETIMEDOUT, "handshake timeout"));
         }

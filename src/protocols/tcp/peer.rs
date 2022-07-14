@@ -60,7 +60,8 @@ use ::runtime::{
         DataBuffer,
     },
     network::NetworkRuntime,
-    task::SchedulerRuntime,
+    scheduler::Scheduler,
+    timer::TimerRc,
     QDesc,
 };
 use ::std::{
@@ -96,7 +97,7 @@ enum Socket {
 // Structures
 //==============================================================================
 
-pub struct Inner<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct Inner<RT: NetworkRuntime + Clone + 'static> {
     isn_generator: IsnGenerator,
 
     ephemeral_ports: EphemeralPorts,
@@ -109,13 +110,15 @@ pub struct Inner<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     established: HashMap<(SocketAddrV4, SocketAddrV4), EstablishedSocket<RT>>,
 
     rt: RT,
+    scheduler: Scheduler,
+    clock: TimerRc,
     arp: ArpPeer<RT>,
     rng: Rc<RefCell<SmallRng>>,
 
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
-pub struct TcpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct TcpPeer<RT: NetworkRuntime + Clone + 'static> {
     pub(super) inner: Rc<RefCell<Inner<RT>>>,
 }
 
@@ -123,10 +126,18 @@ pub struct TcpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 // Associated FUnctions
 //==============================================================================
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
-    pub fn new(rt: RT, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Self {
+impl<RT: NetworkRuntime + Clone + 'static> TcpPeer<RT> {
+    pub fn new(rt: RT, scheduler: Scheduler, clock: TimerRc, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Self {
         let (tx, rx) = mpsc::unbounded();
-        let inner = Rc::new(RefCell::new(Inner::new(rt.clone(), arp, rng_seed, tx, rx)));
+        let inner = Rc::new(RefCell::new(Inner::new(
+            rt.clone(),
+            scheduler,
+            clock,
+            arp,
+            rng_seed,
+            tx,
+            rx,
+        )));
         Self { inner }
     }
 
@@ -235,7 +246,15 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         }
 
         let nonce: u32 = inner.rng.borrow_mut().gen();
-        let socket = PassiveSocket::new(local, backlog, inner.rt.clone(), inner.arp.clone(), nonce);
+        let socket = PassiveSocket::new(
+            local,
+            backlog,
+            inner.rt.clone(),
+            inner.scheduler.clone(),
+            inner.clock.clone(),
+            inner.arp.clone(),
+            nonce,
+        );
         assert!(inner.passive.insert(local, socket).is_none());
         inner.sockets.insert(qd, Socket::Listening { local });
         Ok(())
@@ -316,8 +335,15 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
 
         // Create active socket.
         let local_isn: SeqNumber = inner.isn_generator.generate(&local, &remote);
-        let socket: ActiveOpenSocket<RT> =
-            ActiveOpenSocket::new(local_isn, local, remote, inner.rt.clone(), inner.arp.clone());
+        let socket: ActiveOpenSocket<RT> = ActiveOpenSocket::new(
+            inner.scheduler.clone(),
+            local_isn,
+            local,
+            remote,
+            inner.rt.clone(),
+            inner.clock.clone(),
+            inner.arp.clone(),
+        );
 
         // Insert socket in connecting table.
         if inner.connecting.insert((local, remote), socket).is_some() {
@@ -435,9 +461,11 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
     }
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> Inner<RT> {
     fn new(
         rt: RT,
+        scheduler: Scheduler,
+        clock: TimerRc,
         arp: ArpPeer<RT>,
         rng_seed: [u8; 32],
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
@@ -454,6 +482,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
             connecting: HashMap::new(),
             established: HashMap::new(),
             rt,
+            scheduler,
+            clock,
             arp,
             rng: Rc::new(RefCell::new(rng)),
             dead_socket_tx,

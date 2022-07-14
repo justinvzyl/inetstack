@@ -16,7 +16,6 @@ use ::runtime::{
         types::MacAddress,
         NetworkRuntime,
     },
-    task::SchedulerRuntime,
 };
 use ::std::{
     rc::Rc,
@@ -32,7 +31,7 @@ pub enum RetransmitCause {
     FastRetransmit,
 }
 
-async fn retransmit<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
+async fn retransmit<RT: NetworkRuntime + Clone + 'static>(
     cause: RetransmitCause,
     cb: &Rc<ControlBlock<RT>>,
 ) -> Result<(), Fail> {
@@ -81,21 +80,19 @@ async fn retransmit<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
     // Set new retransmit deadline.
     // ToDo: Review this.  Shouldn't we only do this for RetransmitCause::Timeout?
     let rto: Duration = cb.rto_estimate();
-    let deadline: Instant = cb.rt().now() + rto;
+    let deadline: Instant = cb.clock.now() + rto;
     cb.set_retransmit_deadline(Some(deadline));
 
     Ok(())
 }
 
-pub async fn retransmitter<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
-    cb: Rc<ControlBlock<RT>>,
-) -> Result<!, Fail> {
+pub async fn retransmitter<RT: NetworkRuntime + Clone + 'static>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         // Pin future for timeout retransmission.
         let (rtx_deadline, rtx_deadline_changed) = cb.watch_retransmit_deadline();
         futures::pin_mut!(rtx_deadline_changed);
         let rtx_future = match rtx_deadline {
-            Some(t) => Either::Left(cb.rt().wait_until(t).fuse()),
+            Some(t) => Either::Left(cb.clock.wait_until(cb.clock.clone(), t).fuse()),
             None => Either::Right(future::pending()),
         };
         futures::pin_mut!(rtx_future);

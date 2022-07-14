@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use ::runtime::timer::Timer;
+use ::std::rc::Rc;
+
 use super::*;
 use crate::test_helpers;
 
@@ -10,9 +13,10 @@ fn evit_with_default_ttl() {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
     let later = now + ttl;
+    let clock = TimerRc(Rc::new(Timer::new(now)));
 
     // Insert an IPv4 address in the ARP Cache.
-    let mut cache = ArpCache::new(now, Some(ttl), None, false);
+    let mut cache = ArpCache::new(clock, Some(ttl), None, false);
     cache.insert(test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC);
     assert!(cache.get(test_helpers::ALICE_IPV4) == Some(&test_helpers::ALICE_MAC));
 
@@ -29,13 +33,14 @@ fn evit_with_default_ttl() {
 fn import() {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
+    let clock = TimerRc(Rc::new(Timer::new(now)));
 
     // Create an address resolution map.
     let mut map: HashMap<Ipv4Addr, MacAddress> = HashMap::new();
     map.insert(test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC);
 
     // Create an ARP Cache and import address resolution map.
-    let cache = ArpCache::new(now, Some(ttl), Some(&map), false);
+    let cache = ArpCache::new(clock, Some(ttl), Some(&map), false);
 
     // Check if address resolutions are in the ARP Cache.
     assert!(cache.get(test_helpers::ALICE_IPV4) == Some(&test_helpers::ALICE_MAC));
@@ -46,9 +51,10 @@ fn import() {
 fn export() {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
+    let clock = TimerRc(Rc::new(Timer::new(now)));
 
     // Insert an IPv4 address in the ARP Cache.
-    let mut cache = ArpCache::new(now, Some(ttl), None, false);
+    let mut cache = ArpCache::new(clock, Some(ttl), None, false);
     cache.insert(test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC);
     assert!(cache.get(test_helpers::ALICE_IPV4) == Some(&test_helpers::ALICE_MAC));
 
