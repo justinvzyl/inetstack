@@ -55,7 +55,7 @@ use ::std::{
     },
     convert::TryInto,
     future::Future,
-    net::SocketAddrV4,
+    net::SocketAddr,
     rc::Rc,
     task::{
         Context,
@@ -64,6 +64,7 @@ use ::std::{
     },
     time::Duration,
 };
+use std::net::IpAddr;
 
 struct InflightAccept {
     local_isn: SeqNumber,
@@ -78,7 +79,7 @@ struct InflightAccept {
 
 struct ReadySockets<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     ready: VecDeque<Result<ControlBlock<RT>, Fail>>,
-    endpoints: HashSet<SocketAddrV4>,
+    endpoints: HashSet<SocketAddr>,
     waker: Option<Waker>,
 }
 
@@ -118,19 +119,19 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ReadySockets<RT> {
 }
 
 pub struct PassiveSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
-    inflight: HashMap<SocketAddrV4, InflightAccept>,
+    inflight: HashMap<SocketAddr, InflightAccept>,
     ready: Rc<RefCell<ReadySockets<RT>>>,
 
     max_backlog: usize,
     isn_generator: IsnGenerator,
 
-    local: SocketAddrV4,
+    local: SocketAddr,
     rt: RT,
     arp: ArpPeer<RT>,
 }
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> {
-    pub fn new(local: SocketAddrV4, max_backlog: usize, rt: RT, arp: ArpPeer<RT>, nonce: u32) -> Self {
+    pub fn new(local: SocketAddr, max_backlog: usize, rt: RT, arp: ArpPeer<RT>, nonce: u32) -> Self {
         let ready = ReadySockets {
             ready: VecDeque::new(),
             endpoints: HashSet::new(),
@@ -153,7 +154,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
     }
 
     pub fn receive(&mut self, ip_header: &Ipv4Header, header: &TcpHeader) -> Result<(), Fail> {
-        let remote = SocketAddrV4::new(ip_header.get_src_addr(), header.src_port);
+        let remote = SocketAddr::new(IpAddr::V4(ip_header.get_src_addr()), header.src_port);
         if self.ready.borrow().endpoints.contains(&remote) {
             // TODO: What should we do if a packet shows up for a connection that hasn't been `accept`ed yet?
             return Ok(());
@@ -273,8 +274,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
     fn background(
         local_isn: SeqNumber,
         remote_isn: SeqNumber,
-        local: SocketAddrV4,
-        remote: SocketAddrV4,
+        local: SocketAddr,
+        remote: SocketAddr,
         rt: RT,
         arp: ArpPeer<RT>,
         ready: Rc<RefCell<ReadySockets<RT>>>,
@@ -309,7 +310,17 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> PassiveSocket<RT> 
                 debug!("Sending SYN+ACK: {:?}", tcp_hdr);
                 let segment = TcpSegment {
                     ethernet2_hdr: Ethernet2Header::new(remote_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
-                    ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
+                    ipv4_hdr: Ipv4Header::new(
+                        match local.ip().clone() {
+                            IpAddr::V4(ipv4) => ipv4,
+                            IpAddr::V6(_) => todo!(),
+                        },
+                        match remote.ip().clone() {
+                            IpAddr::V4(ipv4) => ipv4,
+                            IpAddr::V6(_) => todo!(),
+                        },
+                        IpProtocol::TCP,
+                    ),
                     tcp_hdr,
                     data: Buffer::Heap(DataBuffer::empty()),
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),

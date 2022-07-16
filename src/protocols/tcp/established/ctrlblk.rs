@@ -51,7 +51,7 @@ use ::std::{
     },
     collections::VecDeque,
     convert::TryInto,
-    net::SocketAddrV4,
+    net::SocketAddr,
     rc::Rc,
     task::{
         Context,
@@ -144,8 +144,8 @@ impl Receiver {
 /// Transmission control block for representing our TCP connection.
 // ToDo: Make all public fields in this structure private.
 pub struct ControlBlock<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
-    local: SocketAddrV4,
-    remote: SocketAddrV4,
+    local: SocketAddr,
+    remote: SocketAddr,
 
     rt: Rc<RT>,
 
@@ -208,8 +208,8 @@ pub struct ControlBlock<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
     pub fn new(
-        local: SocketAddrV4,
-        remote: SocketAddrV4,
+        local: SocketAddr,
+        remote: SocketAddr,
         rt: RT,
         arp: ArpPeer<RT>,
         receiver_seq_no: SeqNumber,
@@ -246,11 +246,11 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         }
     }
 
-    pub fn get_local(&self) -> SocketAddrV4 {
+    pub fn get_local(&self) -> SocketAddr {
         self.local
     }
 
-    pub fn get_remote(&self) -> SocketAddrV4 {
+    pub fn get_remote(&self) -> SocketAddr {
         self.remote
     }
 
@@ -817,7 +817,17 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ControlBlock<RT> {
         // ToDo: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
         let segment = TcpSegment {
             ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
-            ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
+            ipv4_hdr: Ipv4Header::new(
+                match self.local.ip().clone() {
+                    std::net::IpAddr::V4(ipv4) => ipv4,
+                    std::net::IpAddr::V6(_) => todo!(),
+                },
+                match self.remote.ip().clone() {
+                    std::net::IpAddr::V4(ipv4) => ipv4,
+                    std::net::IpAddr::V6(_) => todo!(),
+                },
+                IpProtocol::TCP,
+            ),
             tcp_hdr: header,
             data,
             tx_checksum_offload: self.rt.tcp_options().get_tx_checksum_offload(),

@@ -36,13 +36,11 @@ use ::runtime::{
     QDesc,
     QToken,
 };
-use ::std::{
-    net::SocketAddrV4,
-    thread::{
-        self,
-        JoinHandle,
-    },
+use ::std::thread::{
+    self,
+    JoinHandle,
 };
+use std::net::SocketAddr;
 
 //==============================================================================
 // Connect
@@ -50,7 +48,7 @@ use ::std::{
 
 /// Opens and closes a socket using a non-ephemeral port.
 fn do_udp_setup(libos: &mut InetStack<DummyRuntime>) {
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
+    let local: SocketAddr = SocketAddr::new(ALICE_IPV4, PORT_BASE);
     let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     libos.close(sockfd).unwrap();
@@ -59,7 +57,7 @@ fn do_udp_setup(libos: &mut InetStack<DummyRuntime>) {
 /// Opens and closes a socket using an ephemeral port.
 fn do_udp_setup_ephemeral(libos: &mut InetStack<DummyRuntime>) {
     const PORT_EPHEMERAL_BASE: u16 = 49152;
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_EPHEMERAL_BASE);
+    let local: SocketAddr = SocketAddr::new(ALICE_IPV4, PORT_EPHEMERAL_BASE);
     let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     libos.close(sockfd).unwrap();
@@ -67,7 +65,7 @@ fn do_udp_setup_ephemeral(libos: &mut InetStack<DummyRuntime>) {
 
 /// Opens and closes a socket using wildcard ephemeral port.
 fn do_udp_setup_wildcard_ephemeral(libos: &mut InetStack<DummyRuntime>) {
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, 0);
+    let local: SocketAddr = SocketAddr::new(ALICE_IPV4, 0);
     let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     libos.close(sockfd).unwrap();
@@ -90,7 +88,7 @@ fn udp_connect_loopback() {
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let port: u16 = PORT_BASE;
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+    let local: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
     // Open and close a connection.
     let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
@@ -110,9 +108,9 @@ fn udp_push_remote() {
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let bob_port: u16 = PORT_BASE;
-    let bob_addr: SocketAddrV4 = SocketAddrV4::new(BOB_IPV4, bob_port);
+    let bob_addr: SocketAddr = SocketAddr::new(BOB_IPV4, bob_port);
     let alice_port: u16 = PORT_BASE;
-    let alice_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, alice_port);
+    let alice_addr: SocketAddr = SocketAddr::new(ALICE_IPV4, alice_port);
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -194,9 +192,9 @@ fn udp_loopback() {
     let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
 
     let bob_port: u16 = PORT_BASE;
-    let bob_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, bob_port);
+    let bob_addr: SocketAddr = SocketAddr::new(ALICE_IPV4, bob_port);
     let alice_port: u16 = PORT_BASE;
-    let alice_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, alice_port);
+    let alice_addr: SocketAddr = SocketAddr::new(ALICE_IPV4, alice_port);
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());

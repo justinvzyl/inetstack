@@ -55,7 +55,7 @@ use ::std::{
     cell::RefCell,
     collections::HashMap,
     future::Future,
-    net::Ipv4Addr,
+    net::IpAddr,
     num::Wrapping,
     process,
     rc::Rc,
@@ -109,7 +109,7 @@ pub struct Icmpv4Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     arp: ArpPeer<RT>,
 
     /// Transmitter
-    tx: mpsc::UnboundedSender<(Ipv4Addr, u16, u16)>,
+    tx: mpsc::UnboundedSender<(IpAddr, u16, u16)>,
 
     /// Queue of Requests
     requests: Rc<RefCell<ReqQueue>>,
@@ -145,7 +145,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
     }
 
     /// Background task for replying to ICMP messages.
-    async fn background(rt: RT, arp: ArpPeer<RT>, mut rx: mpsc::UnboundedReceiver<(Ipv4Addr, u16, u16)>) {
+    async fn background(rt: RT, arp: ArpPeer<RT>, mut rx: mpsc::UnboundedReceiver<(IpAddr, u16, u16)>) {
         // Reply requests.
         while let Some((dst_ipv4_addr, id, seq_num)) = rx.next().await {
             debug!("initiating ARP query");
@@ -161,7 +161,17 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
             // Send reply message.
             rt.transmit(Icmpv4Message::new(
                 Ethernet2Header::new(dst_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
-                Ipv4Header::new(rt.local_ipv4_addr(), dst_ipv4_addr, IpProtocol::ICMPv4),
+                Ipv4Header::new(
+                    match rt.local_ip_addr() {
+                        IpAddr::V4(ipv4) => ipv4,
+                        IpAddr::V6(_) => todo!(),
+                    },
+                    match dst_ipv4_addr {
+                        IpAddr::V4(ipv4) => ipv4,
+                        IpAddr::V6(_) => todo!(),
+                    },
+                    IpProtocol::ICMPv4,
+                ),
                 Icmpv4Header::new(Icmpv4Type2::EchoReply { id, seq_num }, 0),
             ));
         }
@@ -174,7 +184,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
         match icmpv4_hdr.get_protocol() {
             Icmpv4Type2::EchoRequest { id, seq_num } => {
                 self.tx
-                    .unbounded_send((ipv4_header.get_src_addr(), id, seq_num))
+                    .unbounded_send((IpAddr::V4(ipv4_header.get_src_addr()), id, seq_num))
                     .unwrap();
             },
             Icmpv4Type2::EchoReply { id, seq_num } => {
@@ -192,22 +202,27 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
     /// Computes the identifier for an ICPM message.
     fn make_id(&self) -> u16 {
         let mut state: u32 = 0xFFFF;
-        let addr_octets = self.rt.local_ipv4_addr().octets();
-        state += NetworkEndian::read_u16(&addr_octets[0..2]) as u32;
-        state += NetworkEndian::read_u16(&addr_octets[2..4]) as u32;
+        match self.rt.local_ip_addr() {
+            IpAddr::V4(ipv4) => {
+                let addr_octets = ipv4.octets();
+                state += NetworkEndian::read_u16(&addr_octets[0..2]) as u32;
+                state += NetworkEndian::read_u16(&addr_octets[2..4]) as u32;
 
-        let mut pid_buf = [0u8; 4];
-        NetworkEndian::write_u32(&mut pid_buf[..], process::id());
-        state += NetworkEndian::read_u16(&pid_buf[0..2]) as u32;
-        state += NetworkEndian::read_u16(&pid_buf[2..4]) as u32;
+                let mut pid_buf = [0u8; 4];
+                NetworkEndian::write_u32(&mut pid_buf[..], process::id());
+                state += NetworkEndian::read_u16(&pid_buf[0..2]) as u32;
+                state += NetworkEndian::read_u16(&pid_buf[2..4]) as u32;
 
-        let nonce: [u8; 2] = self.rng.borrow_mut().gen();
-        state += NetworkEndian::read_u16(&nonce[..]) as u32;
+                let nonce: [u8; 2] = self.rng.borrow_mut().gen();
+                state += NetworkEndian::read_u16(&nonce[..]) as u32;
 
-        while state > 0xFFFF {
-            state -= 0xFFFF;
+                while state > 0xFFFF {
+                    state -= 0xFFFF;
+                }
+                !state as u16
+            },
+            IpAddr::V6(_) => todo!(),
         }
-        !state as u16
     }
 
     /// Computes sequence number for an ICMP message.
@@ -220,7 +235,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
     /// Sends a ping to a remote peer.Wrapping
     pub fn ping(
         &mut self,
-        dst_ipv4_addr: Ipv4Addr,
+        dst_ip_addr: IpAddr,
         timeout: Option<Duration>,
     ) -> impl Future<Output = Result<Duration, Fail>> {
         let timeout = timeout.unwrap_or_else(|| Duration::from_millis(5000));
@@ -233,12 +248,22 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
         async move {
             let t0 = rt.now();
             debug!("initiating ARP query");
-            let dst_link_addr = arp.query(dst_ipv4_addr).await?;
-            debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
+            let dst_link_addr = arp.query(dst_ip_addr).await?;
+            debug!("ARP query complete ({} -> {})", dst_ip_addr, dst_link_addr);
 
             let msg = Icmpv4Message::new(
                 Ethernet2Header::new(dst_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
-                Ipv4Header::new(rt.local_ipv4_addr(), dst_ipv4_addr, IpProtocol::ICMPv4),
+                Ipv4Header::new(
+                    match rt.local_ip_addr() {
+                        IpAddr::V4(ipv4) => ipv4,
+                        IpAddr::V6(_) => todo!(),
+                    },
+                    match dst_ip_addr {
+                        IpAddr::V4(ipv4) => ipv4,
+                        IpAddr::V6(_) => todo!(),
+                    },
+                    IpProtocol::ICMPv4,
+                ),
                 Icmpv4Header::new(echo_request, 0),
             );
             rt.transmit(msg);

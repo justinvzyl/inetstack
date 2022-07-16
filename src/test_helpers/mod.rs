@@ -17,12 +17,13 @@ use ::runtime::network::{
 };
 use ::std::{
     collections::HashMap,
-    net::Ipv4Addr,
+    net::IpAddr,
     time::{
         Duration,
         Instant,
     },
 };
+use std::net::Ipv4Addr;
 
 //==============================================================================
 // Constants
@@ -30,11 +31,11 @@ use ::std::{
 
 pub const RECEIVE_WINDOW_SIZE: usize = 1024;
 pub const ALICE_MAC: MacAddress = MacAddress::new([0x12, 0x23, 0x45, 0x67, 0x89, 0xab]);
-pub const ALICE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 1);
+pub const ALICE_IPV4: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
 pub const BOB_MAC: MacAddress = MacAddress::new([0xab, 0x89, 0x67, 0x45, 0x23, 0x12]);
-pub const BOB_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 2);
+pub const BOB_IPV4: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 2));
 pub const CARRIE_MAC: MacAddress = MacAddress::new([0xef, 0xcd, 0xab, 0x89, 0x67, 0x45]);
-pub const CARRIE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 3);
+pub const CARRIE_IPV4: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 3));
 
 //==============================================================================
 // Types
@@ -75,7 +76,7 @@ pub fn new_bob(now: Instant) -> Engine<TestRuntime> {
 }
 
 pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
-    let mut arp: HashMap<Ipv4Addr, MacAddress> = HashMap::<Ipv4Addr, MacAddress>::new();
+    let mut arp: HashMap<IpAddr, MacAddress> = HashMap::<IpAddr, MacAddress>::new();
     arp.insert(ALICE_IPV4, ALICE_MAC);
     arp.insert(BOB_IPV4, BOB_MAC);
     let arp_options = ArpConfig::new(
@@ -92,7 +93,7 @@ pub fn new_alice2(now: Instant) -> Engine<TestRuntime> {
 }
 
 pub fn new_bob2(now: Instant) -> Engine<TestRuntime> {
-    let mut arp: HashMap<Ipv4Addr, MacAddress> = HashMap::<Ipv4Addr, MacAddress>::new();
+    let mut arp: HashMap<IpAddr, MacAddress> = HashMap::<IpAddr, MacAddress>::new();
     arp.insert(BOB_IPV4, BOB_MAC);
     arp.insert(ALICE_IPV4, ALICE_MAC);
     let arp_options = ArpConfig::new(

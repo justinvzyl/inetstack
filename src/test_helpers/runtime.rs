@@ -40,7 +40,7 @@ use ::std::{
     cell::RefCell,
     collections::VecDeque,
     future::Future,
-    net::Ipv4Addr,
+    net::IpAddr,
     rc::Rc,
     time::{
         Duration,
@@ -69,7 +69,7 @@ pub struct Inner {
 #[derive(Clone)]
 pub struct TestRuntime {
     link_addr: MacAddress,
-    ipv4_addr: Ipv4Addr,
+    ip_addr: IpAddr,
     arp_options: ArpConfig,
     udp_options: UdpConfig,
     tcp_options: TcpConfig,
@@ -88,7 +88,7 @@ impl TestRuntime {
         udp_options: UdpConfig,
         tcp_options: TcpConfig,
         link_addr: MacAddress,
-        ipv4_addr: Ipv4Addr,
+        ip_addr: IpAddr,
     ) -> Self {
         logging::initialize();
 
@@ -99,7 +99,7 @@ impl TestRuntime {
         };
         Self {
             link_addr,
-            ipv4_addr,
+            ip_addr,
             inner: Rc::new(RefCell::new(inner)),
             scheduler: Scheduler::default(),
             arp_options,
@@ -159,8 +159,8 @@ impl NetworkRuntime for TestRuntime {
         self.link_addr
     }
 
-    fn local_ipv4_addr(&self) -> Ipv4Addr {
-        self.ipv4_addr
+    fn local_ip_addr(&self) -> IpAddr {
+        self.ip_addr
     }
 
     fn tcp_options(&self) -> TcpConfig {

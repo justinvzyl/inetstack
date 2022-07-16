@@ -13,12 +13,13 @@ use ::runtime::network::{
     },
     types::MacAddress,
 };
-use ::std::net::Ipv4Addr;
+use ::std::net::IpAddr;
+use std::net::Ipv4Addr;
 
 #[derive(Clone, Debug)]
 pub struct Options {
     pub arp: ArpConfig,
-    pub my_ipv4_addr: Ipv4Addr,
+    pub my_ip_addr: IpAddr,
     pub my_link_addr: MacAddress,
     pub rng_seed: [u8; 32],
     pub tcp: TcpConfig,
@@ -31,7 +32,7 @@ impl Default for Options {
         thread_rng().fill(rng_seed.as_mut());
         Options {
             arp: ArpConfig::default(),
-            my_ipv4_addr: Ipv4Addr::new(0, 0, 0, 0),
+            my_ip_addr: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
             my_link_addr: MacAddress::nil(),
             rng_seed,
             tcp: TcpConfig::default(),
@@ -46,10 +47,10 @@ impl Options {
         self
     }
 
-    pub fn my_ipv4_addr(mut self, value: Ipv4Addr) -> Self {
+    pub fn my_ipv4_addr(mut self, value: IpAddr) -> Self {
         assert!(!value.is_unspecified());
-        assert!(!value.is_broadcast());
-        self.my_ipv4_addr = value;
+        assert!(!value.is_multicast());
+        self.my_ip_addr = value;
         self
     }
 

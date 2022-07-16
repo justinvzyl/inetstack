@@ -21,7 +21,7 @@ use ::runtime::{
 };
 use ::std::{
     collections::HashMap,
-    net::Ipv4Addr,
+    net::IpAddr,
     time::Instant,
 };
 
@@ -39,10 +39,10 @@ impl DummyLibOS {
     /// Initializes the libOS.
     pub fn new(
         link_addr: MacAddress,
-        ipv4_addr: Ipv4Addr,
+        ipv4_addr: IpAddr,
         tx: Sender<DataBuffer>,
         rx: Receiver<DataBuffer>,
-        arp: HashMap<Ipv4Addr, MacAddress>,
+        arp: HashMap<IpAddr, MacAddress>,
     ) -> InetStack<DummyRuntime> {
         let now: Instant = Instant::now();
         let rt: DummyRuntime = DummyRuntime::new(now, link_addr, ipv4_addr, rx, tx, arp);

@@ -8,7 +8,7 @@ use crate::collections::HashTtlCache;
 use ::runtime::network::types::MacAddress;
 use ::std::{
     collections::HashMap,
-    net::Ipv4Addr,
+    net::IpAddr,
     time::{
         Duration,
         Instant,
@@ -38,7 +38,7 @@ struct Record {
 /// - TODO: Implement remove.
 pub struct ArpCache {
     /// Cache for IPv4 Addresses
-    cache: HashTtlCache<Ipv4Addr, Record>,
+    cache: HashTtlCache<IpAddr, Record>,
 
     /// Disable ARP?
     disable: bool,
@@ -53,7 +53,7 @@ impl ArpCache {
     pub fn new(
         now: Instant,
         default_ttl: Option<Duration>,
-        values: Option<&HashMap<Ipv4Addr, MacAddress>>,
+        values: Option<&HashMap<IpAddr, MacAddress>>,
         disable: bool,
     ) -> ArpCache {
         let mut peer = ArpCache {
@@ -72,13 +72,13 @@ impl ArpCache {
     }
 
     /// Caches an address resolution.
-    pub fn insert(&mut self, ipv4_addr: Ipv4Addr, link_addr: MacAddress) -> Option<MacAddress> {
+    pub fn insert(&mut self, ip_addr: IpAddr, link_addr: MacAddress) -> Option<MacAddress> {
         let record = Record { link_addr };
-        self.cache.insert(ipv4_addr, record).map(|r| r.link_addr)
+        self.cache.insert(ip_addr, record).map(|r| r.link_addr)
     }
 
     /// Gets the MAC address of given IPv4 address.
-    pub fn get(&self, ipv4_addr: Ipv4Addr) -> Option<&MacAddress> {
+    pub fn get(&self, ipv4_addr: IpAddr) -> Option<&MacAddress> {
         if self.disable {
             Some(&DUMMY_MAC_ADDRESS)
         } else {
@@ -99,8 +99,8 @@ impl ArpCache {
 
     // Exports address resolutions that are stored in the ARP cache.
     #[cfg(test)]
-    pub fn export(&self) -> HashMap<Ipv4Addr, MacAddress> {
-        let mut map: HashMap<Ipv4Addr, MacAddress> = HashMap::default();
+    pub fn export(&self) -> HashMap<IpAddr, MacAddress> {
+        let mut map: HashMap<IpAddr, MacAddress> = HashMap::default();
         for (k, v) in self.cache.iter() {
             map.insert(*k, v.link_addr);
         }

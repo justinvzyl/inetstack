@@ -46,7 +46,7 @@ use ::runtime::{
     memory::Buffer,
     network::{
         types::{
-            Ipv4Addr,
+            IpAddr,
             MacAddress,
         },
         NetworkRuntime,
@@ -57,7 +57,7 @@ use ::runtime::{
 };
 use ::std::{
     collections::HashMap,
-    net::SocketAddrV4,
+    net::SocketAddr,
 };
 
 #[cfg(feature = "profiler")]
@@ -86,15 +86,15 @@ pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     /// Ephemeral ports.
     ephemeral_ports: EphemeralPorts,
     /// Opened sockets.
-    sockets: HashMap<QDesc, Option<SocketAddrV4>>,
+    sockets: HashMap<QDesc, Option<SocketAddr>>,
     /// Bound sockets.
-    bound: HashMap<SocketAddrV4, SharedQueue<SharedQueueSlot<Buffer>>>,
+    bound: HashMap<SocketAddr, SharedQueue<SharedQueueSlot<Buffer>>>,
     /// Queue of unset datagrams. This is shared across fast/slow paths.
     send_queue: SharedQueue<SharedQueueSlot<Buffer>>,
     /// Local link address.
     local_link_addr: MacAddress,
     /// Local IPv4 address.
-    local_ipv4_addr: Ipv4Addr,
+    local_ip_addr: IpAddr,
     /// Offload checksum to hardware?
     checksum_offload: bool,
 
@@ -115,7 +115,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         rt: RT,
         rng_seed: [u8; 32],
         local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
+        local_ip_addr: IpAddr,
         offload_checksum: bool,
         arp: ArpPeer<RT>,
     ) -> Self {
@@ -123,7 +123,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
             SharedQueue::<SharedQueueSlot<Buffer>>::new(SEND_QUEUE_MAX_SIZE);
         let future = Self::background_sender(
             rt.clone(),
-            local_ipv4_addr,
+            local_ip_addr,
             local_link_addr,
             offload_checksum,
             arp.clone(),
@@ -140,7 +140,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
             bound: HashMap::new(),
             send_queue,
             local_link_addr,
-            local_ipv4_addr,
+            local_ip_addr,
             checksum_offload: offload_checksum,
             background: handle,
         }
@@ -149,7 +149,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     /// Asynchronously send unsent datagrams to remote peer.
     async fn background_sender(
         rt: RT,
-        local_ipv4_addr: Ipv4Addr,
+        local_ip_addr: IpAddr,
         local_link_addr: MacAddress,
         offload_checksum: bool,
         arp: ArpPeer<RT>,
@@ -164,7 +164,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
                     Ok(link_addr) => {
                         Self::do_send(
                             rt.clone(),
-                            local_ipv4_addr,
+                            local_ip_addr,
                             local_link_addr,
                             link_addr,
                             data,
@@ -191,7 +191,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         match self.sockets.contains_key(&qd) {
             // Que descriptor not used.
             false => {
-                let socket: Option<SocketAddrV4> = None;
+                let socket: Option<SocketAddr> = None;
                 self.sockets.insert(qd, socket);
                 Ok(())
             },
@@ -201,7 +201,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     }
 
     /// Binds a UDP socket to a local endpoint address.
-    pub fn do_bind(&mut self, qd: QDesc, mut addr: SocketAddrV4) -> Result<(), Fail> {
+    pub fn do_bind(&mut self, qd: QDesc, mut addr: SocketAddr) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::bind");
 
@@ -258,7 +258,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         timer!("udp::close");
 
         // Lookup associated endpoint.
-        let socket: Option<SocketAddrV4> = match self.sockets.remove(&qd) {
+        let socket: Option<SocketAddr> = match self.sockets.remove(&qd) {
             Some(s) => s,
             None => return Err(Fail::new(EBADF, "invalid queue descriptor")),
         };
@@ -271,12 +271,12 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     }
 
     /// Pushes data to a remote UDP peer.
-    pub fn do_pushto(&self, qd: QDesc, data: Buffer, remote: SocketAddrV4) -> Result<(), Fail> {
+    pub fn do_pushto(&self, qd: QDesc, data: Buffer, remote: SocketAddr) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::pushto");
 
         // Lookup associated endpoint.
-        let local: SocketAddrV4 = match self.sockets.get(&qd) {
+        let local: SocketAddr = match self.sockets.get(&qd) {
             Some(s) if s.is_some() => s.unwrap(),
             _ => return Err(Fail::new(EBADF, "invalid queue descriptor")),
         };
@@ -285,7 +285,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         if let Some(link_addr) = self.arp.try_query(remote.ip().clone()) {
             Self::do_send(
                 self.rt.clone(),
-                self.local_ipv4_addr,
+                self.local_ip_addr,
                 self.local_link_addr,
                 link_addr,
                 data,
@@ -326,8 +326,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         let (hdr, data): (UdpHeader, Buffer) = UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
         debug!("UDP received {:?}", hdr);
 
-        let local: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
-        let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), hdr.src_port());
+        let local: SocketAddr = SocketAddr::new(IpAddr::V4(ipv4_hdr.get_dest_addr()), hdr.dest_port());
+        let remote: SocketAddr = SocketAddr::new(IpAddr::V4(ipv4_hdr.get_src_addr()), hdr.src_port());
 
         // Lookup associated receiver-side shared queue.
         let recv_queue: &mut SharedQueue<SharedQueueSlot<Buffer>> = match self.bound.get_mut(&local) {
@@ -348,19 +348,29 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     /// Sends a UDP datagram.
     fn do_send(
         rt: RT,
-        local_ipv4_addr: Ipv4Addr,
+        local_ip_addr: IpAddr,
         local_link_addr: MacAddress,
         remote_link_addr: MacAddress,
         buf: Buffer,
-        local: &SocketAddrV4,
-        remote: &SocketAddrV4,
+        local: &SocketAddr,
+        remote: &SocketAddr,
         offload_checksum: bool,
     ) {
         let udp_header: UdpHeader = UdpHeader::new(local.port(), remote.port());
         debug!("UDP send {:?}", udp_header);
         let datagram = UdpDatagram::new(
             Ethernet2Header::new(remote_link_addr, local_link_addr, EtherType2::Ipv4),
-            Ipv4Header::new(local_ipv4_addr, remote.ip().clone(), IpProtocol::UDP),
+            Ipv4Header::new(
+                match local_ip_addr {
+                    IpAddr::V4(ipv4) => ipv4,
+                    IpAddr::V6(_) => todo!(),
+                },
+                match remote.ip().clone() {
+                    IpAddr::V4(ipv4) => ipv4,
+                    IpAddr::V6(_) => todo!(),
+                },
+                IpProtocol::UDP,
+            ),
             udp_header,
             buf,
             offload_checksum,

@@ -46,7 +46,7 @@ use ::std::{
     cell::RefCell,
     collections::HashMap,
     future::Future,
-    net::Ipv4Addr,
+    net::IpAddr,
     rc::Rc,
     time::{
         Duration,
@@ -65,7 +65,7 @@ use ::std::{
 pub struct ArpPeer<RT: NetworkRuntime> {
     rt: RT,
     cache: Rc<RefCell<ArpCache>>,
-    waiters: Rc<RefCell<HashMap<Ipv4Addr, Sender<MacAddress>>>>,
+    waiters: Rc<RefCell<HashMap<IpAddr, Sender<MacAddress>>>>,
     options: ArpConfig,
 
     /// The background co-routine cleans up the ARP cache from time to time.
@@ -101,18 +101,18 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
     }
 
     /// Drops a waiter for a target IP address.
-    fn do_drop(&mut self, ipv4_addr: Ipv4Addr) {
+    fn do_drop(&mut self, ipv4_addr: IpAddr) {
         self.waiters.borrow_mut().remove(&ipv4_addr);
     }
 
-    fn do_insert(&mut self, ipv4_addr: Ipv4Addr, link_addr: MacAddress) -> Option<MacAddress> {
+    fn do_insert(&mut self, ipv4_addr: IpAddr, link_addr: MacAddress) -> Option<MacAddress> {
         if let Some(sender) = self.waiters.borrow_mut().remove(&ipv4_addr) {
             let _ = sender.send(link_addr);
         }
         self.cache.borrow_mut().insert(ipv4_addr, link_addr)
     }
 
-    fn do_wait_link_addr(&mut self, ipv4_addr: Ipv4Addr) -> impl Future<Output = MacAddress> {
+    fn do_wait_link_addr(&mut self, ipv4_addr: IpAddr) -> impl Future<Output = MacAddress> {
         let (tx, rx): (Sender<MacAddress>, Receiver<MacAddress>) = channel();
         if let Some(&link_addr) = self.cache.borrow().get(ipv4_addr) {
             let _ = tx.send(link_addr);
@@ -164,7 +164,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
             }
         };
         // from RFC 826: ?Am I the target protocol address?
-        if header.get_destination_protocol_addr() != self.rt.local_ipv4_addr() {
+        if header.get_destination_protocol_addr() != self.rt.local_ip_addr() {
             if merge_flag {
                 // we did do something.
                 return Ok(());
@@ -195,7 +195,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
                     ArpHeader::new(
                         ArpOperation::Reply,
                         self.rt.local_link_addr(),
-                        self.rt.local_ipv4_addr(),
+                        self.rt.local_ip_addr(),
                         header.get_sender_hardware_addr(),
                         header.get_sender_protocol_addr(),
                     ),
@@ -218,11 +218,11 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
         }
     }
 
-    pub fn try_query(&self, ipv4_addr: Ipv4Addr) -> Option<MacAddress> {
+    pub fn try_query(&self, ipv4_addr: IpAddr) -> Option<MacAddress> {
         self.cache.borrow().get(ipv4_addr).cloned()
     }
 
-    pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output = Result<MacAddress, Fail>> {
+    pub fn query(&self, ipv4_addr: IpAddr) -> impl Future<Output = Result<MacAddress, Fail>> {
         let rt = self.rt.clone();
         let mut arp = self.clone();
         let cache = self.cache.clone();
@@ -236,7 +236,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
                 ArpHeader::new(
                     ArpOperation::Request,
                     rt.local_link_addr(),
-                    rt.local_ipv4_addr(),
+                    rt.local_ip_addr(),
                     MacAddress::broadcast(),
                     ipv4_addr,
                 ),
@@ -271,7 +271,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ArpPeer<RT> {
     }
 
     #[cfg(test)]
-    pub fn export_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
+    pub fn export_cache(&self) -> HashMap<IpAddr, MacAddress> {
         self.cache.borrow().export()
     }
 }

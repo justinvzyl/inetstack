@@ -203,7 +203,7 @@ impl UdpHeader {
 #[cfg(test)]
 mod test {
     use super::*;
-    use ::runtime::network::types::Ipv4Addr;
+    use std::net::Ipv4Addr;
 
     /// Builds a fake Ipv4 Header.
     fn ipv4_header() -> Ipv4Header {

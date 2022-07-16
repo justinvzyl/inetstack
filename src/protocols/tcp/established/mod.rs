@@ -30,7 +30,7 @@ use ::runtime::{
     QDesc,
 };
 use ::std::{
-    net::SocketAddrV4,
+    net::SocketAddr,
     rc::Rc,
     task::{
         Context,
@@ -82,7 +82,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> EstablishedSocket<
         self.cb.rto_estimate()
     }
 
-    pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {
+    pub fn endpoints(&self) -> (SocketAddr, SocketAddr) {
         (self.cb.get_local(), self.cb.get_remote())
     }
 }

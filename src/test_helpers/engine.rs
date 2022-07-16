@@ -33,8 +33,8 @@ use ::std::{
     collections::HashMap,
     future::Future,
     net::{
-        Ipv4Addr,
-        SocketAddrV4,
+        IpAddr,
+        SocketAddr,
     },
     time::Duration,
 };
@@ -80,13 +80,13 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
 
     pub fn ipv4_ping(
         &mut self,
-        dest_ipv4_addr: Ipv4Addr,
+        dest_ipv4_addr: IpAddr,
         timeout: Option<Duration>,
     ) -> impl Future<Output = Result<Duration, Fail>> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
-    pub fn udp_pushto(&self, fd: QDesc, buf: Buffer, to: SocketAddrV4) -> Result<(), Fail> {
+    pub fn udp_pushto(&self, fd: QDesc, buf: Buffer, to: SocketAddr) -> Result<(), Fail> {
         self.ipv4.udp.do_pushto(fd, buf, to)
     }
 
@@ -100,7 +100,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
         Ok(fd)
     }
 
-    pub fn udp_bind(&mut self, socket_fd: QDesc, endpoint: SocketAddrV4) -> Result<(), Fail> {
+    pub fn udp_bind(&mut self, socket_fd: QDesc, endpoint: SocketAddr) -> Result<(), Fail> {
         self.ipv4.udp.do_bind(socket_fd, endpoint)
     }
 
@@ -114,11 +114,11 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
         Ok(fd)
     }
 
-    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddrV4) -> ConnectFuture<RT> {
+    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddr) -> ConnectFuture<RT> {
         self.ipv4.tcp.connect(socket_fd, remote_endpoint).unwrap()
     }
 
-    pub fn tcp_bind(&mut self, socket_fd: QDesc, endpoint: SocketAddrV4) -> Result<(), Fail> {
+    pub fn tcp_bind(&mut self, socket_fd: QDesc, endpoint: SocketAddr) -> Result<(), Fail> {
         self.ipv4.tcp.bind(socket_fd, endpoint)
     }
 
@@ -143,8 +143,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
         self.ipv4.tcp.listen(socket_fd, backlog)
     }
 
-    pub fn arp_query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output = Result<MacAddress, Fail>> {
-        self.arp.query(ipv4_addr)
+    pub fn arp_query(&self, ip_addr: IpAddr) -> impl Future<Output = Result<MacAddress, Fail>> {
+        self.arp.query(ip_addr)
     }
 
     pub fn tcp_mss(&self, handle: QDesc) -> Result<usize, Fail> {
@@ -155,7 +155,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
         self.ipv4.tcp_rto(handle)
     }
 
-    pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
+    pub fn export_arp_cache(&self) -> HashMap<IpAddr, MacAddress> {
         self.arp.export_cache()
     }
 }
