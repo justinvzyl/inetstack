@@ -59,7 +59,7 @@ use ::runtime::{
 use ::std::{
     any::Any,
     convert::TryFrom,
-    net::SocketAddrV4,
+    net::SocketAddr,
     time::Instant,
 };
 
@@ -178,7 +178,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::bind");
         trace!("bind(): qd={:?} local={:?}", qd, local);
@@ -272,7 +272,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
     /// remote endpoints. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::connect");
         trace!("connect(): qd={:?} remote={:?}", qd, remote);
@@ -355,7 +355,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
 
     /// Pushes a buffer to a UDP socket.
     /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
-    pub fn do_pushto(&mut self, qd: QDesc, buf: Buffer, to: SocketAddrV4) -> Result<FutureOperation<RT>, Fail> {
+    pub fn do_pushto(&mut self, qd: QDesc, buf: Buffer, to: SocketAddr) -> Result<FutureOperation<RT>, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::UdpSocket) => {
@@ -370,7 +370,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
 
     /// Pushes raw data to a UDP socket.
     /// TODO: Move this function to demikernel repo once we have a common buffer representation across all libOSes.
-    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddr) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::pushto2");
         trace!("pushto2(): qd={:?}", qd);

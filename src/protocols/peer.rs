@@ -21,7 +21,7 @@ use ::runtime::{
 };
 use ::std::{
     future::Future,
-    net::Ipv4Addr,
+    net::IpAddr,
     time::Duration,
 };
 
@@ -38,13 +38,13 @@ pub struct Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
     pub fn new(rt: RT, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Peer<RT> {
         let local_link_addr: MacAddress = rt.local_link_addr();
-        let local_ipv4_addr: Ipv4Addr = rt.local_ipv4_addr();
+        let local_ip_addr: IpAddr = rt.local_ip_addr();
         let udp_offload_checksum: bool = rt.udp_options().get_tx_checksum_offload();
         let udp: UdpPeer<RT> = UdpPeer::new(
             rt.clone(),
             rng_seed,
             local_link_addr,
-            local_ipv4_addr,
+            local_ip_addr,
             udp_offload_checksum,
             arp.clone(),
         );
@@ -57,7 +57,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
     pub fn receive(&mut self, buf: Buffer) -> Result<(), Fail> {
         let (header, payload) = Ipv4Header::parse(buf)?;
         debug!("Ipv4 received {:?}", header);
-        if header.get_dest_addr() != self.rt.local_ipv4_addr() && !header.get_dest_addr().is_broadcast() {
+        if header.get_dest_addr() != self.rt.local_ip_addr() && !header.get_dest_addr().is_multicast() {
             return Err(Fail::new(ENOTCONN, "invalid destination address"));
         }
         match header.get_protocol() {
@@ -69,10 +69,10 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Peer<RT> {
 
     pub fn ping(
         &mut self,
-        dest_ipv4_addr: Ipv4Addr,
+        dest_ip_addr: IpAddr,
         timeout: Option<Duration>,
     ) -> impl Future<Output = Result<Duration, Fail>> {
-        self.icmpv4.ping(dest_ipv4_addr, timeout)
+        self.icmpv4.ping(dest_ip_addr, timeout)
     }
 }
 

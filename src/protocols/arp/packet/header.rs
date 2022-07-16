@@ -17,8 +17,9 @@ use ::runtime::{
 };
 use ::std::{
     convert::TryInto,
-    net::Ipv4Addr,
+    net::IpAddr,
 };
+use std::net::Ipv4Addr;
 
 const ARP_HTYPE_ETHER2: u16 = 1;
 const ARP_HLEN_ETHER2: u8 = 6;
@@ -53,9 +54,9 @@ pub struct ArpHeader {
     // protocol_address_len: u8,
     operation: ArpOperation,
     sender_hardware_addr: MacAddress,
-    sender_protocol_addr: Ipv4Addr,
+    sender_protocol_addr: IpAddr,
     target_hardware_addr: MacAddress,
-    target_protocol_addr: Ipv4Addr,
+    target_protocol_addr: IpAddr,
 }
 
 //==============================================================================
@@ -67,16 +68,16 @@ impl ArpHeader {
     pub fn new(
         op: ArpOperation,
         local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
+        local_ip_addr: IpAddr,
         remote_link_addr: MacAddress,
-        remote_ipv4_addr: Ipv4Addr,
+        remote_ip_addr: IpAddr,
     ) -> Self {
         Self {
             operation: op,
             sender_hardware_addr: local_link_addr,
-            sender_protocol_addr: local_ipv4_addr,
+            sender_protocol_addr: local_ip_addr,
             target_hardware_addr: remote_link_addr,
-            target_protocol_addr: remote_ipv4_addr,
+            target_protocol_addr: remote_ip_addr,
         }
     }
 
@@ -109,9 +110,9 @@ impl ArpHeader {
         let operation = FromPrimitive::from_u16(NetworkEndian::read_u16(&buf[6..8]))
             .ok_or(Fail::new(ENOTSUP, "unsupported OPER"))?;
         let sender_hardware_addr = MacAddress::from_bytes(&buf[8..14]);
-        let sender_protocol_addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[14..18]));
+        let sender_protocol_addr = IpAddr::V4(Ipv4Addr::from(NetworkEndian::read_u32(&buf[14..18])));
         let target_hardware_addr = MacAddress::from_bytes(&buf[18..24]);
-        let target_protocol_addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[24..28]));
+        let target_protocol_addr = IpAddr::V4(Ipv4Addr::from(NetworkEndian::read_u32(&buf[24..28])));
         let pdu = Self {
             operation,
             sender_hardware_addr,
@@ -124,16 +125,24 @@ impl ArpHeader {
 
     /// Serializes the target ARP PDU.
     pub fn serialize(&self, buf: &mut [u8]) {
-        let buf: &mut [u8; ARP_MESSAGE_SIZE] = (&mut buf[..ARP_MESSAGE_SIZE]).try_into().unwrap();
-        NetworkEndian::write_u16(&mut buf[0..2], ARP_HTYPE_ETHER2);
-        NetworkEndian::write_u16(&mut buf[2..4], ARP_PTYPE_IPV4);
-        buf[4] = ARP_HLEN_ETHER2;
-        buf[5] = ARP_PLEN_IPV4;
-        NetworkEndian::write_u16(&mut buf[6..8], self.operation as u16);
-        buf[8..14].copy_from_slice(&self.sender_hardware_addr.octets());
-        buf[14..18].copy_from_slice(&self.sender_protocol_addr.octets());
-        buf[18..24].copy_from_slice(&self.target_hardware_addr.octets());
-        buf[24..28].copy_from_slice(&self.target_protocol_addr.octets());
+        match self.sender_protocol_addr {
+            IpAddr::V4(sender_ipv4) => {
+                let buf: &mut [u8; ARP_MESSAGE_SIZE] = (&mut buf[..ARP_MESSAGE_SIZE]).try_into().unwrap();
+                NetworkEndian::write_u16(&mut buf[0..2], ARP_HTYPE_ETHER2);
+                NetworkEndian::write_u16(&mut buf[2..4], ARP_PTYPE_IPV4);
+                buf[4] = ARP_HLEN_ETHER2;
+                buf[5] = ARP_PLEN_IPV4;
+                NetworkEndian::write_u16(&mut buf[6..8], self.operation as u16);
+                buf[8..14].copy_from_slice(&self.sender_hardware_addr.octets());
+                buf[14..18].copy_from_slice(&sender_ipv4.octets());
+                buf[18..24].copy_from_slice(&self.target_hardware_addr.octets());
+                match self.target_protocol_addr {
+                    IpAddr::V4(target_ipv4) => buf[24..28].copy_from_slice(&target_ipv4.octets()),
+                    IpAddr::V6(_) => todo!(),
+                }
+            },
+            IpAddr::V6(_) => todo!(),
+        }
     }
 
     pub fn get_operation(&self) -> ArpOperation {
@@ -144,11 +153,11 @@ impl ArpHeader {
         self.sender_hardware_addr
     }
 
-    pub fn get_sender_protocol_addr(&self) -> Ipv4Addr {
+    pub fn get_sender_protocol_addr(&self) -> IpAddr {
         self.sender_protocol_addr
     }
 
-    pub fn get_destination_protocol_addr(&self) -> Ipv4Addr {
+    pub fn get_destination_protocol_addr(&self) -> IpAddr {
         self.target_protocol_addr
     }
 }

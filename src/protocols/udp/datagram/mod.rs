@@ -132,11 +132,9 @@ mod test {
     };
     use ::runtime::{
         memory::DataBuffer,
-        network::types::{
-            Ipv4Addr,
-            MacAddress,
-        },
+        network::types::MacAddress,
     };
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_udp_datagram_header_serialization() {

@@ -33,7 +33,7 @@ use ::runtime::{
 use ::std::{
     collections::VecDeque,
     future::Future,
-    net::SocketAddrV4,
+    net::SocketAddr,
     pin::Pin,
     task::{
         Context,
@@ -68,8 +68,8 @@ fn send_data(
 ) -> (Buffer, usize) {
     trace!(
         "send_data ====> push: {:?} -> {:?}",
-        sender.rt().local_ipv4_addr(),
-        receiver.rt().local_ipv4_addr()
+        sender.rt().local_ip_addr(),
+        receiver.rt().local_ip_addr()
     );
 
     // Push data.
@@ -80,8 +80,8 @@ fn send_data(
         bytes.clone(),
         sender.rt().local_link_addr(),
         receiver.rt().local_link_addr(),
-        sender.rt().local_ipv4_addr(),
-        receiver.rt().local_ipv4_addr(),
+        sender.rt().local_ip_addr(),
+        receiver.rt().local_ip_addr(),
         window_size,
         seq_no,
         ack_num,
@@ -112,8 +112,8 @@ fn recv_data(
 ) {
     trace!(
         "recv_data ====> pop: {:?} -> {:?}",
-        sender.rt().local_ipv4_addr(),
-        receiver.rt().local_ipv4_addr()
+        sender.rt().local_ip_addr(),
+        receiver.rt().local_ip_addr()
     );
 
     // Pop data.
@@ -140,8 +140,8 @@ fn recv_pure_ack(
 ) {
     trace!(
         "recv_pure_ack ====> ack: {:?} -> {:?}",
-        sender.rt().local_ipv4_addr(),
-        receiver.rt().local_ipv4_addr()
+        sender.rt().local_ip_addr(),
+        receiver.rt().local_ip_addr()
     );
 
     advance_clock(Some(sender), Some(receiver), now);
@@ -153,8 +153,8 @@ fn recv_pure_ack(
             bytes.clone(),
             sender.rt().local_link_addr(),
             receiver.rt().local_link_addr(),
-            sender.rt().local_ipv4_addr(),
-            receiver.rt().local_ipv4_addr(),
+            sender.rt().local_ip_addr(),
+            receiver.rt().local_ip_addr(),
             ack_num,
         );
         receiver.receive(bytes).unwrap();
@@ -293,7 +293,7 @@ pub fn test_send_recv_loop() {
 
     // Connection parameters
     let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_addr: SocketAddr = SocketAddr::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
@@ -333,7 +333,7 @@ pub fn test_send_recv_round_loop() {
 
     // Connection parameters
     let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_addr: SocketAddr = SocketAddr::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
@@ -376,7 +376,7 @@ pub fn test_send_recv_with_delay() {
 
     // Connection parameters
     let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_addr: SocketAddr = SocketAddr::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);
@@ -445,7 +445,7 @@ fn test_connect_disconnect() {
 
     // Connection parameters
     let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_addr: SocketAddr = SocketAddr::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server: Engine<TestRuntime> = test_helpers::new_bob2(now);

@@ -48,7 +48,7 @@ use ::std::{
     cell::RefCell,
     convert::TryInto,
     future::Future,
-    net::SocketAddrV4,
+    net::SocketAddr,
     rc::Rc,
     task::{
         Context,
@@ -56,6 +56,7 @@ use ::std::{
         Waker,
     },
 };
+use std::net::IpAddr;
 
 struct ConnectResult<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     waker: Option<Waker>,
@@ -65,8 +66,8 @@ struct ConnectResult<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 pub struct ActiveOpenSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     local_isn: SeqNumber,
 
-    local: SocketAddrV4,
-    remote: SocketAddrV4,
+    local: SocketAddr,
+    remote: SocketAddr,
 
     rt: RT,
     arp: ArpPeer<RT>,
@@ -77,7 +78,7 @@ pub struct ActiveOpenSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'sta
 }
 
 impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<RT> {
-    pub fn new(local_isn: SeqNumber, local: SocketAddrV4, remote: SocketAddrV4, rt: RT, arp: ArpPeer<RT>) -> Self {
+    pub fn new(local_isn: SeqNumber, local: SocketAddr, remote: SocketAddr, rt: RT, arp: ArpPeer<RT>) -> Self {
         let result = ConnectResult {
             waker: None,
             result: None,
@@ -158,7 +159,17 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
 
         let segment = TcpSegment {
             ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
-            ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
+            ipv4_hdr: Ipv4Header::new(
+                match self.local.ip().clone() {
+                    IpAddr::V4(ipv4) => ipv4,
+                    IpAddr::V6(_) => todo!(),
+                },
+                match self.remote.ip().clone() {
+                    IpAddr::V4(ipv4) => ipv4,
+                    IpAddr::V6(_) => todo!(),
+                },
+                IpProtocol::TCP,
+            ),
             tcp_hdr,
             data: Buffer::Heap(DataBuffer::empty()),
             tx_checksum_offload: tcp_options.get_rx_checksum_offload(),
@@ -228,8 +239,8 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
 
     fn background(
         local_isn: SeqNumber,
-        local: SocketAddrV4,
-        remote: SocketAddrV4,
+        local: SocketAddr,
+        remote: SocketAddr,
         rt: RT,
         arp: ArpPeer<RT>,
         result: Rc<RefCell<ConnectResult<RT>>>,
@@ -263,7 +274,17 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> ActiveOpenSocket<R
                 debug!("Sending SYN {:?}", tcp_hdr);
                 let segment = TcpSegment {
                     ethernet2_hdr: Ethernet2Header::new(remote_link_addr, rt.local_link_addr(), EtherType2::Ipv4),
-                    ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
+                    ipv4_hdr: Ipv4Header::new(
+                        match local.ip().clone() {
+                            IpAddr::V4(ipv4) => ipv4,
+                            IpAddr::V6(_) => todo!(),
+                        },
+                        match remote.ip().clone() {
+                            IpAddr::V4(ipv4) => ipv4,
+                            IpAddr::V6(_) => todo!(),
+                        },
+                        IpProtocol::TCP,
+                    ),
                     tcp_hdr,
                     data: Buffer::Heap(DataBuffer::empty()),
                     tx_checksum_offload: tcp_options.get_rx_checksum_offload(),

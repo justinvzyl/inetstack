@@ -5,6 +5,8 @@
 // Imports
 //==============================================================================
 
+use std::net::IpAddr;
+
 use crate::{
     protocols::{
         ip::IpProtocol,
@@ -106,8 +108,14 @@ fn test_ipv4_header_parse_good() {
         0,
         1,
         IpProtocol::UDP as u8,
-        &ALICE_IPV4.octets(),
-        &BOB_IPV4.octets(),
+        &match ALICE_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
+        &match BOB_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
         None,
     );
 
@@ -154,8 +162,14 @@ fn test_ipv4_header_parse_invalid_version() {
             0,
             1,
             IpProtocol::UDP as u8,
-            &ALICE_IPV4.octets(),
-            &BOB_IPV4.octets(),
+            &match ALICE_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
+            &match BOB_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
             None,
         );
 
@@ -190,8 +204,14 @@ fn test_ipv4_header_parse_invalid_ihl() {
             0,
             1,
             IpProtocol::UDP as u8,
-            &ALICE_IPV4.octets(),
-            &BOB_IPV4.octets(),
+            &match ALICE_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
+            &match BOB_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
             None,
         );
 
@@ -226,8 +246,14 @@ fn test_ipv4_header_parse_invalid_total_length() {
             0,
             1,
             IpProtocol::UDP as u8,
-            &ALICE_IPV4.octets(),
-            &BOB_IPV4.octets(),
+            &match ALICE_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
+            &match BOB_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
             None,
         );
 
@@ -262,8 +288,14 @@ fn test_ipv4_header_parse_invalid_flags() {
         0,
         1,
         IpProtocol::UDP as u8,
-        &ALICE_IPV4.octets(),
-        &BOB_IPV4.octets(),
+        &match ALICE_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
+        &match BOB_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
         None,
     );
 
@@ -297,8 +329,14 @@ fn test_ipv4_header_parse_invalid_ttl() {
         0,
         ttl,
         IpProtocol::UDP as u8,
-        &ALICE_IPV4.octets(),
-        &BOB_IPV4.octets(),
+        &match ALICE_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
+        &match BOB_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
         None,
     );
 
@@ -332,8 +370,14 @@ fn test_ipv4_header_parse_invalid_protocol() {
             0,
             1,
             protocol,
-            &ALICE_IPV4.octets(),
-            &BOB_IPV4.octets(),
+            &match ALICE_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
+            &match BOB_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
             None,
         );
 
@@ -368,8 +412,14 @@ fn test_ipv4_header_parse_invalid_header_checksum() {
         0,
         1,
         IpProtocol::UDP as u8,
-        &ALICE_IPV4.octets(),
-        &BOB_IPV4.octets(),
+        &match ALICE_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
+        &match BOB_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
         Some(hdr_checksum),
     );
 
@@ -413,8 +463,14 @@ fn test_ipv4_header_parse_unsupported_ihl() {
             0,
             1,
             IpProtocol::UDP as u8,
-            &ALICE_IPV4.octets(),
-            &BOB_IPV4.octets(),
+            &match ALICE_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
+            &match BOB_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
             None,
         );
 
@@ -449,8 +505,14 @@ fn test_ipv4_header_parse_unsupported_dscp() {
             0,
             1,
             IpProtocol::UDP as u8,
-            &ALICE_IPV4.octets(),
-            &BOB_IPV4.octets(),
+            &match ALICE_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
+            &match BOB_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
             None,
         );
 
@@ -485,8 +547,14 @@ fn test_ipv4_header_parse_unsupported_ecn() {
             0,
             1,
             IpProtocol::UDP as u8,
-            &ALICE_IPV4.octets(),
-            &BOB_IPV4.octets(),
+            &match ALICE_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
+            &match BOB_IPV4 {
+                IpAddr::V4(ipv4) => ipv4.octets(),
+                IpAddr::V6(_) => todo!(),
+            },
             None,
         );
 
@@ -524,8 +592,14 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
         0,
         1,
         IpProtocol::UDP as u8,
-        &ALICE_IPV4.octets(),
-        &BOB_IPV4.octets(),
+        &match ALICE_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
+        &match BOB_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
         None,
     );
 
@@ -555,8 +629,14 @@ fn test_ipv4_header_parse_unsupported_fragmentation() {
         fragment_offset,
         1,
         IpProtocol::UDP as u8,
-        &ALICE_IPV4.octets(),
-        &BOB_IPV4.octets(),
+        &match ALICE_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
+        &match BOB_IPV4 {
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        },
         None,
     );
 
@@ -600,8 +680,14 @@ fn test_ipv4_header_parse_unsupported_protocol() {
                     0,
                     1,
                     protocol,
-                    &ALICE_IPV4.octets(),
-                    &BOB_IPV4.octets(),
+                    &match ALICE_IPV4 {
+                        IpAddr::V4(ipv4) => ipv4.octets(),
+                        IpAddr::V6(_) => todo!(),
+                    },
+                    &match BOB_IPV4 {
+                        IpAddr::V4(ipv4) => ipv4.octets(),
+                        IpAddr::V6(_) => todo!(),
+                    },
                     None,
                 );
 

@@ -69,7 +69,7 @@ use ::std::{
         RefMut,
     },
     collections::HashMap,
-    net::SocketAddrV4,
+    net::SocketAddr,
     rc::Rc,
     task::{
         Context,
@@ -77,6 +77,7 @@ use ::std::{
     },
     time::Duration,
 };
+use std::net::IpAddr;
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
@@ -86,10 +87,10 @@ use ::runtime::perftools::timer;
 //==============================================================================
 
 enum Socket {
-    Inactive { local: Option<SocketAddrV4> },
-    Listening { local: SocketAddrV4 },
-    Connecting { local: SocketAddrV4, remote: SocketAddrV4 },
-    Established { local: SocketAddrV4, remote: SocketAddrV4 },
+    Inactive { local: Option<SocketAddr> },
+    Listening { local: SocketAddr },
+    Connecting { local: SocketAddr, remote: SocketAddr },
+    Established { local: SocketAddr, remote: SocketAddr },
 }
 
 //==============================================================================
@@ -104,9 +105,9 @@ pub struct Inner<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     // FD -> local port
     sockets: HashMap<QDesc, Socket>,
 
-    passive: HashMap<SocketAddrV4, PassiveSocket<RT>>,
-    connecting: HashMap<(SocketAddrV4, SocketAddrV4), ActiveOpenSocket<RT>>,
-    established: HashMap<(SocketAddrV4, SocketAddrV4), EstablishedSocket<RT>>,
+    passive: HashMap<SocketAddr, PassiveSocket<RT>>,
+    connecting: HashMap<(SocketAddr, SocketAddr), ActiveOpenSocket<RT>>,
+    established: HashMap<(SocketAddr, SocketAddr), EstablishedSocket<RT>>,
 
     rt: RT,
     arp: ArpPeer<RT>,
@@ -145,7 +146,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         }
     }
 
-    pub fn bind(&self, qd: QDesc, mut addr: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&self, qd: QDesc, mut addr: SocketAddr) -> Result<(), Fail> {
         let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
 
         // Check if address is already bound.
@@ -211,7 +212,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
 
         // Get bound address while checking for several issues.
-        let local: SocketAddrV4 = match inner.sockets.get_mut(&qd) {
+        let local: SocketAddr = match inner.sockets.get_mut(&qd) {
             Some(Socket::Inactive { local: Some(local) }) => *local,
             Some(Socket::Listening { local: _ }) => return Err(Fail::new(libc::EINVAL, "socket is already listening")),
             Some(Socket::Inactive { local: None }) => {
@@ -251,7 +252,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         let mut inner_: RefMut<Inner<RT>> = self.inner.borrow_mut();
         let inner: &mut Inner<RT> = &mut *inner_;
 
-        let local: &SocketAddrV4 = match inner.sockets.get(&qd) {
+        let local: &SocketAddr = match inner.sockets.get(&qd) {
             Some(Socket::Listening { local }) => local,
             Some(..) => return Poll::Ready(Err(Fail::new(EOPNOTSUPP, "socket not listening"))),
             None => return Poll::Ready(Err(Fail::new(EBADF, "bad file descriptor"))),
@@ -264,7 +265,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
         };
         let established: EstablishedSocket<RT> = EstablishedSocket::new(cb, new_qd, inner.dead_socket_tx.clone());
-        let key: (SocketAddrV4, SocketAddrV4) = (established.cb.get_local(), established.cb.get_remote());
+        let key: (SocketAddr, SocketAddr) = (established.cb.get_local(), established.cb.get_remote());
 
         let socket: Socket = Socket::Established {
             local: established.cb.get_local(),
@@ -284,16 +285,16 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         Poll::Ready(Ok(new_qd))
     }
 
-    pub fn connect(&self, qd: QDesc, remote: SocketAddrV4) -> Result<ConnectFuture<RT>, Fail> {
+    pub fn connect(&self, qd: QDesc, remote: SocketAddr) -> Result<ConnectFuture<RT>, Fail> {
         let mut inner: RefMut<Inner<RT>> = self.inner.borrow_mut();
 
         // Get local address bound to socket.
-        let local: SocketAddrV4 = match inner.sockets.get_mut(&qd) {
+        let local: SocketAddr = match inner.sockets.get_mut(&qd) {
             // Handle unbound socket.
             Some(Socket::Inactive { local: None }) => {
                 // TODO: we should free this when closing.
                 let local_port: u16 = inner.ephemeral_ports.alloc_any()?;
-                SocketAddrV4::new(inner.rt.local_ipv4_addr(), local_port)
+                SocketAddr::new(inner.rt.local_ip_addr(), local_port)
             },
             // Handle bound socket.
             Some(Socket::Inactive { local: Some(local) }) => *local,
@@ -381,7 +382,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
 
         match inner.sockets.remove(&qd) {
             Some(Socket::Established { local, remote }) => {
-                let key: (SocketAddrV4, SocketAddrV4) = (local, remote);
+                let key: (SocketAddr, SocketAddr) = (local, remote);
                 match inner.established.get(&key) {
                     Some(ref s) => s.close()?,
                     None => return Err(Fail::new(ENOTCONN, "connection not established")),
@@ -421,7 +422,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> TcpPeer<RT> {
         }
     }
 
-    pub fn endpoints(&self, fd: QDesc) -> Result<(SocketAddrV4, SocketAddrV4), Fail> {
+    pub fn endpoints(&self, fd: QDesc) -> Result<(SocketAddr, SocketAddr), Fail> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -464,10 +465,10 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
         let tcp_options = self.rt.tcp_options();
         let (mut tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, tcp_options.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
-        let local = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
-        let remote = SocketAddrV4::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
+        let local = SocketAddr::new(IpAddr::V4(ip_hdr.get_dest_addr()), tcp_hdr.dst_port);
+        let remote = SocketAddr::new(IpAddr::V4(ip_hdr.get_src_addr()), tcp_hdr.src_port);
 
-        if remote.ip().is_broadcast() || remote.ip().is_multicast() || remote.ip().is_unspecified() {
+        if remote.ip().is_multicast() || remote.ip().is_multicast() || remote.ip().is_unspecified() {
             return Err(Fail::new(EINVAL, "invalid address type"));
         }
         let key = (local, remote);
@@ -494,7 +495,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
         Ok(())
     }
 
-    fn send_rst(&mut self, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<(), Fail> {
+    fn send_rst(&mut self, local: &SocketAddr, remote: &SocketAddr) -> Result<(), Fail> {
         // TODO: Make this work pending on ARP resolution if needed.
         let remote_link_addr = self
             .arp
@@ -506,7 +507,17 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Inner<RT> {
 
         let segment = TcpSegment {
             ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.rt.local_link_addr(), EtherType2::Ipv4),
-            ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
+            ipv4_hdr: Ipv4Header::new(
+                match local.ip().clone() {
+                    IpAddr::V4(ipv4) => ipv4,
+                    IpAddr::V6(_) => todo!(),
+                },
+                match remote.ip().clone() {
+                    IpAddr::V4(ipv4) => ipv4,
+                    IpAddr::V6(_) => todo!(),
+                },
+                IpProtocol::TCP,
+            ),
             tcp_hdr,
             data: Buffer::Heap(DataBuffer::empty()),
             tx_checksum_offload: self.rt.tcp_options().get_rx_checksum_offload(),

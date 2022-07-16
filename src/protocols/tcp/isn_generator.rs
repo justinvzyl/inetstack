@@ -5,7 +5,7 @@ use crate::protocols::tcp::SeqNumber;
 #[allow(unused_imports)]
 use std::{
     hash::Hasher,
-    net::SocketAddrV4,
+    net::SocketAddr,
     num::Wrapping,
 };
 
@@ -24,18 +24,30 @@ impl IsnGenerator {
     }
 
     #[cfg(test)]
-    pub fn generate(&mut self, _local: &SocketAddrV4, _remote: &SocketAddrV4) -> SeqNumber {
+    pub fn generate(&mut self, _local: &SocketAddr, _remote: &SocketAddr) -> SeqNumber {
         SeqNumber::from(0)
     }
 
     #[cfg(not(test))]
-    pub fn generate(&mut self, local: &SocketAddrV4, remote: &SocketAddrV4) -> SeqNumber {
+    pub fn generate(&mut self, local: &SocketAddr, remote: &SocketAddr) -> SeqNumber {
+        use std::net::IpAddr;
+
         let crc: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_CKSUM);
         let mut digest = crc.digest();
-        digest.update(&remote.ip().octets());
+        let remote_octets = match remote.ip() {
+            // todo: pass by reference?
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        };
+        digest.update(&remote_octets);
         let remote_port: u16 = remote.port().into();
         digest.update(&remote_port.to_be_bytes());
-        digest.update(&local.ip().octets());
+        let local_octets = match local.ip() {
+            // todo: pass by reference?
+            IpAddr::V4(ipv4) => ipv4.octets(),
+            IpAddr::V6(_) => todo!(),
+        };
+        digest.update(&local_octets);
         let local_port: u16 = local.port().into();
         digest.update(&local_port.to_be_bytes());
         digest.update(&self.nonce.to_be_bytes());

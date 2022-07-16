@@ -37,14 +37,15 @@ use ::runtime::{
     QToken,
 };
 use ::std::{
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
+    net::IpAddr,
     thread::{
         self,
         JoinHandle,
     },
+};
+use std::net::{
+    Ipv4Addr,
+    SocketAddr,
 };
 
 //======================================================================================================================
@@ -53,7 +54,7 @@ use ::std::{
 
 /// Opens and closes a passive socket using a non-ephemeral port.
 fn do_passive_connection_setup(mut libos: &mut InetStack<DummyRuntime>) {
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
+    let local: SocketAddr = SocketAddr::new(ALICE_IPV4, PORT_BASE);
     let sockqd: QDesc = safe_socket(&mut libos);
     safe_bind(&mut libos, sockqd, local);
     safe_listen(&mut libos, sockqd);
@@ -63,7 +64,7 @@ fn do_passive_connection_setup(mut libos: &mut InetStack<DummyRuntime>) {
 /// Opens and closes a passive socket using an ephemeral port.
 fn do_passive_connection_setup_ephemeral(mut libos: &mut InetStack<DummyRuntime>) {
     pub const PORT_EPHEMERAL_BASE: u16 = 49152;
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_EPHEMERAL_BASE);
+    let local: SocketAddr = SocketAddr::new(ALICE_IPV4, PORT_EPHEMERAL_BASE);
     let sockqd: QDesc = safe_socket(&mut libos);
     safe_bind(&mut libos, sockqd, local);
     safe_listen(&mut libos, sockqd);
@@ -72,7 +73,7 @@ fn do_passive_connection_setup_ephemeral(mut libos: &mut InetStack<DummyRuntime>
 
 /// Opens and closes a passive socket using wildcard ephemeral port.
 fn do_passive_connection_setup_wildcard_ephemeral(mut libos: &mut InetStack<DummyRuntime>) {
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, 0);
+    let local: SocketAddr = SocketAddr::new(ALICE_IPV4, 0);
     let sockqd: QDesc = safe_socket(&mut libos);
     safe_bind(&mut libos, sockqd, local);
     safe_listen(&mut libos, sockqd);
@@ -103,7 +104,7 @@ fn tcp_establish_connection_unbound() {
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
+        let local: SocketAddr = SocketAddr::new(ALICE_IPV4, PORT_BASE);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -125,7 +126,7 @@ fn tcp_establish_connection_unbound() {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
+        let remote: SocketAddr = SocketAddr::new(ALICE_IPV4, PORT_BASE);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -153,7 +154,7 @@ fn tcp_establish_connection_bound() {
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
-        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
+        let local: SocketAddr = SocketAddr::new(ALICE_IPV4, PORT_BASE);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -175,8 +176,8 @@ fn tcp_establish_connection_bound() {
     let bob: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
-        let local: SocketAddrV4 = SocketAddrV4::new(BOB_IPV4, PORT_BASE);
-        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
+        let local: SocketAddr = SocketAddr::new(BOB_IPV4, PORT_BASE);
+        let remote: SocketAddr = SocketAddr::new(ALICE_IPV4, PORT_BASE);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -210,7 +211,7 @@ fn tcp_push_remote() {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         let port: u16 = PORT_BASE;
-        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let local: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -240,7 +241,7 @@ fn tcp_push_remote() {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: u16 = PORT_BASE;
-        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let remote: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -364,8 +365,8 @@ fn tcp_bad_bind() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
-    let local2: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE + 1);
+    let local: SocketAddr = SocketAddr::new(ALICE_IPV4, PORT_BASE);
+    let local2: SocketAddr = SocketAddr::new(ALICE_IPV4, PORT_BASE + 1);
 
     // Invalid queue descriptor.
     match libos.bind(QDesc::from(0), local) {
@@ -407,7 +408,7 @@ fn tcp_bad_listen() {
     let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let port: u16 = PORT_BASE;
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+    let local: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
     // Invalid queue descriptor.
     match libos.listen(QDesc::from(0), 8) {
@@ -476,7 +477,7 @@ fn tcp_bad_connect() {
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
         let port: u16 = PORT_BASE;
-        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let local: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -498,7 +499,7 @@ fn tcp_bad_connect() {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: u16 = PORT_BASE;
-        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let remote: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
         // Bad queue descriptor.
         match libos.connect(QDesc::from(0), remote) {
@@ -507,7 +508,7 @@ fn tcp_bad_connect() {
         };
 
         // Bad endpoint.
-        let bad_remote: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
+        let bad_remote: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
         let sockqd: QDesc = safe_socket(&mut libos);
         let qt: QToken = safe_connect(&mut libos, sockqd, bad_remote);
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
@@ -517,7 +518,7 @@ fn tcp_bad_connect() {
         }
 
         // Close connection.
-        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let remote: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
         let sockqd: QDesc = safe_socket(&mut libos);
         let qt: QToken = safe_connect(&mut libos, sockqd, remote);
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
@@ -548,7 +549,7 @@ fn tcp_bad_close() {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         let port: u16 = PORT_BASE;
-        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let local: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -582,7 +583,7 @@ fn tcp_bad_close() {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: u16 = PORT_BASE;
-        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let remote: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -627,7 +628,7 @@ fn tcp_bad_push() {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         let port: u16 = PORT_BASE;
-        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let local: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -657,7 +658,7 @@ fn tcp_bad_push() {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: u16 = PORT_BASE;
-        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let remote: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -714,7 +715,7 @@ fn tcp_bad_pop() {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         let port: u16 = PORT_BASE;
-        let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let local: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -750,7 +751,7 @@ fn tcp_bad_pop() {
         let mut libos: InetStack<DummyRuntime> = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         let port: u16 = PORT_BASE;
-        let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
+        let remote: SocketAddr = SocketAddr::new(ALICE_IPV4, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos);
@@ -793,7 +794,7 @@ fn safe_socket(libos: &mut InetStack<DummyRuntime>) -> QDesc {
 }
 
 /// Safe call to `connect()`.
-fn safe_connect(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, remote: SocketAddrV4) -> QToken {
+fn safe_connect(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, remote: SocketAddr) -> QToken {
     match libos.connect(sockqd, remote) {
         Ok(qt) => qt,
         Err(e) => panic!("failed to establish connection: {:?}", e),
@@ -801,7 +802,7 @@ fn safe_connect(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, remote: Sock
 }
 
 /// Safe call to `bind()`.
-fn safe_bind(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, local: SocketAddrV4) {
+fn safe_bind(libos: &mut InetStack<DummyRuntime>, sockqd: QDesc, local: SocketAddr) {
     match libos.bind(sockqd, local) {
         Ok(_) => (),
         Err(e) => panic!("bind() failed: {:?}", e),

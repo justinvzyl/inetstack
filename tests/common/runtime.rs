@@ -19,10 +19,7 @@ use ::runtime::{
             UdpConfig,
         },
         consts::RECEIVE_BATCH_SIZE,
-        types::{
-            Ipv4Addr,
-            MacAddress,
-        },
+        types::MacAddress,
         NetworkRuntime,
         PacketBuf,
     },
@@ -41,6 +38,7 @@ use ::runtime::{
 use ::std::{
     cell::RefCell,
     collections::HashMap,
+    net::IpAddr,
     rc::Rc,
     time::{
         Duration,
@@ -70,7 +68,7 @@ pub struct DummyRuntime {
     inner: Rc<RefCell<SharedDummyRuntime>>,
     scheduler: Scheduler,
     link_addr: MacAddress,
-    ipv4_addr: Ipv4Addr,
+    ipv4_addr: IpAddr,
     tcp_options: TcpConfig,
     arp_options: ArpConfig,
 }
@@ -85,10 +83,10 @@ impl DummyRuntime {
     pub fn new(
         now: Instant,
         link_addr: MacAddress,
-        ipv4_addr: Ipv4Addr,
+        ipv4_addr: IpAddr,
         incoming: crossbeam_channel::Receiver<DataBuffer>,
         outgoing: crossbeam_channel::Sender<DataBuffer>,
-        arp: HashMap<Ipv4Addr, MacAddress>,
+        arp: HashMap<IpAddr, MacAddress>,
     ) -> Self {
         let arp_options: ArpConfig = ArpConfig::new(
             Some(Duration::from_secs(600)),
@@ -145,7 +143,7 @@ impl NetworkRuntime for DummyRuntime {
         self.link_addr.clone()
     }
 
-    fn local_ipv4_addr(&self) -> Ipv4Addr {
+    fn local_ip_addr(&self) -> IpAddr {
         self.ipv4_addr.clone()
     }
 

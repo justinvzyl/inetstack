@@ -38,7 +38,7 @@ use ::runtime::{
     },
     network::{
         types::{
-            Ipv4Addr,
+            IpAddr,
             MacAddress,
         },
         NetworkRuntime,
@@ -49,7 +49,7 @@ use ::runtime::{
 };
 use ::std::{
     future::Future,
-    net::SocketAddrV4,
+    net::SocketAddr,
     pin::Pin,
     task::{
         Context,
@@ -71,7 +71,7 @@ fn test_connection_timeout() {
 
     // Connection parameters
     let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_addr: SocketAddr = SocketAddr::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup client.
     let mut client = test_helpers::new_alice2(now);
@@ -119,7 +119,7 @@ fn test_refuse_connection_early_rst() {
 
     // Connection parameters
     let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_addr: SocketAddr = SocketAddr::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server = test_helpers::new_bob2(now);
@@ -188,7 +188,7 @@ fn test_refuse_connection_early_ack() {
 
     // Connection parameters
     let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_addr: SocketAddr = SocketAddr::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server = test_helpers::new_bob2(now);
@@ -257,7 +257,7 @@ fn test_refuse_connection_missing_syn() {
 
     // Connection parameters
     let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_addr: SocketAddr = SocketAddr::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server = test_helpers::new_bob2(now);
@@ -356,7 +356,7 @@ fn serialize_segment(pkt: TcpSegment) -> Buffer {
 /// Triggers LISTEN -> SYN_SENT state transition.
 fn connection_setup_listen_syn_sent(
     client: &mut Engine<TestRuntime>,
-    listen_addr: SocketAddrV4,
+    listen_addr: SocketAddr,
 ) -> (QDesc, ConnectFuture<TestRuntime>, Buffer) {
     // Issue CONNECT operation.
     let client_fd: QDesc = client.tcp_socket().unwrap();
@@ -372,7 +372,7 @@ fn connection_setup_listen_syn_sent(
 /// Triggers CLOSED -> LISTEN state transition.
 fn connection_setup_closed_listen(
     server: &mut Engine<TestRuntime>,
-    listen_addr: SocketAddrV4,
+    listen_addr: SocketAddr,
 ) -> AcceptFuture<TestRuntime> {
     // Issue ACCEPT operation.
     let socket_fd: QDesc = server.tcp_socket().unwrap();
@@ -413,8 +413,8 @@ fn check_packet_pure_syn(
     bytes: Buffer,
     eth2_src_addr: MacAddress,
     eth2_dst_addr: MacAddress,
-    ipv4_src_addr: Ipv4Addr,
-    ipv4_dst_addr: Ipv4Addr,
+    ip_src_addr: IpAddr,
+    ip_dst_addr: IpAddr,
     dst_port: u16,
 ) {
     let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
@@ -422,8 +422,8 @@ fn check_packet_pure_syn(
     assert_eq!(eth2_header.dst_addr(), eth2_dst_addr);
     assert_eq!(eth2_header.ether_type(), EtherType2::Ipv4);
     let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
-    assert_eq!(ipv4_header.get_src_addr(), ipv4_src_addr);
-    assert_eq!(ipv4_header.get_dest_addr(), ipv4_dst_addr);
+    assert_eq!(ipv4_header.get_src_addr(), ip_src_addr);
+    assert_eq!(ipv4_header.get_dest_addr(), ip_dst_addr);
     let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
     assert_eq!(tcp_header.dst_port, dst_port);
     assert_eq!(tcp_header.seq_num, SeqNumber::from(0));
@@ -436,8 +436,8 @@ fn check_packet_syn_ack(
     bytes: Buffer,
     eth2_src_addr: MacAddress,
     eth2_dst_addr: MacAddress,
-    ipv4_src_addr: Ipv4Addr,
-    ipv4_dst_addr: Ipv4Addr,
+    ip_src_addr: IpAddr,
+    ip_dst_addr: IpAddr,
     src_port: u16,
 ) {
     let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
@@ -445,8 +445,8 @@ fn check_packet_syn_ack(
     assert_eq!(eth2_header.dst_addr(), eth2_dst_addr);
     assert_eq!(eth2_header.ether_type(), EtherType2::Ipv4);
     let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
-    assert_eq!(ipv4_header.get_src_addr(), ipv4_src_addr);
-    assert_eq!(ipv4_header.get_dest_addr(), ipv4_dst_addr);
+    assert_eq!(ipv4_header.get_src_addr(), ip_src_addr);
+    assert_eq!(ipv4_header.get_dest_addr(), ip_dst_addr);
     let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
     assert_eq!(tcp_header.src_port, src_port);
     assert_eq!(tcp_header.ack_num, SeqNumber::from(1));
@@ -462,8 +462,8 @@ fn check_packet_pure_ack_on_syn_ack(
     bytes: Buffer,
     eth2_src_addr: MacAddress,
     eth2_dst_addr: MacAddress,
-    ipv4_src_addr: Ipv4Addr,
-    ipv4_dst_addr: Ipv4Addr,
+    ip_src_addr: IpAddr,
+    ip_dst_addr: IpAddr,
     dst_port: u16,
 ) {
     let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
@@ -471,8 +471,8 @@ fn check_packet_pure_ack_on_syn_ack(
     assert_eq!(eth2_header.dst_addr(), eth2_dst_addr);
     assert_eq!(eth2_header.ether_type(), EtherType2::Ipv4);
     let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
-    assert_eq!(ipv4_header.get_src_addr(), ipv4_src_addr);
-    assert_eq!(ipv4_header.get_dest_addr(), ipv4_dst_addr);
+    assert_eq!(ipv4_header.get_src_addr(), ip_src_addr);
+    assert_eq!(ipv4_header.get_dest_addr(), ip_dst_addr);
     let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
     assert_eq!(tcp_header.dst_port, dst_port);
     assert_eq!(tcp_header.seq_num, SeqNumber::from(1));
@@ -502,7 +502,7 @@ pub fn connection_setup(
     server: &mut Engine<TestRuntime>,
     client: &mut Engine<TestRuntime>,
     listen_port: u16,
-    listen_addr: SocketAddrV4,
+    listen_addr: SocketAddr,
 ) -> (QDesc, QDesc) {
     // Server: LISTEN state at T(0).
     let mut accept_future: AcceptFuture<TestRuntime> = connection_setup_closed_listen(server, listen_addr);
@@ -583,7 +583,7 @@ fn test_good_connect() {
 
     // Connection parameters
     let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
+    let listen_addr: SocketAddr = SocketAddr::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
     let mut server = test_helpers::new_bob2(now);

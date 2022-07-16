@@ -16,7 +16,7 @@ use ::runtime::{
 };
 use ::std::{
     future::Future,
-    net::SocketAddrV4,
+    net::SocketAddr,
     pin::Pin,
     task::{
         Context,
@@ -60,7 +60,7 @@ impl UdpPopFuture {
 
 /// Future Trait implementation for Pop Operation Descriptor
 impl Future for UdpPopFuture {
-    type Output = Result<(SocketAddrV4, Buffer), Fail>;
+    type Output = Result<(SocketAddr, Buffer), Fail>;
 
     /// Polls the target pop operation descriptor.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {

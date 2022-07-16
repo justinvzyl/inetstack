@@ -12,7 +12,7 @@ use ::runtime::{
 };
 use ::std::{
     fmt,
-    net::SocketAddrV4,
+    net::SocketAddr,
 };
 
 //==============================================================================
@@ -24,7 +24,7 @@ pub enum OperationResult {
     Accept(QDesc),
     Push,
     // TODO: Drop wrapping Option.
-    Pop(Option<SocketAddrV4>, Buffer),
+    Pop(Option<SocketAddr>, Buffer),
     Failed(Fail),
 }
 
