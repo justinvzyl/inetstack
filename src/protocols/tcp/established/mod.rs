@@ -26,7 +26,6 @@ use ::runtime::{
     memory::Buffer,
     network::NetworkRuntime,
     scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
     QDesc,
 };
 use ::std::{
@@ -39,7 +38,7 @@ use ::std::{
     time::Duration,
 };
 
-pub struct EstablishedSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct EstablishedSocket<RT: NetworkRuntime + Clone + 'static> {
     pub cb: Rc<ControlBlock<RT>>,
     /// The background co-routines handles various tasks, such as retransmission and acknowledging.
     /// We annotate it as unused because the compiler believes that it is never called which is not the case.
@@ -47,11 +46,17 @@ pub struct EstablishedSocket<RT: SchedulerRuntime + NetworkRuntime + Clone + 'st
     background: SchedulerHandle,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> EstablishedSocket<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> EstablishedSocket<RT> {
     pub fn new(cb: ControlBlock<RT>, fd: QDesc, dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> Self {
         let cb = Rc::new(cb);
         let future = background(cb.clone(), fd, dead_socket_tx);
-        let handle: SchedulerHandle = cb.rt().spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle: SchedulerHandle = match cb
+            .scheduler
+            .insert(FutureOperation::Background::<RT>(future.boxed_local()))
+        {
+            Some(handle) => handle,
+            None => panic!("failed to insert task in the scheduler"),
+        };
         Self {
             cb: cb.clone(),
             background: handle,

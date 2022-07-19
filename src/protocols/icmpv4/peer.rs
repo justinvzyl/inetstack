@@ -48,8 +48,11 @@ use ::runtime::{
         types::MacAddress,
         NetworkRuntime,
     },
-    scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
+    },
+    timer::TimerRc,
 };
 use ::std::{
     cell::RefCell,
@@ -101,9 +104,11 @@ impl ReqQueue {
 ///
 /// ICMP for IPv4 is defined in RFC 792.
 ///
-pub struct Icmpv4Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct Icmpv4Peer<RT: NetworkRuntime + Clone + 'static> {
     /// Underlying Runtime
     rt: RT,
+
+    clock: TimerRc,
 
     /// Underlying ARP Peer
     arp: ArpPeer<RT>,
@@ -125,16 +130,20 @@ pub struct Icmpv4Peer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
     background: SchedulerHandle,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
     /// Creates a new peer for handling ICMP.
-    pub fn new(rt: RT, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Icmpv4Peer<RT> {
+    pub fn new(rt: RT, scheduler: Scheduler, clock: TimerRc, arp: ArpPeer<RT>, rng_seed: [u8; 32]) -> Icmpv4Peer<RT> {
         let (tx, rx) = mpsc::unbounded();
         let requests = ReqQueue::new();
         let rng: Rc<RefCell<SmallRng>> = Rc::new(RefCell::new(SmallRng::from_seed(rng_seed)));
         let future = Self::background(rt.clone(), arp.clone(), rx);
-        let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
+            Some(handle) => handle,
+            None => panic!("failed to insert task in the scheduler"),
+        };
         Icmpv4Peer {
             rt,
+            clock,
             arp,
             tx,
             requests: Rc::new(RefCell::new(requests)),
@@ -229,9 +238,10 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
         let echo_request = Icmpv4Type2::EchoRequest { id, seq_num };
         let arp = self.arp.clone();
         let rt = self.rt.clone();
+        let clock: TimerRc = self.clock.clone();
         let requests = self.requests.clone();
         async move {
-            let t0 = rt.now();
+            let t0 = clock.now();
             debug!("initiating ARP query");
             let dst_link_addr = arp.query(dst_ipv4_addr).await?;
             debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
@@ -248,9 +258,9 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
                 rx
             };
             // TODO: Handle cancellation here and unregister the completion in `requests`.
-            let timer = rt.wait(timeout);
+            let timer = clock.wait(clock.clone(), timeout);
             let _ = rx.fuse().with_timeout(timer).await?;
-            Ok(rt.now() - t0)
+            Ok(clock.now() - t0)
         }
     }
 }

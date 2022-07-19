@@ -51,8 +51,10 @@ use ::runtime::{
         },
         NetworkRuntime,
     },
-    scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
+    },
     QDesc,
 };
 use ::std::{
@@ -78,7 +80,7 @@ const SEND_QUEUE_MAX_SIZE: usize = 1024;
 //======================================================================================================================
 
 /// UDP Peer
-pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct UdpPeer<RT: NetworkRuntime + Clone + 'static> {
     /// Underlying runtime.
     rt: RT,
     /// Underlying ARP peer.
@@ -109,10 +111,11 @@ pub struct UdpPeer<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
 //======================================================================================================================
 
 /// Associate functions for [UdpPeer].
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
+impl<RT: NetworkRuntime + Clone + 'static> UdpPeer<RT> {
     /// Creates a Udp peer.
     pub fn new(
         rt: RT,
+        scheduler: Scheduler,
         rng_seed: [u8; 32],
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -129,7 +132,10 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> UdpPeer<RT> {
             arp.clone(),
             send_queue.clone(),
         );
-        let handle: SchedulerHandle = rt.spawn(FutureOperation::Background::<RT>(future.boxed_local()));
+        let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
+            Some(handle) => handle,
+            None => panic!("failed to insert task in the scheduler"),
+        };
         let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
         let ephemeral_ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
         Self {

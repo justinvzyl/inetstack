@@ -18,6 +18,8 @@ use ::runtime::{
         DataBuffer,
     },
     network::types::MacAddress,
+    scheduler::Scheduler,
+    timer::TimerRc,
 };
 use ::std::{
     collections::HashMap,
@@ -46,9 +48,11 @@ impl DummyLibOS {
     ) -> InetStack<DummyRuntime> {
         let now: Instant = Instant::now();
         let rt: DummyRuntime = DummyRuntime::new(now, link_addr, ipv4_addr, rx, tx, arp);
+        let scheduler: Scheduler = rt.scheduler.clone();
+        let clock: TimerRc = rt.clock.clone();
         let rng_seed: [u8; 32] = [0; 32];
         logging::initialize();
-        InetStack::new(rt, rng_seed).unwrap()
+        InetStack::new(rt, scheduler, clock, rng_seed).unwrap()
     }
 
     /// Cooks a buffer.

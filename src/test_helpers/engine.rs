@@ -25,7 +25,8 @@ use ::runtime::{
         NetworkRuntime,
     },
     queue::IoQueueTable,
-    task::SchedulerRuntime,
+    scheduler::Scheduler,
+    timer::TimerRc,
     QDesc,
     QType,
 };
@@ -39,22 +40,23 @@ use ::std::{
     time::Duration,
 };
 
-pub struct Engine<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct Engine<RT: NetworkRuntime + Clone + 'static> {
     rt: RT,
+    pub clock: TimerRc,
     pub arp: ArpPeer<RT>,
     pub ipv4: Peer<RT>,
     pub file_table: IoQueueTable,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> Engine<RT> {
-    pub fn new(rt: RT) -> Result<Self, Fail> {
-        let now = rt.now();
+impl<RT: NetworkRuntime + Clone + 'static> Engine<RT> {
+    pub fn new(rt: RT, scheduler: Scheduler, clock: TimerRc) -> Result<Self, Fail> {
         let file_table = IoQueueTable::new();
-        let arp = ArpPeer::new(now, rt.clone(), rt.arp_options())?;
+        let arp = ArpPeer::new(rt.clone(), scheduler.clone(), clock.clone(), rt.arp_options())?;
         let rng_seed: [u8; 32] = [0; 32];
-        let ipv4 = Peer::new(rt.clone(), arp.clone(), rng_seed);
+        let ipv4 = Peer::new(rt.clone(), scheduler.clone(), clock.clone(), arp.clone(), rng_seed);
         Ok(Engine {
             rt,
+            clock,
             arp,
             ipv4,
             file_table,

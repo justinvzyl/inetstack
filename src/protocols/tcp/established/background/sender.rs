@@ -14,7 +14,6 @@ use ::runtime::{
     fail::Fail,
     memory::Buffer,
     network::NetworkRuntime,
-    task::SchedulerRuntime,
 };
 use ::std::{
     cmp,
@@ -22,9 +21,7 @@ use ::std::{
     time::Duration,
 };
 
-pub async fn sender<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
-    cb: Rc<ControlBlock<RT>>,
-) -> Result<!, Fail> {
+pub async fn sender<RT: NetworkRuntime + Clone + 'static>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
         // ToDo: Change this to just look at the unsent queue to see if it is empty or not.
@@ -61,7 +58,7 @@ pub async fn sender<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
             // Add the probe byte (as a new separate buffer) to our unacknowledged queue.
             let unacked_segment = UnackedSegment {
                 bytes: buf.clone(),
-                initial_tx: Some(cb.rt().now()),
+                initial_tx: Some(cb.clock.now()),
             };
             cb.push_unacked_segment(unacked_segment);
 
@@ -75,7 +72,7 @@ pub async fn sender<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
             loop {
                 futures::select_biased! {
                     _ = win_sz_changed => continue 'top,
-                    _ = cb.rt().wait(timeout).fuse() => {
+                    _ = cb.clock.wait(cb.clock.clone(), timeout).fuse() => {
                         timeout *= 2;
                     }
                 }
@@ -155,7 +152,7 @@ pub async fn sender<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
         // Put this segment on the unacknowledged list.
         let unacked_segment = UnackedSegment {
             bytes: segment_data,
-            initial_tx: Some(cb.rt().now()),
+            initial_tx: Some(cb.clock.now()),
         };
         cb.push_unacked_segment(unacked_segment);
 
@@ -164,7 +161,7 @@ pub async fn sender<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static>(
         let retransmit_deadline = cb.get_retransmit_deadline();
         if retransmit_deadline.is_none() {
             let rto: Duration = cb.rto_estimate();
-            cb.set_retransmit_deadline(Some(cb.rt().now() + rto));
+            cb.set_retransmit_deadline(Some(cb.clock.now() + rto));
         }
     }
 }

@@ -49,9 +49,10 @@ use ::runtime::{
     queue::IoQueueTable,
     scheduler::{
         FutureResult,
+        Scheduler,
         SchedulerHandle,
     },
-    task::SchedulerRuntime,
+    timer::TimerRc,
     QDesc,
     QToken,
     QType,
@@ -86,25 +87,28 @@ pub mod protocols;
 const TIMER_RESOLUTION: usize = 64;
 const MAX_RECV_ITERS: usize = 2;
 
-pub struct InetStack<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> {
+pub struct InetStack<RT: NetworkRuntime + Clone + 'static> {
     arp: ArpPeer<RT>,
     ipv4: Peer<RT>,
     file_table: IoQueueTable,
     rt: RT,
+    scheduler: Scheduler,
+    clock: TimerRc,
     ts_iters: usize,
 }
 
-impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
-    pub fn new(rt: RT, rng_seed: [u8; 32]) -> Result<Self, Fail> {
-        let now: Instant = rt.now();
+impl<RT: NetworkRuntime + Clone + 'static> InetStack<RT> {
+    pub fn new(rt: RT, scheduler: Scheduler, clock: TimerRc, rng_seed: [u8; 32]) -> Result<Self, Fail> {
         let file_table: IoQueueTable = IoQueueTable::new();
-        let arp: ArpPeer<RT> = ArpPeer::new(now, rt.clone(), rt.arp_options())?;
-        let ipv4: Peer<RT> = Peer::new(rt.clone(), arp.clone(), rng_seed);
+        let arp: ArpPeer<RT> = ArpPeer::new(rt.clone(), scheduler.clone(), clock.clone(), rt.arp_options())?;
+        let ipv4: Peer<RT> = Peer::new(rt.clone(), scheduler.clone(), clock.clone(), arp.clone(), rng_seed);
         Ok(Self {
             arp,
             ipv4,
             file_table,
             rt,
+            scheduler,
+            clock,
             ts_iters: 0,
         })
     }
@@ -249,7 +253,13 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
                 Ok(QType::TcpSocket) => {
                     let new_qd: QDesc = self.file_table.alloc(QType::TcpSocket.into());
                     let future: FutureOperation<RT> = FutureOperation::from(self.ipv4.tcp.do_accept(qd, new_qd));
-                    let handle: SchedulerHandle = self.rt.schedule(future);
+                    let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                        Some(handle) => handle,
+                        None => {
+                            self.file_table.free(new_qd);
+                            return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"));
+                        },
+                    };
                     Ok(handle.into_raw().into())
                 },
                 // This queue descriptor does not concern a TCP socket.
@@ -287,7 +297,11 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
             _ => Err(Fail::new(EBADF, "bad queue descriptor")),
         }?;
 
-        let qt: QToken = self.rt.schedule(future).into_raw().into();
+        let handle: SchedulerHandle = match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+        };
+        let qt: QToken = handle.into_raw().into();
         trace!("connect() qt={:?}", qt);
         Ok(qt)
     }
@@ -348,7 +362,11 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
 
         // Issue operation.
         let future: FutureOperation<RT> = self.do_push(qd, buf)?;
-        let qt: QToken = self.rt.schedule(future).into_raw().into();
+        let handle: SchedulerHandle = match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+        };
+        let qt: QToken = handle.into_raw().into();
         trace!("push2() qt={:?}", qt);
         Ok(qt)
     }
@@ -383,7 +401,11 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
 
         // Issue operation.
         let future: FutureOperation<RT> = self.do_pushto(qd, buf, remote)?;
-        let qt: QToken = self.rt.schedule(future).into_raw().into();
+        let handle: SchedulerHandle = match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+        };
+        let qt: QToken = handle.into_raw().into();
         trace!("pushto2() qt={:?}", qt);
         Ok(qt)
     }
@@ -408,7 +430,11 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
             _ => Err(Fail::new(EBADF, "bad queue descriptor")),
         }?;
 
-        let qt: QToken = self.rt.schedule(future).into_raw().into();
+        let handle: SchedulerHandle = match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+        };
+        let qt: QToken = handle.into_raw().into();
         trace!("pop() qt={:?}", qt);
         Ok(qt)
     }
@@ -420,7 +446,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
         trace!("wait2(): qt={:?}", qt);
 
         // Retrieve associated schedule handle.
-        let handle: SchedulerHandle = match self.rt.get_handle(qt.into()) {
+        let handle: SchedulerHandle = match self.scheduler.from_raw_handle(qt.into()) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
         };
@@ -451,7 +477,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
             for (i, &qt) in qts.iter().enumerate() {
                 // Retrieve associated schedule handle.
                 // TODO: move this out of the loop.
-                let mut handle: SchedulerHandle = match self.rt.get_handle(qt.into()) {
+                let mut handle: SchedulerHandle = match self.scheduler.from_raw_handle(qt.into()) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
                 };
@@ -474,7 +500,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
     ///
     /// This function will panic if the specified future had not completed or is _background_ future.
     pub fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
-        let boxed_future: Box<dyn Any> = self.rt.take(handle).as_any();
+        let boxed_future: Box<dyn Any> = self.scheduler.take(handle).as_any();
         let boxed_concrete_type: FutureOperation<RT> =
             *boxed_future.downcast::<FutureOperation<RT>>().expect("Wrong type!");
 
@@ -532,7 +558,7 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
         {
             #[cfg(feature = "profiler")]
             timer!("inetstack::poll_bg_work::poll");
-            self.rt.poll();
+            self.scheduler.poll();
         }
 
         {
@@ -560,14 +586,14 @@ impl<RT: SchedulerRuntime + NetworkRuntime + Clone + 'static> InetStack<RT> {
                             warn!("Dropped packet: {:?}", e);
                         }
                         // TODO: This is a workaround for https://github.com/demikernel/inetstack/issues/149.
-                        self.rt.poll();
+                        self.scheduler.poll();
                     }
                 }
             }
         }
 
         if self.ts_iters == 0 {
-            self.rt.advance_clock(Instant::now());
+            self.clock.advance_clock(Instant::now());
         }
         self.ts_iters = (self.ts_iters + 1) % TIMER_RESOLUTION;
     }
