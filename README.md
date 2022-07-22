@@ -1,5 +1,4 @@
-Demikernel's TCP/UDP Stack
-===========================
+# Demikernel's TCP/UDP Stack
 
 [![Build](https://github.com/demikernel/inetstack/actions/workflows/build.yml/badge.svg)](https://github.com/demikernel/inetstack/actions/workflows/build.yml)
 [![Test](https://github.com/demikernel/inetstack/actions/workflows/test.yml/badge.svg)](https://github.com/demikernel/inetstack/actions/workflows/test.yml)
@@ -9,45 +8,45 @@ solution for user-space networking.
 
 > This project is a component of _Demikernel_ - a libOS architecture for
 kernel-bypass devices.
+>
+> To read more about _Demikernel_ check out <https://aka.ms/demikernel>.
 
-> To read more about _Demikernel_ check out https://aka.ms/demikernel.
+## Building and Running
 
-Building and Running
----------------------
+### 1. Clone This Repository
 
-**1. Clone This Repository**
-```
+```bash
 export WORKDIR=$HOME                                  # Change this to whatever you want.
 cd $WORKDIR                                           # Switch to working directory.
 git clone https://github.com/demikernel/inetstack.git # Clone.
 cd $WORKDIR/inetstack                                 # Switch to repository's source tree.
 ```
 
-**2. Install Prerequisites**
-```
+### 2. Install Prerequisites
+
+```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust toolchain.
 ```
 
-**3. Build**
-```
+### 3. Build**
+
+```bash
 make
 ```
 
-**4. Run Regression Tests (Optional)**
-```
+### 4. Run Regression Tests (Optional)
+
+```bash
 make test
 ```
 
-Code of Conduct
----------------
+## Code of Conduct
 
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
 or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-
-Usage Statement
---------------
+## Usage Statement
 
 This project is a prototype. As such, we provide no guarantees that it will
 work and you are assuming any risks with using the code. We welcome comments
