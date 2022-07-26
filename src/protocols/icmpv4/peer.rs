@@ -64,7 +64,7 @@ use ::std::{
     rc::Rc,
     time::Duration,
 };
-use libc::EPERM;
+use libc::EAGAIN;
 
 //==============================================================================
 // ReqQueue
@@ -146,7 +146,12 @@ impl<RT: NetworkRuntime + Clone + 'static> Icmpv4Peer<RT> {
         let future = Self::background(rt.clone(), arp.clone(), rx);
         let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
             Some(handle) => handle,
-            None => return Err(Fail::new(EPERM, "failed to insert task in the scheduler")),
+            None => {
+                return Err(Fail::new(
+                    EAGAIN,
+                    "failed to schedule background co-routine for ICMPv4 module",
+                ))
+            },
         };
         Ok(Icmpv4Peer {
             rt,

@@ -33,6 +33,7 @@ use crate::{
 };
 use ::futures::FutureExt;
 use ::libc::{
+    EAGAIN,
     EBADF,
     EEXIST,
     ENOTCONN,
@@ -64,7 +65,6 @@ use ::std::{
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
-use libc::EPERM;
 
 //======================================================================================================================
 // Constants
@@ -135,7 +135,12 @@ impl<RT: NetworkRuntime + Clone + 'static> UdpPeer<RT> {
         );
         let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background::<RT>(future.boxed_local())) {
             Some(handle) => handle,
-            None => return Err(Fail::new(EPERM, "failed to insert task in the scheduler")),
+            None => {
+                return Err(Fail::new(
+                    EAGAIN,
+                    "failed to schedule background co-routine for UDP module",
+                ))
+            },
         };
         let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
         let ephemeral_ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
